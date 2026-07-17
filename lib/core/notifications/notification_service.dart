@@ -79,7 +79,7 @@ class NotificationService {
     final androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
-      channelDescription: 'Confirmation requests from the opencode server',
+      channelDescription: 'Confirmation requests from the SparkCode server',
       importance: Importance.high,
       priority: Priority.high,
       ticker: 'Confirmation required',

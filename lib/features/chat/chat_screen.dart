@@ -509,7 +509,7 @@ class _Composer extends ConsumerWidget {
                     Expanded(
                       child: TextField(
                         controller: controller,
-                        placeholder: const Text('Message opencode...'),
+                        placeholder: const Text('Message SparkCode...'),
                         border: Border.all(color: Colors.transparent),
                         borderRadius: BorderRadius.zero,
                         maxLines: 5,

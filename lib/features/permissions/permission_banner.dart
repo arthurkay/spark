@@ -6,7 +6,11 @@ import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/permission.dart';
 import '../../core/notifications/notification_service.dart';
+import '../../core/storage/settings_provider.dart';
+import '../../shared/widgets/code_highlight_view.dart';
 import 'permission_sheet.dart';
+
+const _filePermissionTypes = {'glob', 'read', 'edit', 'write'};
 
 class PermissionBanner extends ConsumerWidget {
   const PermissionBanner({super.key, this.onOpenSession});
@@ -43,7 +47,7 @@ class PermissionBanner extends ConsumerWidget {
   }
 }
 
-class _PermissionCard extends ConsumerWidget {
+class _PermissionCard extends ConsumerStatefulWidget {
   const _PermissionCard({
     required this.permission,
     required this.onOpenSession,
@@ -53,8 +57,26 @@ class _PermissionCard extends ConsumerWidget {
   final void Function(String sessionID)? onOpenSession;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PermissionCard> createState() => _PermissionCardState();
+}
+
+class _PermissionCardState extends ConsumerState<_PermissionCard> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    final collapsed = ref.read(collapseFilePermissionsProvider);
+    final isFile = _filePermissionTypes.contains(widget.permission.type);
+    _expanded = isFile ? !collapsed : true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final client = ref.read(opencodeClientProvider);
+    final permission = widget.permission;
+    final hasMetadata = permission.metadata.isNotEmpty;
+
     return SurfaceCard(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -62,30 +84,55 @@ class _PermissionCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             GestureDetector(
-              onTap: () => _showSheet(context, ref, permission),
+              onTap: hasMetadata
+                  ? () => setState(() => _expanded = !_expanded)
+                  : () => _showSheet(context, ref, permission),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     children: [
-                      const Icon(LucideIcons.shieldQuestion, size: 18),
+                      Icon(permissionIcon(permission.type), size: 18),
                       const Gap(8),
                       Expanded(
                         child: Text(
                           permission.title ?? permission.type ?? 'Confirmation',
                         ).semiBold,
                       ),
-                      const Icon(LucideIcons.chevronRight, size: 14)
-                          .iconMutedForeground,
+                      if (hasMetadata)
+                        Icon(
+                          _expanded
+                              ? LucideIcons.chevronDown
+                              : LucideIcons.chevronRight,
+                          size: 14,
+                        ).iconMutedForeground
+                      else
+                        const Icon(LucideIcons.chevronRight, size: 14)
+                            .iconMutedForeground,
                     ],
                   ),
-                  if (permission.metadata.isNotEmpty) ...[
+                  if (hasMetadata && _expanded) ...[
                     const Gap(8),
-                    SelectableText(
-                      permission.metadata.entries
-                          .map((e) => '${e.key}: ${e.value}')
-                          .join('\n'),
-                    ).mono.small.muted,
+                    ...permission.metadata.entries.map((e) {
+                      final isCommand = _isCommandEntry(e.key, e.value);
+                      if (isCommand) {
+                        final cmd = e.value.toString();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: CodeHighlightView(
+                            code: cmd,
+                            language: 'bash',
+                            constraints: const BoxConstraints(maxHeight: 160),
+                          ),
+                        );
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: SelectableText(
+                          '${e.key}: ${e.value}',
+                        ).mono.small.muted,
+                      );
+                    }),
                   ],
                 ],
               ),
@@ -113,7 +160,7 @@ class _PermissionCard extends ConsumerWidget {
             GhostButton(
               density: ButtonDensity.compact,
               alignment: Alignment.centerRight,
-              onPressed: () => onOpenSession?.call(permission.sessionID),
+              onPressed: () => widget.onOpenSession?.call(permission.sessionID),
               child: const Text('Open session').small,
             ),
           ],
@@ -172,5 +219,33 @@ class _PermissionCard extends ConsumerWidget {
           )
           .catchError((_) {});
     }
+  }
+
+  bool _isCommandEntry(String key, dynamic value) {
+    if (value is! String || value.isEmpty) return false;
+    final lowerKey = key.toLowerCase();
+    if (lowerKey.contains('command') || lowerKey == 'cmd') return true;
+    const commands = {
+      'bash',
+      'sh',
+      'git',
+      'npm',
+      'yarn',
+      'pnpm',
+      'deno',
+      'bun',
+      'cargo',
+      'go',
+      'python',
+      'python3',
+      'node',
+      'npx',
+      'docker',
+      'kubectl',
+      'make',
+      'sudo',
+    };
+    final firstWord = value.trim().split(RegExp(r'\s+')).first;
+    return commands.contains(firstWord);
   }
 }

@@ -172,7 +172,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                 const Gap(4),
                 Center(
                   child: Text(
-                    'Point this app at a running opencode serve.',
+                    'Point this app at a running SparkCode server.',
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.mutedForeground),
                   ),

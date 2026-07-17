@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/models/provider.dart';
+import '../../shared/widgets/sheet_keyboard_padding.dart';
 import 'models_provider.dart';
 
 class ModelSelectorBar extends ConsumerWidget {
@@ -73,39 +74,41 @@ class ModelSelectorBar extends ConsumerWidget {
       context: context,
       position: OverlayPosition.bottom,
       builder: (context) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final providersAsync = ref.watch(providersProvider);
-            return SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(maxHeight: 540),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('Select model').h4,
-                    const Gap(12),
-                    Flexible(
-                      child: providersAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('$e').muted,
-                        data: (providers) => _ModelPickerList(
-                          providers: providers,
-                          onSelect: (selection) {
-                            ref.read(selectedModelProvider.notifier).state =
-                                selection;
-                            closeSheet(context);
-                          },
+        return SheetKeyboardPadding(
+          child: Consumer(
+            builder: (context, ref, _) {
+              final providersAsync = ref.watch(providersProvider);
+              return SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  constraints: const BoxConstraints(maxHeight: 540),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Select model').h4,
+                      const Gap(12),
+                      Flexible(
+                        child: providersAsync.when(
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (e, _) => Text('$e').muted,
+                          data: (providers) => _ModelPickerList(
+                            providers: providers,
+                            onSelect: (selection) {
+                              ref.read(selectedModelProvider.notifier).state =
+                                  selection;
+                              closeSheet(context);
+                            },
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );
@@ -117,50 +120,52 @@ class ModelSelectorBar extends ConsumerWidget {
       context: context,
       position: OverlayPosition.bottom,
       builder: (context) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final agentsAsync = ref.watch(agentsProvider);
-            return SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(maxHeight: 480),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('Select agent').h4,
-                    const Gap(12),
-                    Flexible(
-                      child: agentsAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('$e').muted,
-                        data: (agents) => ListView(
-                          shrinkWrap: true,
-                          children: [
-                            for (final agent in agents)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: GhostButton(
-                                  alignment: Alignment.centerLeft,
-                                  onPressed: () {
-                                    ref
-                                        .read(selectedAgentProvider.notifier)
-                                        .state = agent.name;
-                                    closeSheet(context);
-                                  },
-                                  child: Text(agent.name),
+        return SheetKeyboardPadding(
+          child: Consumer(
+            builder: (context, ref, _) {
+              final agentsAsync = ref.watch(agentsProvider);
+              return SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  constraints: const BoxConstraints(maxHeight: 480),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Select agent').h4,
+                      const Gap(12),
+                      Flexible(
+                        child: agentsAsync.when(
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (e, _) => Text('$e').muted,
+                          data: (agents) => ListView(
+                            shrinkWrap: true,
+                            children: [
+                              for (final agent in agents)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: GhostButton(
+                                    alignment: Alignment.centerLeft,
+                                    onPressed: () {
+                                      ref
+                                          .read(selectedAgentProvider.notifier)
+                                          .state = agent.name;
+                                      closeSheet(context);
+                                    },
+                                    child: Text(agent.name),
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );

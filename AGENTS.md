@@ -71,6 +71,46 @@ browser limited to that project.
 Auth: optional HTTP Basic auth. Username defaults to `opencode`
 (`OPENCODE_SERVER_USERNAME`), password from `OPENCODE_SERVER_PASSWORD`.
 
+### SSE event types (`GET /event`)
+
+The `/event` stream emits `GlobalEvent` objects (`{ directory, payload }`) whose
+`payload` is a discriminated union on `type`. Event types the app cares about:
+
+- `permission.updated` — a new permission request (`payload.properties` is a
+  `Permission`: `id`, `type`, `pattern?`, `sessionID`, `messageID`, `callID?`,
+  `title`, `metadata`, `time.created`).
+- `permission.replied` — a permission was answered
+  (`{ sessionID, permissionID, response }`).
+- `message.updated` / `message.removed` — message create/update/delete.
+- `message.part.updated` / `message.part.removed` — streaming message parts
+  (text/reasoning/tool/file/etc.); `message.part.updated` may carry a `delta`.
+- `session.created` / `session.updated` / `session.deleted` — session lifecycle.
+- `session.status` — `idle` | `retry` | `busy`.
+- `session.idle` / `session.compacted` / `session.diff` / `session.error`.
+- `file.edited` / `file.watcher.updated` (`add` | `change` | `unlink`).
+- `todo.updated`, `command.executed`, `vcs.branch.updated`.
+- `server.connected`, `server.instance.disposed`.
+- `installation.updated`, `installation.update-available`.
+- `lsp.updated`, `lsp.client.diagnostics`.
+- `pty.*` and `tui.*` events are TUI/terminal-specific (unused by the app).
+
+Full type source: `packages/sdk/js/src/gen/types.gen.ts` (`Event` union) in the
+`anomalyco/opencode` repo.
+
+### Permission response API
+
+Respond to a `permission.updated` request with:
+
+```
+POST /session/:id/permissions/:permissionID
+```
+
+The `:permissionID` is the `Permission.id` from the `permission.updated` event.
+The body carries the `response` string (e.g. `once` / `always` / `reject`),
+mirrored back on the `permission.replied` event as `{ sessionID, permissionID,
+response }`. The app models the request as `PermissionRequest` in
+`lib/core/models/permission.dart`.
+
 ## Conventions
 
 - Do NOT add code comments unless explicitly requested.

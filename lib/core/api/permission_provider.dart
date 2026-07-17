@@ -11,6 +11,8 @@ final pendingPermissionsProvider =
   (ref) => const <String, PermissionRequest>{},
 );
 
+final autoApprovePermissionsProvider = StateProvider<bool>((ref) => false);
+
 class PermissionListenerController extends Notifier<void> {
   @override
   void build() {
@@ -24,40 +26,40 @@ class PermissionListenerController extends Notifier<void> {
   void _onEvent(OpencodeEvent event) {
     final props = event.properties;
     switch (event.type) {
-      case 'permission.asked':
-        final permission = _fromProps(props);
-        if (permission != null) _add(permission);
       case 'permission.updated':
-        final permission = _fromProps(props);
-        if (permission != null) _add(permission);
+        final permission = PermissionRequest.fromProps(props);
+        if (permission.id.isNotEmpty) _add(permission);
       case 'permission.replied':
         _resolve(props);
     }
   }
 
-  PermissionRequest? _fromProps(Map<String, dynamic> props) {
-    final data = props['data'] ?? props['permission'] ?? props['info'] ?? props;
-    if (data is Map<String, dynamic>) {
-      final request = PermissionRequest.fromJson(data);
-      if (request.id.isNotEmpty) return request;
-    }
-    return null;
-  }
-
   void _add(PermissionRequest permission) {
+    final autoApprove = ref.read(autoApprovePermissionsProvider);
+    if (autoApprove) {
+      _respondAuto(permission);
+      return;
+    }
     final map = {...ref.read(pendingPermissionsProvider)};
     map[permission.id] = permission;
     ref.read(pendingPermissionsProvider.notifier).state = map;
     NotificationService.instance.showPermission(permission);
   }
 
+  void _respondAuto(PermissionRequest permission) {
+    final client = ref.read(opencodeClientProvider);
+    client
+        ?.respondPermission(
+          sessionId: permission.sessionID,
+          permissionId: permission.id,
+          response: 'once',
+          remember: false,
+        )
+        .catchError((_) {});
+  }
+
   void _resolve(Map<String, dynamic> props) {
-    final data = props['data'] is Map<String, dynamic>
-        ? props['data'] as Map<String, dynamic>
-        : props;
-    final requestID =
-        (data['requestID'] ?? data['id'] ?? data['permissionID'] ?? '')
-            .toString();
+    final requestID = (props['permissionID'] ?? props['id'] ?? '').toString();
     if (requestID.isEmpty) return;
     final map = {...ref.read(pendingPermissionsProvider)};
     map.remove(requestID);

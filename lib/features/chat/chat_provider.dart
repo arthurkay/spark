@@ -328,9 +328,8 @@ class ChatController extends ChangeNotifier {
         if (forThisSession || sid == null) load();
         break;
       case 'permission.updated':
-      case 'permission.asked':
-        final permission = _permissionFromProps(props);
-        if (permission != null && permission.sessionID == sessionId) {
+        final permission = PermissionRequest.fromProps(props);
+        if (permission.id.isNotEmpty && permission.sessionID == sessionId) {
           state = state.copyWith(pendingPermission: permission);
         }
         break;
@@ -361,15 +360,6 @@ class ChatController extends ChangeNotifier {
     final part = props['part'];
     if (part is Map && part['sessionID'] is String) {
       return part['sessionID'] as String;
-    }
-    return null;
-  }
-
-  PermissionRequest? _permissionFromProps(Map<String, dynamic> props) {
-    final data = props['data'] ?? props['permission'] ?? props['info'] ?? props;
-    if (data is Map<String, dynamic>) {
-      final request = PermissionRequest.fromJson(data);
-      if (request.id.isNotEmpty) return request;
     }
     return null;
   }

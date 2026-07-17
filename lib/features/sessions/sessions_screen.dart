@@ -232,7 +232,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('opencode').h1,
+                  const Text('SparkCode').h1,
                   const Gap(12),
                   _ServerSwitcher(),
                   const Gap(16),

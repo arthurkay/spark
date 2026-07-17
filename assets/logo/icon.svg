@@ -1,30 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#27272a"/>
-      <stop offset="100%" stop-color="#18181b"/>
-    </linearGradient>
-    <linearGradient id="cursor" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#0284c7"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="0" y="0" width="512" height="512" rx="96" ry="96" fill="url(#bg)"/>
-
-  <rect x="16" y="16" width="480" height="480" rx="80" ry="80" fill="none" stroke="#3f3f46" stroke-width="1.5" opacity="0.4"/>
-
-  <g transform="translate(128, 168)">
-    <path d="M0,64 L52,128 L0,192" fill="none" stroke="#e4e4e7" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-
-  <g transform="translate(280, 176)">
-    <rect x="0" y="0" width="44" height="168" rx="10" ry="10" fill="url(#cursor)"/>
-  </g>
-
-  <g transform="translate(120, 380)">
-    <rect x="0" y="0" width="28" height="28" rx="6" fill="#38bdf8" opacity="0.6"/>
-    <rect x="40" y="0" width="28" height="28" rx="6" fill="#38bdf8" opacity="0.4"/>
-    <rect x="80" y="0" width="28" height="28" rx="6" fill="#38bdf8" opacity="0.2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="200" fill="#18181b"/>
+  <g transform="translate(512,512)">
+    <!-- Rays -->
+    <line x1="0" y1="-180" x2="0" y2="-280" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
+    <line x1="0" y1="180" x2="0" y2="280" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
+    <line x1="-180" y1="0" x2="-280" y2="0" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
+    <line x1="180" y1="0" x2="280" y2="0" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
+    <!-- Diagonal rays -->
+    <line x1="-127" y1="-127" x2="-198" y2="-198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
+    <line x1="127" y1="-127" x2="198" y2="-198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
+    <line x1="-127" y1="127" x2="-198" y2="198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
+    <line x1="127" y1="127" x2="198" y2="198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
+    <!-- Center glow -->
+    <circle cx="0" cy="0" r="90" fill="#38bdf8"/>
+    <circle cx="0" cy="0" r="60" fill="#18181b" opacity="0.25"/>
+    <circle cx="0" cy="0" r="36" fill="#fff" opacity="0.6"/>
   </g>
 </svg>

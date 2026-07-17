@@ -50,3 +50,27 @@ class ThemeModeNotifier extends StateNotifier<String> {
     await ref.read(settingsStoreProvider).saveThemeMode(mode);
   }
 }
+
+final collapseFilePermissionsProvider =
+    StateNotifierProvider<CollapseFilePermissionsNotifier, bool>((ref) {
+  return CollapseFilePermissionsNotifier(ref);
+});
+
+class CollapseFilePermissionsNotifier extends StateNotifier<bool> {
+  CollapseFilePermissionsNotifier(this.ref) : super(false) {
+    _init();
+  }
+
+  final Ref ref;
+
+  Future<void> _init() async {
+    final stored =
+        await ref.read(settingsStoreProvider).loadCollapseFilePermissions();
+    if (mounted) state = stored;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    await ref.read(settingsStoreProvider).saveCollapseFilePermissions(state);
+  }
+}

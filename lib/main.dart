@@ -60,6 +60,7 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
         ref.read(appPausedProvider.notifier).state = false;
         ref.invalidate(eventStreamProvider);
         ref.invalidate(sessionsProvider);
+        ref.invalidate(allSessionsProvider);
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         ref.read(appPausedProvider.notifier).state = true;
@@ -85,17 +86,26 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
-      child: ComponentTheme<TextFieldTheme>(
-        data: TextFieldTheme(
-          border: Border.all(color: Colors.transparent),
+      child: ComponentTheme<FocusOutlineTheme>(
+        data: FocusOutlineTheme(
+          border: Border.all(
+            color: Colors.transparent,
+            width: 0,
+          ),
+          align: 0,
         ),
-        child: ShadcnApp.router(
-          title: 'opencode companion',
-          debugShowCheckedModeBanner: false,
-          theme: buildLightTheme(),
-          darkTheme: buildDarkTheme(),
-          themeMode: themeMode,
-          routerConfig: router,
+        child: ComponentTheme<TextFieldTheme>(
+          data: TextFieldTheme(
+            border: Border.all(color: Colors.transparent),
+          ),
+          child: ShadcnApp.router(
+            title: 'Spark',
+            debugShowCheckedModeBanner: false,
+            theme: buildLightTheme(),
+            darkTheme: buildDarkTheme(),
+            themeMode: themeMode,
+            routerConfig: router,
+          ),
         ),
       ),
     );

@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/providers.dart';
+import '../../core/api/permission_provider.dart';
 import '../../core/models/server_config.dart';
+import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../connection/connection_screen.dart';
@@ -188,6 +190,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+          const Gap(28),
+          Text('Permissions').small.semiBold.muted,
+          const Gap(10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.muted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.zap, size: 18),
+                const Gap(10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Auto-approve permissions'),
+                      Text(
+                        'Automatically allow all permission requests',
+                      ).xSmall.muted,
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                Switch(
+                  value: ref.watch(autoApprovePermissionsProvider),
+                  onChanged: (value) {
+                    ref.read(autoApprovePermissionsProvider.notifier).state =
+                        value;
+                    if (value) {
+                      ref.read(pendingPermissionsProvider.notifier).state =
+                          const {};
+                      NotificationService.instance.cancelPermission();
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const Gap(8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.muted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.panelLeft, size: 18),
+                const Gap(10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Collapse file permissions'),
+                      Text(
+                        'Hide details for glob, read, edit, write until tapped',
+                      ).xSmall.muted,
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                Switch(
+                  value: ref.watch(collapseFilePermissionsProvider),
+                  onChanged: (_) {
+                    ref.read(collapseFilePermissionsProvider.notifier).toggle();
+                  },
                 ),
               ],
             ),
