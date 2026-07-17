@@ -50,8 +50,8 @@ TextSpan _computeHighlight({
 }) {
   final themeMap = followTheme
       ? (brightness == Brightness.dark
-            ? dark.atomOneDarkTheme
-            : light.atomOneLightTheme)
+          ? dark.atomOneDarkTheme
+          : light.atomOneLightTheme)
       : dark.atomOneDarkTheme;
   final baseStyle = themeMap['root'] ?? const TextStyle();
   final lang = CodeHighlightView.detectLanguage(language, path);
@@ -124,8 +124,8 @@ class CodeHighlightView extends StatelessWidget {
     final brightness = MediaQuery.of(context).platformBrightness;
     final themeMap = followTheme
         ? (brightness == Brightness.dark
-              ? dark.atomOneDarkTheme
-              : light.atomOneLightTheme)
+            ? dark.atomOneDarkTheme
+            : light.atomOneLightTheme)
         : dark.atomOneDarkTheme;
     final baseStyle = themeMap['root'] ?? const TextStyle();
     final span = _applyFont(
@@ -147,8 +147,7 @@ class CodeHighlightView extends StatelessWidget {
       constraints: constraints,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color:
-            baseStyle.backgroundColor ??
+        color: baseStyle.backgroundColor ??
             (brightness == Brightness.dark
                 ? const Color(0xff282c34)
                 : const Color(0xfffafafa)),
@@ -179,11 +178,11 @@ class CodeHighlightView extends StatelessWidget {
   }
 
   static TextStyle _monoStyle(double fontSize) => TextStyle(
-    fontFamily: monoFamilies.first,
-    fontFamilyFallback: monoFamilies.skip(1).toList(),
-    fontSize: fontSize,
-    height: 1.5,
-  );
+        fontFamily: monoFamilies.first,
+        fontFamilyFallback: monoFamilies.skip(1).toList(),
+        fontSize: fontSize,
+        height: 1.5,
+      );
 }
 
 class _LineNumberedCode extends StatelessWidget {
@@ -202,6 +201,7 @@ class _LineNumberedCode extends StatelessWidget {
         : const Color(0xff6b7280);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
@@ -213,9 +213,8 @@ class _LineNumberedCode extends StatelessWidget {
                   '${i + 1}'.padLeft(gutterWidth),
                   style: TextStyle(
                     fontFamily: CodeHighlightView.monoFamilies.first,
-                    fontFamilyFallback: CodeHighlightView.monoFamilies
-                        .skip(1)
-                        .toList(),
+                    fontFamilyFallback:
+                        CodeHighlightView.monoFamilies.skip(1).toList(),
                     fontSize: fontSize,
                     height: 1.5,
                     color: muted,
@@ -224,9 +223,7 @@ class _LineNumberedCode extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(
-          child: RichText(text: span, textDirection: TextDirection.ltr),
-        ),
+        RichText(text: span, textDirection: TextDirection.ltr),
       ],
     );
   }

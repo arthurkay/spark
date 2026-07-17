@@ -8,8 +8,8 @@ import '../notifications/notification_service.dart';
 
 final pendingPermissionsProvider =
     StateProvider<Map<String, PermissionRequest>>(
-      (ref) => const <String, PermissionRequest>{},
-    );
+  (ref) => const <String, PermissionRequest>{},
+);
 
 class PermissionListenerController extends Notifier<void> {
   @override
@@ -68,5 +68,5 @@ class PermissionListenerController extends Notifier<void> {
 
 final permissionListenerProvider =
     NotifierProvider<PermissionListenerController, void>(
-      PermissionListenerController.new,
-    );
+  PermissionListenerController.new,
+);

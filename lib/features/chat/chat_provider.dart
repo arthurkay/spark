@@ -8,6 +8,7 @@ import '../../core/api/opencode_client.dart';
 import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/sse_client.dart';
+import '../../core/models/attachment.dart';
 import '../../core/models/message.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/models/permission.dart';
@@ -21,6 +22,7 @@ class ChatState {
     this.hasMoreOlder = true,
     this.sending = false,
     this.working = false,
+    this.aborting = false,
     this.error,
     this.pendingPermission,
   });
@@ -31,6 +33,7 @@ class ChatState {
   final bool hasMoreOlder;
   final bool sending;
   final bool working;
+  final bool aborting;
   final String? error;
   final PermissionRequest? pendingPermission;
 
@@ -41,6 +44,7 @@ class ChatState {
     bool? hasMoreOlder,
     bool? sending,
     bool? working,
+    bool? aborting,
     String? error,
     bool clearError = false,
     PermissionRequest? pendingPermission,
@@ -53,6 +57,7 @@ class ChatState {
       hasMoreOlder: hasMoreOlder ?? this.hasMoreOlder,
       sending: sending ?? this.sending,
       working: working ?? this.working,
+      aborting: aborting ?? this.aborting,
       error: clearError ? null : (error ?? this.error),
       pendingPermission: clearPermission
           ? null
@@ -70,7 +75,9 @@ class ChatController extends ChangeNotifier {
   final String sessionId;
   Timer? _reloadTimer;
   Timer? _pollTimer;
+  Timer? _abortTimer;
   bool _paused = false;
+  bool _aborting = false;
 
   static const int initialLimit = 40;
   static const int olderChunkSize = 40;
@@ -113,13 +120,15 @@ class ChatController extends ChangeNotifier {
       final window = _tailWindow;
       final fetched = await client.listMessages(sessionId, limit: window);
       final merged = _mergeTail(fetched);
-      final working = _deriveWorking(merged);
-      ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
+      final working = _deriveWorking(merged) && !_aborting;
+      ref
+          .read(sessionActivityProvider.notifier)
+          .setBusy(sessionId, working && !_aborting);
       state = state.copyWith(
         messages: merged,
         loading: false,
         clearError: true,
-        working: working,
+        working: working && !_aborting,
       );
     } on OpencodeApiException catch (e) {
       state = state.copyWith(loading: false, error: e.message, working: false);
@@ -139,9 +148,8 @@ class ChatController extends ChangeNotifier {
         offset: _tailWindow,
       );
       final existingIds = {for (final m in state.messages) m.info.id};
-      final newOnes = fetched
-          .where((m) => !existingIds.contains(m.info.id))
-          .toList();
+      final newOnes =
+          fetched.where((m) => !existingIds.contains(m.info.id)).toList();
       if (newOnes.isEmpty) {
         state = state.copyWith(loadingOlder: false, hasMoreOlder: false);
         return;
@@ -166,9 +174,8 @@ class ChatController extends ChangeNotifier {
   List<MessageWithParts> _mergeTail(List<MessageWithParts> incoming) {
     final prev = state.messages;
     if (prev.isEmpty) {
-      _tailWindow = incoming.length > initialLimit
-          ? incoming.length
-          : initialLimit;
+      _tailWindow =
+          incoming.length > initialLimit ? incoming.length : initialLimit;
       return incoming;
     }
     final byId = {for (final m in prev) m.info.id: m};
@@ -278,33 +285,42 @@ class ChatController extends ChangeNotifier {
         final status = props['status'];
         final isBusy = status is Map && status['type'] == 'busy';
         final isIdle = status is Map && status['type'] == 'idle';
-        if (sid != null) activity.setBusy(sid, isBusy && !isIdle);
+        if (sid != null) {
+          activity.setBusy(sid, isBusy && !isIdle && !_aborting);
+        }
         if (forThisSession || sid == null) {
           if (isIdle) {
-            state = state.copyWith(working: false);
+            _clearAbort();
+            state = state.copyWith(working: false, aborting: false);
             if (forThisSession) load();
           } else if (isBusy) {
-            state = state.copyWith(working: true);
+            if (!_aborting) state = state.copyWith(working: true);
           }
         }
         break;
       case 'session.idle':
         if (sid != null) activity.setBusy(sid, false);
         if (forThisSession || sid == null) {
-          state = state.copyWith(working: false);
+          _clearAbort();
+          state = state.copyWith(working: false, aborting: false);
           if (forThisSession) load();
         }
         break;
       case 'step-start':
       case 'busy':
         if (forThisSession || sid == null) {
-          state = state.copyWith(working: true);
+          if (!_aborting) state = state.copyWith(working: true);
         }
         break;
       case 'step-finish':
       case 'idle':
         if (forThisSession || sid == null) {
-          state = state.copyWith(working: false);
+          if (_aborting) {
+            _clearAbort();
+            state = state.copyWith(working: false, aborting: false);
+          } else {
+            state = state.copyWith(working: false);
+          }
           if (forThisSession) load();
         }
         break;
@@ -363,33 +379,68 @@ class ChatController extends ChangeNotifier {
     _reloadTimer = Timer(const Duration(milliseconds: 200), load);
   }
 
-  Future<void> send(String text, {ModelSelection? model, String? agent}) async {
+  Future<void> send(
+    String text, {
+    ModelSelection? model,
+    String? agent,
+    List<Attachment> attachments = const [],
+  }) async {
     final client = _client;
     if (client == null || text.trim().isEmpty) return;
-    state = state.copyWith(sending: true, working: true, clearError: true);
+    _aborting = false;
+    state = state.copyWith(
+      sending: true,
+      working: true,
+      aborting: false,
+      clearError: true,
+    );
     try {
       await client.sendPromptAsync(
         sessionId: sessionId,
         text: text.trim(),
         model: model,
         agent: agent,
+        attachments: attachments,
       );
+      ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
       await load();
     } catch (e) {
       final message = e is OpencodeApiException ? e.message : e.toString();
       state = state.copyWith(error: message, working: false);
     } finally {
-      state = state.copyWith(sending: false, working: false);
+      state = state.copyWith(sending: false);
     }
+  }
+
+  void _clearAbort() {
+    _aborting = false;
+    _abortTimer?.cancel();
+    _abortTimer = null;
   }
 
   Future<void> abort() async {
     final client = _client;
     if (client == null) return;
+    _aborting = true;
+    state = state.copyWith(aborting: true, clearError: true);
+    _abortTimer?.cancel();
+    _abortTimer = Timer(const Duration(seconds: 10), () {
+      if (_aborting) {
+        _aborting = false;
+        state = state.copyWith(
+          aborting: false,
+          error: 'Abort timed out. The session may still be running.',
+        );
+        load();
+      }
+    });
     try {
       await client.abort(sessionId);
-      state = state.copyWith(working: false);
-    } on OpencodeApiException catch (_) {}
+    } on OpencodeApiException catch (e) {
+      _abortTimer?.cancel();
+      _aborting = false;
+      state = state.copyWith(aborting: false, error: e.message);
+    }
   }
 
   Future<void> respondPermission(
@@ -416,9 +467,8 @@ class ChatController extends ChangeNotifier {
   void _clearGlobalPermission(String permissionID) {
     final map = {...ref.read(pendingPermissionsProvider)};
     if (map.remove(permissionID) != null) {
-      ref.read(pendingPermissionsProvider.notifier).state = map.isEmpty
-          ? const <String, PermissionRequest>{}
-          : map;
+      ref.read(pendingPermissionsProvider.notifier).state =
+          map.isEmpty ? const <String, PermissionRequest>{} : map;
       if (map.isEmpty) NotificationService.instance.cancelPermission();
     }
   }
@@ -427,11 +477,12 @@ class ChatController extends ChangeNotifier {
   void dispose() {
     _reloadTimer?.cancel();
     _pollTimer?.cancel();
+    _abortTimer?.cancel();
     super.dispose();
   }
 }
 
 final chatControllerProvider =
     ChangeNotifierProvider.family<ChatController, String>((ref, sessionId) {
-      return ChatController(ref, sessionId);
-    });
+  return ChatController(ref, sessionId);
+});

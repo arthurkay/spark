@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../models/attachment.dart';
 import '../models/file_node.dart';
 import '../models/message.dart';
 import '../models/project.dart';
@@ -22,7 +23,7 @@ class OpencodeApiException implements Exception {
 
 class OpencodeClient {
   OpencodeClient({required this.connection, this.password, Dio? dio})
-    : _dio = dio ?? Dio() {
+      : _dio = dio ?? Dio() {
     _dio.options
       ..baseUrl = connection.baseUrl
       ..connectTimeout = const Duration(seconds: 15)
@@ -148,16 +149,26 @@ class OpencodeClient {
     required String text,
     ModelSelection? model,
     String? agent,
+    List<Attachment> attachments = const [],
   }) async {
     try {
+      final parts = <Map<String, dynamic>>[
+        {'type': 'text', 'text': text},
+      ];
+      for (final a in attachments) {
+        parts.add({
+          'type': 'file',
+          'mime': a.mime,
+          'filename': a.name,
+          'url': 'data:${a.mime};base64,${base64Encode(a.bytes)}',
+        });
+      }
       await _dio.post<dynamic>(
         Endpoints.promptAsync(sessionId),
         data: {
           if (model != null) 'model': model.toJson(),
           if (agent != null) 'agent': agent,
-          'parts': [
-            {'type': 'text', 'text': text},
-          ],
+          'parts': parts,
         },
       );
     } on DioException catch (e) {

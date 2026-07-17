@@ -13,9 +13,8 @@ class ModelSelectorBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedModel = ref.watch(selectedModelProvider);
     final selectedAgent = ref.watch(selectedAgentProvider);
-    final currentModel = sessionId != null
-        ? ref.watch(currentModelProvider(sessionId!))
-        : null;
+    final currentModel =
+        sessionId != null ? ref.watch(currentModelProvider(sessionId!)) : null;
 
     final modelLabel =
         selectedModel?.modelID ?? currentModel ?? 'Default model';
@@ -69,6 +68,7 @@ class ModelSelectorBar extends ConsumerWidget {
   }
 
   void _openModelPicker(BuildContext context, WidgetRef ref) {
+    FocusManager.instance.primaryFocus?.unfocus();
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
@@ -79,7 +79,7 @@ class ModelSelectorBar extends ConsumerWidget {
             return SafeArea(
               child: Container(
                 padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(maxHeight: 480),
+                constraints: const BoxConstraints(maxHeight: 540),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -91,7 +91,7 @@ class ModelSelectorBar extends ConsumerWidget {
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
                         error: (e, _) => Text('$e').muted,
-                        data: (providers) => _ModelList(
+                        data: (providers) => _ModelPickerList(
                           providers: providers,
                           onSelect: (selection) {
                             ref.read(selectedModelProvider.notifier).state =
@@ -112,6 +112,7 @@ class ModelSelectorBar extends ConsumerWidget {
   }
 
   void _openAgentPicker(BuildContext context, WidgetRef ref) {
+    FocusManager.instance.primaryFocus?.unfocus();
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
@@ -145,8 +146,7 @@ class ModelSelectorBar extends ConsumerWidget {
                                   onPressed: () {
                                     ref
                                         .read(selectedAgentProvider.notifier)
-                                        .state = agent
-                                        .name;
+                                        .state = agent.name;
                                     closeSheet(context);
                                   },
                                   child: Text(agent.name),
@@ -245,35 +245,86 @@ class _ModeSegment extends StatelessWidget {
   }
 }
 
-class _ModelList extends StatelessWidget {
-  const _ModelList({required this.providers, required this.onSelect});
+class _ModelPickerList extends StatefulWidget {
+  const _ModelPickerList({required this.providers, required this.onSelect});
 
   final List<ProviderInfo> providers;
   final ValueChanged<ModelSelection> onSelect;
 
   @override
+  State<_ModelPickerList> createState() => _ModelPickerListState();
+}
+
+class _ModelPickerListState extends State<_ModelPickerList> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView(
-      shrinkWrap: true,
+    final q = _query.toLowerCase();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final provider in providers) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text(provider.name).muted.small.semiBold,
+        TextField(
+          controller: _searchController,
+          placeholder: const Text('Search models...'),
+          border: Border.all(color: Colors.transparent),
+          features: const [
+            InputFeature.leading(Icon(LucideIcons.search, size: 16)),
+          ],
+          onChanged: (value) => setState(() => _query = value.trim()),
+        ),
+        const Gap(8),
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final provider in widget.providers) ...[
+                if (_providerHasMatch(provider, q)) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Text(provider.name).muted.small.semiBold,
+                  ),
+                  for (final model in provider.models)
+                    if (_modelMatches(model, q))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: GhostButton(
+                          alignment: Alignment.centerLeft,
+                          onPressed: () => widget.onSelect(
+                            ModelSelection(
+                              providerID: provider.id,
+                              modelID: model.id,
+                            ),
+                          ),
+                          child: Text(model.name),
+                        ),
+                      ),
+                ],
+              ],
+            ],
           ),
-          for (final model in provider.models)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: GhostButton(
-                alignment: Alignment.centerLeft,
-                onPressed: () => onSelect(
-                  ModelSelection(providerID: provider.id, modelID: model.id),
-                ),
-                child: Text(model.name),
-              ),
-            ),
-        ],
+        ),
       ],
     );
+  }
+
+  bool _providerHasMatch(ProviderInfo provider, String q) {
+    if (q.isEmpty) return true;
+    if (provider.name.toLowerCase().contains(q)) return true;
+    return provider.models.any((m) => _modelMatches(m, q));
+  }
+
+  bool _modelMatches(ModelInfo model, String q) {
+    if (q.isEmpty) return true;
+    return model.name.toLowerCase().contains(q) ||
+        model.id.toLowerCase().contains(q);
   }
 }

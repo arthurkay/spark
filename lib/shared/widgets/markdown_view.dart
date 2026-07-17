@@ -142,7 +142,7 @@ class _MarkdownRenderer {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children:
                   element.children?.map(_visit).whereType<Widget>().toList() ??
-                  [],
+                      [],
             ),
           ),
           top: 4,
@@ -168,10 +168,8 @@ class _MarkdownRenderer {
       case 'img':
         return _image(element);
       default:
-        final inner = element.children
-            ?.map(_visit)
-            .whereType<Widget>()
-            .toList();
+        final inner =
+            element.children?.map(_visit).whereType<Widget>().toList();
         if (inner == null || inner.isEmpty) return null;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -254,9 +252,8 @@ class _MarkdownRenderer {
           style: style.copyWith(
             fontFamily: CodeHighlightView.monoFamilies.first,
             fontFamilyFallback: CodeHighlightView.monoFamilies.skip(1).toList(),
-            backgroundColor: isDark
-                ? const Color(0xff2b303b)
-                : const Color(0xffeef1f5),
+            backgroundColor:
+                isDark ? const Color(0xff2b303b) : const Color(0xffeef1f5),
             fontSize: (style.fontSize ?? 14) * 0.92,
           ),
         );
@@ -346,9 +343,8 @@ class _MarkdownRenderer {
     }
     if (rawRows.isEmpty) return const SizedBox.shrink();
 
-    final columnCount = rawRows
-        .map((r) => r.cells.length)
-        .reduce((a, b) => a > b ? a : b);
+    final columnCount =
+        rawRows.map((r) => r.cells.length).reduce((a, b) => a > b ? a : b);
 
     final rows = rawRows.map((r) {
       final cells = <Widget>[...r.cells];
@@ -363,9 +359,8 @@ class _MarkdownRenderer {
       return TableRow(
         decoration: r.isHeader
             ? BoxDecoration(
-                color: isDark
-                    ? const Color(0xff2b303b)
-                    : const Color(0xfff1f5f9),
+                color:
+                    isDark ? const Color(0xff2b303b) : const Color(0xfff1f5f9),
               )
             : null,
         children: cells,

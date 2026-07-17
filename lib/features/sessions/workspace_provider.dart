@@ -40,8 +40,7 @@ class _SelectedWorkspace extends StateNotifier<Project?> {
     final dir = prefs.getString(_key);
     if (dir == null) return;
     final projects = await ref.read(projectsProvider.future);
-    state =
-        projects.where((p) => p.worktree == dir).firstOrNull ??
+    state = projects.where((p) => p.worktree == dir).firstOrNull ??
         Project(id: '__custom__', worktree: dir);
   }
 

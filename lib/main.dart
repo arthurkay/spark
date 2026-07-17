@@ -16,7 +16,7 @@ final _routerProvider = Provider<GoRouter>((ref) => createRouter(ref));
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final container = ProviderContainer();
-  await container.read(connectionControllerProvider.notifier).restore();
+  await container.read(serverManagerProvider.notifier).restore();
   await NotificationService.instance.init(
     onTap: (permissionID, sessionID) {
       container.read(_routerProvider).go('/session/$sessionID');
@@ -85,12 +85,18 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
-      child: ShadcnApp.router(
-        title: 'opencode companion',
-        theme: buildLightTheme(),
-        darkTheme: buildDarkTheme(),
-        themeMode: themeMode,
-        routerConfig: router,
+      child: ComponentTheme<TextFieldTheme>(
+        data: TextFieldTheme(
+          border: Border.all(color: Colors.transparent),
+        ),
+        child: ShadcnApp.router(
+          title: 'opencode companion',
+          debugShowCheckedModeBanner: false,
+          theme: buildLightTheme(),
+          darkTheme: buildDarkTheme(),
+          themeMode: themeMode,
+          routerConfig: router,
+        ),
       ),
     );
   }

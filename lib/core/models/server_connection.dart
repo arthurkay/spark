@@ -39,9 +39,9 @@ class ServerConnection {
   }
 
   Map<String, dynamic> toJson() => {
-    'host': host,
-    'port': port,
-    'username': username,
-    'useHttps': useHttps,
-  };
+        'host': host,
+        'port': port,
+        'username': username,
+        'useHttps': useHttps,
+      };
 }

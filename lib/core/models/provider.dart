@@ -54,7 +54,7 @@ class ModelSelection {
   final String modelID;
 
   Map<String, String> toJson() => {
-    'providerID': providerID,
-    'modelID': modelID,
-  };
+        'providerID': providerID,
+        'modelID': modelID,
+      };
 }

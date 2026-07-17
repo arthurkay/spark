@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/opencode_client.dart';
-import '../../core/api/providers.dart' hide ConnectionState;
+import '../../core/api/providers.dart';
 import '../../core/models/file_node.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/path_utils.dart';
@@ -48,9 +48,12 @@ class _FileQuery {
 }
 
 class FilesScreen extends ConsumerStatefulWidget {
-  const FilesScreen({super.key, required this.sessionId});
+  const FilesScreen({super.key, this.sessionId, this.directory})
+      : assert(sessionId != null || directory != null,
+            'Either sessionId or directory must be provided');
 
-  final String sessionId;
+  final String? sessionId;
+  final String? directory;
 
   @override
   ConsumerState<FilesScreen> createState() => _FilesScreenState();
@@ -59,12 +62,34 @@ class FilesScreen extends ConsumerStatefulWidget {
 class _FilesScreenState extends ConsumerState<FilesScreen> {
   String _path = '';
 
+  String? get _directory => widget.directory;
+
   @override
   Widget build(BuildContext context) {
-    final directoryAsync = ref.watch(
-      _sessionDirectoryProvider(widget.sessionId),
+    final sessionId = widget.sessionId;
+
+    if (sessionId != null) {
+      final directoryAsync = ref.watch(_sessionDirectoryProvider(sessionId));
+      return directoryAsync.when(
+        loading: () => const Scaffold(
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => Scaffold(
+          child: Center(
+            child: Text(e is OpencodeApiException ? e.message : '$e').muted,
+          ),
+        ),
+        data: (_) => _buildBody(ref, directoryAsync.value),
+      );
+    }
+
+    return _buildBody(ref, _directory);
+  }
+
+  Widget _buildBody(WidgetRef ref, String? directory) {
+    final filesAsync = ref.watch(
+      _filesProvider(_FileQuery(_path, directory)),
     );
-    final directory = directoryAsync.value;
 
     return Scaffold(
       headers: [
@@ -81,73 +106,62 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
               : const Text('Project root').muted.small,
         ),
       ],
-      child: directoryAsync.when(
+      child: filesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Text(e is OpencodeApiException ? e.message : '$e').muted,
         ),
-        data: (_) {
-          final filesAsync = ref.watch(
-            _filesProvider(_FileQuery(_path, directory)),
-          );
-          return filesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Text(e is OpencodeApiException ? e.message : '$e').muted,
-            ),
-            data: (nodes) {
-              if (nodes.isEmpty) {
-                return Center(child: const Text('Empty directory').muted);
-              }
-              return ListView(
-                padding: const EdgeInsets.all(12),
-                children: [
-                  if (_path.isNotEmpty)
-                    GhostButton(
-                      alignment: Alignment.centerLeft,
-                      onPressed: () => setState(() {
-                        final parts = _path.split('/')..removeLast();
-                        _path = parts.join('/');
-                      }),
-                      child: const Row(
-                        children: [
-                          Icon(LucideIcons.cornerLeftUp),
-                          Gap(8),
-                          Text('..'),
-                        ],
+        data: (nodes) {
+          if (nodes.isEmpty) {
+            return Center(child: const Text('Empty directory').muted);
+          }
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              if (_path.isNotEmpty)
+                GhostButton(
+                  alignment: Alignment.centerLeft,
+                  onPressed: () => setState(() {
+                    final parts = _path.split('/')..removeLast();
+                    _path = parts.join('/');
+                  }),
+                  child: const Row(
+                    children: [
+                      Icon(LucideIcons.cornerLeftUp),
+                      Gap(8),
+                      Text('..'),
+                    ],
+                  ),
+                ),
+              for (final node in nodes)
+                GhostButton(
+                  alignment: Alignment.centerLeft,
+                  onPressed: () {
+                    if (node.isDirectory) {
+                      setState(() => _path = node.path);
+                    } else {
+                      _openFile(context, node, directory);
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Icon(
+                        node.isDirectory
+                            ? LucideIcons.folder
+                            : LucideIcons.file,
                       ),
-                    ),
-                  for (final node in nodes)
-                    GhostButton(
-                      alignment: Alignment.centerLeft,
-                      onPressed: () {
-                        if (node.isDirectory) {
-                          setState(() => _path = node.path);
-                        } else {
-                          _openFile(context, node, directory);
-                        }
-                      },
-                      child: Row(
-                        children: [
-                          Icon(
-                            node.isDirectory
-                                ? LucideIcons.folder
-                                : LucideIcons.file,
-                          ),
-                          const Gap(8),
-                          Expanded(
-                            child: Text(
-                              node.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      const Gap(8),
+                      Expanded(
+                        child: Text(
+                          node.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                ],
-              );
-            },
+                    ],
+                  ),
+                ),
+            ],
           );
         },
       ),
@@ -216,6 +230,7 @@ class _FileViewer extends ConsumerWidget {
                   return CodeHighlightView(
                     code: content,
                     path: path,
+                    lineNumbers: true,
                     constraints: const BoxConstraints(maxHeight: 460),
                   );
                 },

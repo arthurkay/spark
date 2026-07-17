@@ -6,6 +6,7 @@ import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/permission.dart';
 import '../../core/notifications/notification_service.dart';
+import 'permission_sheet.dart';
 
 class PermissionBanner extends ConsumerWidget {
   const PermissionBanner({super.key, this.onOpenSession});
@@ -60,25 +61,35 @@ class _PermissionCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const Icon(LucideIcons.shieldQuestion, size: 18),
-                const Gap(8),
-                Expanded(
-                  child: Text(
-                    permission.title ?? permission.type ?? 'Confirmation',
-                  ).semiBold,
-                ),
-              ],
+            GestureDetector(
+              onTap: () => _showSheet(context, ref, permission),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(LucideIcons.shieldQuestion, size: 18),
+                      const Gap(8),
+                      Expanded(
+                        child: Text(
+                          permission.title ?? permission.type ?? 'Confirmation',
+                        ).semiBold,
+                      ),
+                      const Icon(LucideIcons.chevronRight, size: 14)
+                          .iconMutedForeground,
+                    ],
+                  ),
+                  if (permission.metadata.isNotEmpty) ...[
+                    const Gap(8),
+                    SelectableText(
+                      permission.metadata.entries
+                          .map((e) => '${e.key}: ${e.value}')
+                          .join('\n'),
+                    ).mono.small.muted,
+                  ],
+                ],
+              ),
             ),
-            if (permission.metadata.isNotEmpty) ...[
-              const Gap(8),
-              SelectableText(
-                permission.metadata.entries
-                    .map((e) => '${e.key}: ${e.value}')
-                    .join('\n'),
-              ).mono.small.muted,
-            ],
             const Gap(12),
             Row(
               children: [
@@ -111,6 +122,34 @@ class _PermissionCard extends ConsumerWidget {
     );
   }
 
+  void _showSheet(
+    BuildContext context,
+    WidgetRef ref,
+    PermissionRequest permission,
+  ) {
+    final client = ref.read(opencodeClientProvider);
+    showPermissionSheet(
+      context: context,
+      permission: permission,
+      onRespond: (response, remember) {
+        final map = {...ref.read(pendingPermissionsProvider)};
+        if (map.remove(permission.id) != null) {
+          ref.read(pendingPermissionsProvider.notifier).state =
+              map.isEmpty ? const {} : map;
+          if (map.isEmpty) NotificationService.instance.cancelPermission();
+        }
+        client
+            ?.respondPermission(
+              sessionId: permission.sessionID,
+              permissionId: permission.id,
+              response: response,
+              remember: remember,
+            )
+            .catchError((_) {});
+      },
+    );
+  }
+
   void _respond(
     WidgetRef ref,
     dynamic client,
@@ -119,9 +158,8 @@ class _PermissionCard extends ConsumerWidget {
   ) {
     final map = {...ref.read(pendingPermissionsProvider)};
     if (map.remove(permission.id) != null) {
-      ref.read(pendingPermissionsProvider.notifier).state = map.isEmpty
-          ? const {}
-          : map;
+      ref.read(pendingPermissionsProvider.notifier).state =
+          map.isEmpty ? const {} : map;
       if (map.isEmpty) NotificationService.instance.cancelPermission();
     }
     if (client != null && client is OpencodeClient) {

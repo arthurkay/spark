@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../core/models/permission.dart';
 
@@ -45,11 +46,11 @@ class NotificationService {
 
   Future<void> requestPermission() async {
     if (!_available) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != AppLifecycleState.resumed) return;
     try {
-      final android = _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
     } on Object catch (_) {
       _available = false;
@@ -95,8 +96,8 @@ class NotificationService {
         permission.title ?? permission.type ?? 'Confirmation required';
     final body = permission.metadata.isNotEmpty
         ? permission.metadata.entries
-              .map((e) => '${e.key}: ${e.value}')
-              .join('\n')
+            .map((e) => '${e.key}: ${e.value}')
+            .join('\n')
         : 'Tap to review and respond.';
     await _plugin.show(
       _permissionNotificationId,

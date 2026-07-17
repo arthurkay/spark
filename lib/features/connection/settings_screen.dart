@@ -2,11 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
-import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
-import '../../core/models/server_connection.dart';
+import '../../core/models/server_config.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
+import '../connection/connection_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -16,90 +16,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _hostController = TextEditingController(text: '127.0.0.1');
-  final _portController = TextEditingController(text: '4096');
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _useHttps = false;
-  bool _connecting = false;
-
   static const _themeOptions = [
     ('system', 'System (adaptive)'),
     ('light', 'Light'),
     ('dark', 'Dark'),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    final state = ref.read(connectionControllerProvider);
-    final conn = state.connection;
-    if (conn != null) {
-      _hostController.text = conn.host;
-      _portController.text = conn.port.toString();
-      _usernameController.text = conn.username ?? '';
-      _useHttps = conn.useHttps;
-      _passwordController.text = state.password ?? '';
-    }
-  }
-
-  @override
-  void dispose() {
-    _hostController.dispose();
-    _portController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _connect() async {
-    final host = _hostController.text.trim();
-    final port = int.tryParse(_portController.text.trim());
-    if (host.isEmpty || port == null) {
-      showAppToast(context, title: 'Invalid host or port');
-      return;
-    }
-    final connection = ServerConnection(
-      host: host,
-      port: port,
-      username: _usernameController.text.trim().isEmpty
-          ? null
-          : _usernameController.text.trim(),
-      useHttps: _useHttps,
-    );
-    final password = _passwordController.text.isEmpty
-        ? null
-        : _passwordController.text;
-
-    setState(() => _connecting = true);
-    final client = OpencodeClient(connection: connection, password: password);
-    try {
-      final healthy = await client.health();
-      if (!mounted) return;
-      if (!healthy) {
-        showAppToast(context, title: 'Server responded but is not healthy');
-        return;
-      }
-      await ref
-          .read(connectionControllerProvider.notifier)
-          .connect(connection, password);
-      if (!mounted) return;
-      showAppToast(
-        context,
-        title: 'Connected',
-        description: connection.baseUrl,
-      );
-    } on OpencodeApiException catch (e) {
-      if (!mounted) return;
-      showAppToast(context, title: 'Connection failed', description: e.message);
-    } catch (e) {
-      if (!mounted) return;
-      showAppToast(context, title: 'Connection failed', description: '$e');
-    } finally {
-      client.close();
-      if (mounted) setState(() => _connecting = false);
-    }
-  }
 
   String _labelFor(String value) {
     return _themeOptions
@@ -107,10 +28,73 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         .$2;
   }
 
+  void _addServer() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+    );
+  }
+
+  void _editServer(ServerConfig config) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConnectionScreen(serverId: config.id),
+      ),
+    );
+  }
+
+  void _confirmDelete(ServerConfig config) {
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.trash2, color: Colors.red),
+                  const Gap(8),
+                  const Text('Delete server').h4,
+                ],
+              ),
+              const Gap(12),
+              Text(
+                'Remove "${config.name}" from your saved servers?',
+              ).muted,
+              const Gap(20),
+              DestructiveButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  ref
+                      .read(serverManagerProvider.notifier)
+                      .removeServer(config.id);
+                  showAppToast(context, title: 'Server removed');
+                },
+                child: const Text('Delete'),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () => closeSheet(sheetContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final connection = ref.watch(connectionControllerProvider).connection;
+    final managerState = ref.watch(serverManagerProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final configs = managerState.configs;
+    final activeId = managerState.activeId;
+
     return Scaffold(
       headers: [
         AppBar(
@@ -126,106 +110,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text('Server').small.semiBold.muted,
+          Row(
+            children: [
+              Expanded(child: Text('Servers').small.semiBold.muted),
+              GhostButton(
+                density: ButtonDensity.compact,
+                onPressed: _addServer,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.plus, size: 14),
+                    Gap(4),
+                    Text('Add'),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const Gap(10),
-          if (connection != null) ...[
+          if (configs.isEmpty)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.muted,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.server, size: 18),
-                  const Gap(10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(connection.baseUrl).medium,
-                        const Gap(2),
-                        const Text('Connected').small.muted,
-                      ],
-                    ),
-                  ),
-                  DestructiveButton(
-                    density: ButtonDensity.compact,
-                    onPressed: () async {
-                      await ref
-                          .read(connectionControllerProvider.notifier)
-                          .disconnect();
-                      if (context.mounted) setState(() {});
-                    },
-                    child: const Text('Disconnect'),
-                  ),
-                ],
+              child: Center(
+                child: Text(
+                  'No servers saved yet.',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.mutedForeground),
+                ),
               ),
-            ),
-            const Gap(16),
-          ],
-          const Gap(10),
-          Text('Host').small.semiBold.muted,
-          const Gap(6),
-          TextField(
-            controller: _hostController,
-            placeholder: const Text('127.0.0.1'),
-          ),
-          const Gap(12),
-          Text('Port').small.semiBold.muted,
-          const Gap(6),
-          TextField(
-            controller: _portController,
-            placeholder: const Text('4096'),
-            keyboardType: TextInputType.number,
-          ),
-          const Gap(12),
-          Text('Username (optional)').small.semiBold.muted,
-          const Gap(6),
-          TextField(
-            controller: _usernameController,
-            placeholder: const Text('opencode'),
-          ),
-          const Gap(12),
-          Text('Password (optional)').small.semiBold.muted,
-          const Gap(6),
-          TextField(
-            controller: _passwordController,
-            placeholder: const Text('OPENCODE_SERVER_PASSWORD'),
-            obscureText: true,
-          ),
-          const Gap(14),
-          Row(
-            children: [
-              Checkbox(
-                state: _useHttps
-                    ? CheckboxState.checked
-                    : CheckboxState.unchecked,
-                onChanged: (v) =>
-                    setState(() => _useHttps = v == CheckboxState.checked),
+            )
+          else
+            for (final config in configs)
+              _ServerTile(
+                config: config,
+                isActive: config.id == activeId,
+                onActivate: () => ref
+                    .read(serverManagerProvider.notifier)
+                    .setActive(config.id),
+                onEdit: () => _editServer(config),
+                onDelete: () => _confirmDelete(config),
               ),
-              const Gap(8),
-              const Text('Use HTTPS'),
-            ],
-          ),
-          const Gap(18),
-          PrimaryButton(
-            onPressed: _connecting ? null : _connect,
-            child: _connecting
-                ? const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(),
-                      ),
-                      Gap(8),
-                      Text('Connecting...'),
-                    ],
-                  )
-                : const Text('Connect'),
-          ),
           const Gap(28),
           Text('Appearance').small.semiBold.muted,
           const Gap(10),
@@ -263,6 +191,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServerTile extends StatelessWidget {
+  const _ServerTile({
+    required this.config,
+    required this.isActive,
+    required this.onActivate,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final ServerConfig config;
+  final bool isActive;
+  final VoidCallback onActivate;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isActive
+            ? theme.colorScheme.primary.withAlpha(20)
+            : theme.colorScheme.muted,
+        borderRadius: BorderRadius.circular(12),
+        border: isActive
+            ? Border.all(color: theme.colorScheme.primary.withAlpha(60))
+            : null,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            LucideIcons.server,
+            size: 18,
+            color: isActive
+                ? theme.colorScheme.primary
+                : theme.colorScheme.mutedForeground,
+          ),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(config.name).medium,
+                const Gap(2),
+                Text(config.connection.baseUrl).small.muted,
+              ],
+            ),
+          ),
+          if (isActive)
+            const SecondaryBadge(child: Text('active'))
+          else
+            GhostButton(
+              density: ButtonDensity.compact,
+              onPressed: onActivate,
+              child: const Text('Switch'),
+            ),
+          const Gap(4),
+          IconButton.ghost(
+            icon: const Icon(LucideIcons.pencil, size: 16),
+            onPressed: onEdit,
+          ),
+          IconButton.ghost(
+            icon: const Icon(LucideIcons.trash2, size: 16),
+            onPressed: onDelete,
           ),
         ],
       ),

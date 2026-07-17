@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../models/server_config.dart';
 import '../models/server_connection.dart';
 import '../storage/connection_store.dart';
 import 'opencode_client.dart';
@@ -10,49 +11,132 @@ final connectionStoreProvider = Provider<ConnectionStore>((ref) {
   return ConnectionStore();
 });
 
-class ConnectionState {
-  const ConnectionState({this.connection, this.password});
+class ServerManagerState {
+  const ServerManagerState({
+    this.configs = const [],
+    this.activeId,
+    this.password,
+  });
 
-  final ServerConnection? connection;
+  final List<ServerConfig> configs;
+  final String? activeId;
   final String? password;
 
-  bool get isConfigured => connection != null;
+  bool get isConfigured => activeConfig != null;
+
+  ServerConfig? get activeConfig {
+    if (activeId == null) return null;
+    return configs.where((c) => c.id == activeId).firstOrNull;
+  }
+
+  ServerConnection? get connection => activeConfig?.connection;
+
+  ServerManagerState copyWith({
+    List<ServerConfig>? configs,
+    String? activeId,
+    String? password,
+  }) {
+    return ServerManagerState(
+      configs: configs ?? this.configs,
+      activeId: activeId ?? this.activeId,
+      password: password ?? this.password,
+    );
+  }
 }
 
-class ConnectionController extends Notifier<ConnectionState> {
+class ServerManagerController extends Notifier<ServerManagerState> {
   @override
-  ConnectionState build() => const ConnectionState();
+  ServerManagerState build() => const ServerManagerState();
 
   ConnectionStore get _store => ref.read(connectionStoreProvider);
 
   Future<void> restore() async {
-    final stored = await _store.load();
-    if (stored != null) {
-      state = ConnectionState(
-        connection: stored.connection,
-        password: stored.password,
-      );
+    final configs = await _store.loadAll();
+    final activeId = await _store.loadActiveId();
+    String? password;
+    if (activeId != null) {
+      password = await _store.loadPassword(activeId);
     }
+    state = ServerManagerState(
+      configs: configs,
+      activeId: activeId,
+      password: password,
+    );
   }
 
-  Future<void> connect(ServerConnection connection, String? password) async {
-    await _store.save(connection, password);
-    state = ConnectionState(connection: connection, password: password);
+  Future<void> addServer(ServerConfig config, String? password) async {
+    await _store.addServer(config, password);
+    state = ServerManagerState(
+      configs: await _store.loadAll(),
+      activeId: config.id,
+      password: password,
+    );
+  }
+
+  Future<void> updateServer(ServerConfig config, String? password) async {
+    await _store.updateServer(config, password);
+    final isActive = state.activeId == config.id;
+    state = ServerManagerState(
+      configs: await _store.loadAll(),
+      activeId: state.activeId,
+      password: isActive ? password : state.password,
+    );
+  }
+
+  Future<void> removeServer(String serverId) async {
+    await _store.removeServer(serverId);
+    final configs = await _store.loadAll();
+    final activeId = await _store.loadActiveId();
+    String? password;
+    if (activeId != null) {
+      password = await _store.loadPassword(activeId);
+    }
+    state = ServerManagerState(
+      configs: configs,
+      activeId: activeId,
+      password: password,
+    );
+  }
+
+  Future<void> setActive(String serverId, {String? password}) async {
+    await _store.setActiveId(serverId);
+    final pw = password ?? await _store.loadPassword(serverId);
+    state = state.copyWith(activeId: serverId, password: pw);
+  }
+
+  Future<void> connect(ServerConfig config, String? password) async {
+    await _store.addServer(config, password);
+    state = ServerManagerState(
+      configs: await _store.loadAll(),
+      activeId: config.id,
+      password: password,
+    );
   }
 
   Future<void> disconnect() async {
-    await _store.clear();
-    state = const ConnectionState();
+    if (state.activeId == null) return;
+    await _store.removeServer(state.activeId!);
+    final configs = await _store.loadAll();
+    final activeId = configs.isNotEmpty ? configs.first.id : null;
+    String? password;
+    if (activeId != null) {
+      password = await _store.loadPassword(activeId);
+    }
+    state = ServerManagerState(
+      configs: configs,
+      activeId: activeId,
+      password: password,
+    );
   }
 }
 
-final connectionControllerProvider =
-    NotifierProvider<ConnectionController, ConnectionState>(
-      ConnectionController.new,
-    );
+final serverManagerProvider =
+    NotifierProvider<ServerManagerController, ServerManagerState>(
+  ServerManagerController.new,
+);
 
 final opencodeClientProvider = Provider<OpencodeClient?>((ref) {
-  final state = ref.watch(connectionControllerProvider);
+  final state = ref.watch(serverManagerProvider);
   final connection = state.connection;
   if (connection == null) return null;
   final client = OpencodeClient(
@@ -134,5 +218,5 @@ class SessionActivityController extends Notifier<Set<String>> {
 
 final sessionActivityProvider =
     NotifierProvider<SessionActivityController, Set<String>>(
-      SessionActivityController.new,
-    );
+  SessionActivityController.new,
+);

@@ -6,9 +6,11 @@ import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/sse_client.dart';
 import '../../core/models/project.dart';
+import '../../core/models/server_config.dart';
 import '../../core/models/session.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
+import '../connection/connection_screen.dart';
 import '../permissions/permission_banner.dart';
 import 'sessions_provider.dart';
 import 'workspace_provider.dart';
@@ -109,8 +111,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     List<Session> sessions,
     List<Project> projects,
   ) {
-    final sortedProjects = [...projects]
-      ..sort((a, b) {
+    final sortedProjects = [...projects]..sort((a, b) {
         if (a.isGlobal != b.isGlobal) return a.isGlobal ? 1 : -1;
         return a.worktree.compareTo(b.worktree);
       });
@@ -180,12 +181,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final q = _query.toLowerCase();
     final active = ref.watch(sessionActivityProvider);
     return sessions.where((s) {
-      final matchesQuery =
-          q.isEmpty ||
+      final matchesQuery = q.isEmpty ||
           (s.title?.toLowerCase().contains(q) ?? false) ||
           (s.directory?.toLowerCase().contains(q) ?? false);
-      final matchesFilter =
-          _filter == 'all' ||
+      final matchesFilter = _filter == 'all' ||
           (_filter == 'active' && active.contains(s.id)) ||
           (_filter == 'idle' && !active.contains(s.id));
       return matchesQuery && matchesFilter;
@@ -234,10 +233,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('opencode').h1,
+                  const Gap(12),
+                  _ServerSwitcher(),
                   const Gap(16),
                   TextField(
                     controller: _searchController,
                     placeholder: const Text('Search projects and sessions'),
+                    border: Border.all(color: Colors.transparent),
                     features: const [
                       InputFeature.leading(Icon(LucideIcons.search, size: 16)),
                     ],
@@ -326,8 +328,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       return _WorkspaceTile(
                         project: project,
                         sessions: const [],
-                        onTap: () => _createSession(
-                          context,
+                        onCreateSession: (ctx) => _createSession(
+                          ctx,
                           ref,
                           directory: project.isGlobal ? null : project.worktree,
                         ),
@@ -344,8 +346,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       return _WorkspaceTile(
                         project: project,
                         sessions: const [],
-                        onTap: () => _createSession(
-                          context,
+                        onCreateSession: (ctx) => _createSession(
+                          ctx,
                           ref,
                           directory: project.isGlobal ? null : project.worktree,
                         ),
@@ -370,8 +372,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       itemBuilder: (context, index) {
                         if (index < workspaces.length) {
                           final group = workspaces[index];
-                          final visible =
-                              _projectMatchesQuery(group.project) ||
+                          final visible = _projectMatchesQuery(group.project) ||
                               group.sessions.isNotEmpty;
                           if (!visible) {
                             return const SizedBox.shrink();
@@ -379,8 +380,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                           final name = group.project.isGlobal
                               ? 'Global'
                               : (group.project.id == '__other__'
-                                    ? 'Other'
-                                    : compactPath(group.project.worktree));
+                                  ? 'Other'
+                                  : compactPath(group.project.worktree));
                           final displaySessions = group.sessions;
                           return _WorkspaceTile(
                             key: ValueKey(group.project.worktree),
@@ -400,7 +401,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                                 }
                               });
                             },
-                            onTap: () => _createSession(context, ref),
+                            onCreateSession: (ctx) => _createSession(
+                              ctx,
+                              ref,
+                              directory: group.project.isGlobal
+                                  ? null
+                                  : group.project.worktree,
+                            ),
                             onDeleteSession: (s) =>
                                 _confirmDelete(context, ref, s),
                           );
@@ -533,17 +540,17 @@ class _WorkspaceTile extends StatefulWidget {
     super.key,
     required this.project,
     required this.sessions,
-    required this.onTap,
+    required void Function(BuildContext context) onCreateSession,
     this.onDeleteSession,
     this.initiallyExpanded = false,
     this.onExpansionChanged,
     this.titleOverride,
-  });
+  }) : _onCreateSession = onCreateSession;
 
   final Project project;
   final String? titleOverride;
   final List<Session> sessions;
-  final VoidCallback onTap;
+  final void Function(BuildContext context) _onCreateSession;
   final void Function(Session)? onDeleteSession;
   final bool initiallyExpanded;
   final void Function(bool)? onExpansionChanged;
@@ -563,11 +570,17 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
 
   void _toggle() {
     if (widget.sessions.isEmpty) {
-      widget.onTap();
+      _openWorkspaceFiles();
       return;
     }
     setState(() => _expanded = !_expanded);
     widget.onExpansionChanged?.call(_expanded);
+  }
+
+  void _openWorkspaceFiles() {
+    final worktree = widget.project.worktree;
+    if (worktree.isEmpty) return;
+    context.push('/workspace/${Uri.encodeComponent(worktree)}/files');
   }
 
   @override
@@ -613,6 +626,23 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
                   ),
                   if (count > 0) Text('$count').small.muted,
                   const Gap(8),
+                  if (_expanded || count == 0)
+                    GestureDetector(
+                      onTap: () => widget._onCreateSession(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.muted,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          LucideIcons.plus,
+                          size: 14,
+                          color: theme.colorScheme.mutedForeground,
+                        ),
+                      ),
+                    ),
+                  const Gap(8),
                   Icon(
                     _expanded
                         ? LucideIcons.chevronDown
@@ -641,9 +671,7 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.onCreate});
-
-  final VoidCallback? onCreate;
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -658,13 +686,6 @@ class _EmptyState extends StatelessWidget {
           const Text(
             'Connect to a server to see its workspaces.',
           ).muted,
-          if (onCreate != null) ...[
-            const Gap(24),
-            PrimaryButton(
-              onPressed: onCreate,
-              child: const Text('New session'),
-            ),
-          ],
         ],
       ),
     );
@@ -691,6 +712,147 @@ class _ErrorState extends StatelessWidget {
           const Gap(24),
           PrimaryButton(onPressed: onRetry, child: const Text('Retry')),
         ],
+      ),
+    );
+  }
+}
+
+class _ServerSwitcher extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final managerState = ref.watch(serverManagerProvider);
+    final configs = managerState.configs;
+    final active = managerState.activeConfig;
+
+    if (configs.isEmpty) {
+      return GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.muted,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.plus, size: 14),
+              const Gap(6),
+              const Text('Add server').small,
+            ],
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => _showServerPicker(context, ref, configs),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.muted,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.server, size: 14),
+            const Gap(6),
+            Text(
+              active?.name ?? 'No server',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ).small,
+            const Gap(4),
+            const Icon(LucideIcons.chevronDown, size: 12).iconMutedForeground,
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showServerPicker(
+    BuildContext context,
+    WidgetRef ref,
+    List<ServerConfig> configs,
+  ) {
+    final managerState = ref.read(serverManagerProvider);
+    final activeId = managerState.activeId;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Switch server').h4,
+              const Gap(12),
+              for (final config in configs)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: GhostButton(
+                    alignment: Alignment.centerLeft,
+                    onPressed: () {
+                      closeSheet(sheetContext);
+                      ref
+                          .read(serverManagerProvider.notifier)
+                          .setActive(config.id);
+                      ref.read(sessionsRefreshProvider.notifier).state++;
+                      ref.read(projectsRefreshProvider.notifier).state++;
+                    },
+                    child: Row(
+                      children: [
+                        Icon(
+                          config.id == activeId
+                              ? LucideIcons.circleCheck
+                              : LucideIcons.circle,
+                          size: 16,
+                          color: config.id == activeId
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                        const Gap(10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(config.name).small,
+                              Text(config.connection.baseUrl).xSmall.muted,
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const Gap(8),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ConnectionScreen(),
+                    ),
+                  );
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.plus, size: 16),
+                    Gap(10),
+                    Text('Add server'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

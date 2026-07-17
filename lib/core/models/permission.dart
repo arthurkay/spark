@@ -5,6 +5,8 @@ class PermissionRequest {
     this.title,
     this.type,
     this.metadata = const {},
+    this.callID,
+    this.messageID,
   });
 
   final String id;
@@ -12,6 +14,8 @@ class PermissionRequest {
   final String? title;
   final String? type;
   final Map<String, dynamic> metadata;
+  final String? callID;
+  final String? messageID;
 
   factory PermissionRequest.fromJson(Map<String, dynamic> json) {
     final data = json['data'] is Map<String, dynamic>
@@ -26,6 +30,8 @@ class PermissionRequest {
       title: title,
       type: (data['type'] as String?) ?? permission,
       metadata: data['metadata'] as Map<String, dynamic>? ?? const {},
+      callID: data['callID'] as String?,
+      messageID: data['messageID'] as String?,
     );
   }
 }

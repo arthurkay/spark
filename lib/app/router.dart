@@ -30,6 +30,12 @@ GoRouter createRouter(Ref ref) {
             FilesScreen(sessionId: state.pathParameters['id']!),
       ),
       GoRoute(
+        path: '/workspace/:worktree/files',
+        builder: (context, state) => FilesScreen(
+          directory: Uri.decodeComponent(state.pathParameters['worktree']!),
+        ),
+      ),
+      GoRoute(
         path: '/session/:id/diff',
         builder: (context, state) =>
             DiffScreen(sessionId: state.pathParameters['id']!),
@@ -40,6 +46,6 @@ GoRouter createRouter(Ref ref) {
 
 class _ConnectionListenable extends ChangeNotifier {
   _ConnectionListenable(Ref ref) {
-    ref.listen(connectionControllerProvider, (prev, next) => notifyListeners());
+    ref.listen(serverManagerProvider, (prev, next) => notifyListeners());
   }
 }
