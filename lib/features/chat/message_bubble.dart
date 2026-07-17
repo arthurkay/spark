@@ -3,11 +3,9 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
-import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
+import '../../core/api/question_provider.dart';
 import '../../core/models/message.dart';
-import '../../core/models/permission.dart';
-import '../../core/notifications/notification_service.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
@@ -109,7 +107,15 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-const _expandableToolTypes = {'glob', 'read', 'edit', 'todowrite', 'write', 'bash', 'grep'};
+const _expandableToolTypes = {
+  'glob',
+  'read',
+  'edit',
+  'todowrite',
+  'write',
+  'bash',
+  'grep'
+};
 
 class _TodoItem {
   const _TodoItem({
@@ -214,7 +220,6 @@ class _TodoPriorityBadge extends StatelessWidget {
     );
   }
 }
-
 
 IconData _toolIcon(String? name) {
   switch (name) {
@@ -336,9 +341,8 @@ class _ToolChipState extends State<_ToolChip> {
         );
       case 'grep':
         final pattern = input?['pattern'] as String? ?? '';
-        final path = input?['path'] as String? ??
-            input?['glob'] as String? ??
-            '';
+        final path =
+            input?['path'] as String? ?? input?['glob'] as String? ?? '';
         if (pattern.isEmpty && path.isEmpty && output.isEmpty) {
           return const SizedBox.shrink();
         }
@@ -486,9 +490,8 @@ class _ToolChipState extends State<_ToolChip> {
           ],
         );
       case 'bash':
-        final command = input?['command'] as String? ??
-            input?['cmd'] as String? ??
-            '';
+        final command =
+            input?['command'] as String? ?? input?['cmd'] as String? ?? '';
         if (command.isEmpty && output.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -521,9 +524,8 @@ class _ToolChipState extends State<_ToolChip> {
     if (text.startsWith('{')) text = '[$text]';
     try {
       final decoded = jsonDecode(text);
-      final list = decoded is List
-          ? decoded
-          : (decoded is Map ? [decoded] : null);
+      final list =
+          decoded is List ? decoded : (decoded is Map ? [decoded] : null);
       if (list == null) return const [];
       return list.whereType<Map<String, dynamic>>().map((m) {
         final status = (m['status'] as String? ?? 'pending').toLowerCase();
@@ -678,44 +680,40 @@ class _ToolChipState extends State<_ToolChip> {
     return chip;
   }
 
-  PermissionRequest? _findPermission(Map<String, PermissionRequest> pending) {
-    final callID = widget.part.raw['callID'] as String?;
-    final messageID = widget.part.raw['messageID'] as String?;
-    final sessionID = widget.part.raw['sessionID'] as String?;
-
-    if (callID != null) {
-      final byCall =
-          pending.values.where((p) => p.callID == callID).firstOrNull;
-      if (byCall != null) return byCall;
-    }
-    if (messageID != null) {
-      final byMsg =
-          pending.values.where((p) => p.messageID == messageID).firstOrNull;
-      if (byMsg != null) return byMsg;
-    }
-    if (sessionID != null) {
-      final bySession =
-          pending.values.where((p) => p.sessionID == sessionID).firstOrNull;
-      if (bySession != null) return bySession;
-    }
-    return null;
-  }
-
   void _showQuestionSheet(BuildContext context) {
-    final questions = _extractQuestions();
-    final pending =
-        ProviderScope.containerOf(context).read(pendingPermissionsProvider);
-    final permission = _findPermission(pending);
-    final sessionID = (widget.part.raw['sessionID'] as String?) ??
-        permission?.sessionID ??
-        '';
-
+    final container = ProviderScope.containerOf(context);
     final rawState = widget.part.raw['state'];
     final stateMap = rawState is Map<String, dynamic> ? rawState : null;
     final output = stateMap?['output'] as String?;
     final isCompleted = widget.part.state == 'completed' ||
         widget.part.state == 'error' ||
         widget.part.state == 'timeout';
+
+    final messageID = widget.part.raw['messageID'] as String?;
+    final callID = widget.part.raw['callID'] as String?;
+    final pendingQuestions = container.read(pendingQuestionsProvider);
+    final question = pendingQuestions[messageID] ?? pendingQuestions[callID];
+
+    final questions = question?.questions
+            .map((q) => {
+                  if (q.header != null) 'header': q.header,
+                  'question': q.question,
+                  'options': q.options
+                      .map((o) => {
+                            'label': o.label,
+                            if (o.description != null)
+                              'description': o.description,
+                          })
+                      .toList(),
+                  'multiple': q.multiple,
+                  'custom': q.custom,
+                })
+            .toList() ??
+        _extractQuestions();
+
+    final requestId = question?.id ?? '';
+    final sessionID =
+        question?.sessionID ?? (widget.part.raw['sessionID'] as String?) ?? '';
 
     openSheetOverlay(
       context: context,
@@ -728,12 +726,12 @@ class _ToolChipState extends State<_ToolChip> {
               padding: const EdgeInsets.all(20),
               child: _QuestionSheetBody(
                 questions: questions,
-                permission: permission,
+                requestId: requestId,
                 sessionID: sessionID,
                 toolName: widget.part.toolName ?? 'question',
                 state: widget.part.state ?? '',
                 answer: isCompleted ? output : null,
-                isRunning: !isCompleted && permission != null,
+                isRunning: !isCompleted,
               ),
             ),
           ),
@@ -866,45 +864,137 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-Widget _questionCard(List<Map<String, dynamic>> questions) {
+Widget _questionCard(
+  BuildContext context,
+  List<Map<String, dynamic>> questions,
+  List<List<String>> selections,
+  void Function(int, String) onSelect,
+) {
   return Card(
     padding: const EdgeInsets.all(12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final q in questions) ...[
-          if (q['header'] is String) ...[
-            Text(q['header'] as String).semiBold,
-            const Gap(4),
-          ],
-          SelectableText(
-            (q['question'] as String?) ?? '',
-          ),
-          if (q['options'] is List) ...[
-            const Gap(8),
-            for (final opt in (q['options'] as List)) ...[
-              if (opt is Map<String, dynamic>) ...[
-                Text('• ${(opt['label'] as String?) ?? ''}').small.muted,
-                if (opt['description'] is String) ...[
-                  Text('  ${(opt['description'] as String)}').xSmall.muted,
-                ],
-              ] else if (opt is String) ...[
-                Text('• $opt').small.muted,
-              ],
-              const Gap(2),
-            ],
-          ],
-          if (q != questions.last) const Gap(12),
-        ],
+        for (var qi = 0; qi < questions.length; qi++)
+          _questionItem(context, qi, questions, selections, onSelect),
       ],
     ),
   );
 }
 
+Widget _questionItem(
+  BuildContext context,
+  int qi,
+  List<Map<String, dynamic>> questions,
+  List<List<String>> selections,
+  void Function(int, String) onSelect,
+) {
+  final q = questions[qi];
+  final children = <Widget>[
+    if (q['header'] is String) ...[
+      Text(q['header'] as String).semiBold,
+      const Gap(4),
+    ],
+    SelectableText((q['question'] as String?) ?? ''),
+  ];
+  if (q['options'] is List && (q['options'] as List).isNotEmpty) {
+    children.add(const Gap(8));
+    for (final opt in (q['options'] as List)) {
+      if (opt is Map<String, dynamic>) {
+        children.add(
+          _QuestionOptionTile(
+            label: (opt['label'] as String?) ?? '',
+            description: opt['description'] as String?,
+            selected: selections[qi].contains(opt['label']),
+            onTap: () => onSelect(qi, opt['label'] as String),
+          ),
+        );
+      } else if (opt is String) {
+        children.add(
+          _QuestionOptionTile(
+            label: opt,
+            selected: selections[qi].contains(opt),
+            onTap: () => onSelect(qi, opt),
+          ),
+        );
+      }
+      children.add(const Gap(6));
+    }
+  } else if (q['custom'] == true) {
+    children.add(const Gap(8));
+    children.add(const Text('Free-form answer above.').xSmall.muted);
+  }
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ...children,
+      if (qi != questions.length - 1) const Gap(12),
+    ],
+  );
+}
+
+class _QuestionOptionTile extends StatelessWidget {
+  const _QuestionOptionTile({
+    required this.label,
+    this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String? description;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color =
+        selected ? theme.colorScheme.primary : theme.colorScheme.border;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary.withAlpha(18)
+              : theme.colorScheme.background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color, width: selected ? 1.5 : 1),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected ? LucideIcons.check : LucideIcons.circle,
+              size: 16,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.mutedForeground,
+            ),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label).small.semiBold,
+                  if (description != null && description!.isNotEmpty) ...[
+                    const Gap(2),
+                    Text(description!).xSmall.muted,
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _QuestionSheetBody extends StatefulWidget {
   const _QuestionSheetBody({
     required this.questions,
-    required this.permission,
+    required this.requestId,
     required this.sessionID,
     required this.toolName,
     required this.state,
@@ -913,7 +1003,7 @@ class _QuestionSheetBody extends StatefulWidget {
   });
 
   final List<Map<String, dynamic>> questions;
-  final PermissionRequest? permission;
+  final String requestId;
   final String sessionID;
   final String toolName;
   final String state;
@@ -926,11 +1016,13 @@ class _QuestionSheetBody extends StatefulWidget {
 
 class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
   late final TextEditingController _controller;
+  late List<List<String>> _selections;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _selections = List.generate(widget.questions.length, (_) => <String>[]);
   }
 
   @override
@@ -939,26 +1031,47 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
     super.dispose();
   }
 
-  void _submit(String response, {bool remember = false}) {
-    final trimmed = response.trim();
-    if (trimmed.isEmpty) return;
+  bool get _hasOptions {
+    return widget.questions.any(
+      (q) => q['options'] is List && (q['options'] as List).isNotEmpty,
+    );
+  }
+
+  bool get _canSubmit {
+    if (!widget.isRunning) return false;
+    if (_hasOptions) {
+      return _selections.every((s) => s.isNotEmpty);
+    }
+    return _controller.text.trim().isNotEmpty;
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
     final container = ProviderScope.containerOf(context);
     final client = container.read(opencodeClientProvider);
-    final permission = widget.permission;
-    if (permission != null) {
-      final map = {...container.read(pendingPermissionsProvider)};
-      if (map.remove(permission.id) != null) {
-        container.read(pendingPermissionsProvider.notifier).state =
-            map.isEmpty ? const {} : map;
-        if (map.isEmpty) NotificationService.instance.cancelPermission();
+    final answers = <List<String>>[];
+    for (var i = 0; i < widget.questions.length; i++) {
+      final q = widget.questions[i];
+      if (q['options'] is List && (q['options'] as List).isNotEmpty) {
+        answers.add(_selections[i]);
+      } else {
+        answers.add([_controller.text.trim()]);
       }
-      client
-          ?.respondPermission(
-            sessionId: permission.sessionID,
-            permissionId: permission.id,
-            response: trimmed,
-            remember: remember,
-          )
+    }
+    if (widget.requestId.isNotEmpty) {
+      await client
+          ?.replyQuestion(requestId: widget.requestId, answers: answers)
+          .catchError((_) {});
+    }
+    if (mounted) closeSheet(context);
+  }
+
+  Future<void> _reject() async {
+    final container = ProviderScope.containerOf(context);
+    final client = container.read(opencodeClientProvider);
+    if (widget.requestId.isNotEmpty) {
+      await client
+          ?.rejectQuestion(requestId: widget.requestId)
           .catchError((_) {});
     }
     if (mounted) closeSheet(context);
@@ -992,7 +1105,22 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (widget.questions.isNotEmpty)
-                    _questionCard(widget.questions)
+                    _questionCard(context, widget.questions, _selections,
+                        (qi, label) {
+                      setState(() {
+                        final multiple =
+                            widget.questions[qi]['multiple'] == true;
+                        if (multiple) {
+                          if (_selections[qi].contains(label)) {
+                            _selections[qi].remove(label);
+                          } else {
+                            _selections[qi].add(label);
+                          }
+                        } else {
+                          _selections[qi] = [label];
+                        }
+                      });
+                    })
                   else
                     Card(
                       padding: const EdgeInsets.all(12),
@@ -1011,14 +1139,14 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
                         ],
                       ),
                     )
-                  else if (showInput)
+                  else if (showInput && !_hasOptions)
                     TextArea(
                       controller: _controller,
                       placeholder: const Text('Type your answer…'),
                       minLines: 2,
                       maxLines: 6,
                     )
-                  else
+                  else if (!showInput)
                     Card(
                       padding: const EdgeInsets.all(12),
                       child: const Text(
@@ -1037,34 +1165,14 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
             )
           else ...[
             PrimaryButton(
-              onPressed: () => _submit(_controller.text),
-              child: const Text('Send answer'),
+              onPressed: _canSubmit ? _submit : null,
+              child: const Text('Submit'),
             ),
-            if (widget.permission != null) ...[
-              const Gap(8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlineButton(
-                      onPressed: () => _submit('always', remember: true),
-                      child: const Text('Always allow'),
-                    ),
-                  ),
-                  const Gap(8),
-                  Expanded(
-                    child: OutlineButton(
-                      onPressed: () => _submit('once'),
-                      child: const Text('Allow once'),
-                    ),
-                  ),
-                ],
-              ),
-              const Gap(8),
-              DestructiveButton(
-                onPressed: () => _submit('reject'),
-                child: const Text('Reject'),
-              ),
-            ],
+            const Gap(8),
+            DestructiveButton(
+              onPressed: _reject,
+              child: const Text('Reject'),
+            ),
           ],
         ],
       ),

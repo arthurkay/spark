@@ -26,10 +26,12 @@ class PermissionListenerController extends Notifier<void> {
   void _onEvent(OpencodeEvent event) {
     final props = event.properties;
     switch (event.type) {
-      case 'permission.updated':
+      case 'permission.asked':
+      case 'permission.v2.asked':
         final permission = PermissionRequest.fromProps(props);
         if (permission.id.isNotEmpty) _add(permission);
       case 'permission.replied':
+      case 'permission.v2.replied':
         _resolve(props);
     }
   }
@@ -53,13 +55,16 @@ class PermissionListenerController extends Notifier<void> {
           sessionId: permission.sessionID,
           permissionId: permission.id,
           response: 'once',
-          remember: false,
         )
         .catchError((_) {});
   }
 
   void _resolve(Map<String, dynamic> props) {
-    final requestID = (props['permissionID'] ?? props['id'] ?? '').toString();
+    final requestID = (props['requestID'] ??
+            props['permissionID'] ??
+            props['id'] ??
+            '')
+        .toString();
     if (requestID.isEmpty) return;
     final map = {...ref.read(pendingPermissionsProvider)};
     map.remove(requestID);

@@ -94,11 +94,17 @@ Auth: optional HTTP Basic auth. Username defaults to `opencode`
 The `/event` stream emits `GlobalEvent` objects (`{ directory, payload }`) whose
 `payload` is a discriminated union on `type`. Event types the app cares about:
 
-- `permission.updated` — a new permission request (`payload.properties` is a
-  `Permission`: `id`, `type`, `pattern?`, `sessionID`, `messageID`, `callID?`,
-  `title`, `metadata`, `time.created`).
-- `permission.replied` — a permission was answered
-  (`{ sessionID, permissionID, response }`).
+- `permission.asked` — a new permission request. `payload.properties`
+  is `{ id, sessionID, permission, patterns[], metadata, always[],
+  tool: { messageID, callID } }`. The `permission` field is the action
+  string (e.g. `bash`, `edit`); `patterns` lists the affected paths.
+  There is also a newer `permission.v2.asked` whose properties are
+  `{ id, sessionID, action, resources[], save[], metadata, source }`.
+- `permission.replied` — a permission was answered. `payload.properties`
+  is `{ sessionID, requestID, reply }` where `reply` ∈ `once`/`always`/
+  `reject`. Note the event key is `requestID` (not `permissionID`) and
+  the answer field is `reply` (not `response`). `permission.v2.replied`
+  mirrors this with a `reply` object.
 - `message.updated` / `message.removed` — message create/update/delete.
 - `message.part.updated` / `message.part.removed` — streaming message parts
   (text/reasoning/tool/file/etc.); `message.part.updated` may carry a `delta`.
@@ -117,17 +123,45 @@ Full type source: `packages/sdk/js/src/gen/types.gen.ts` (`Event` union) in the
 
 ### Permission response API
 
-Respond to a `permission.updated` request with:
+Respond to a `permission.asked` request with:
 
 ```
 POST /session/:id/permissions/:permissionID
 ```
 
-The `:permissionID` is the `Permission.id` from the `permission.updated` event.
+The `:permissionID` is the `Permission.id` from the `permission.asked` event.
 The body carries the `response` string (e.g. `once` / `always` / `reject`),
-mirrored back on the `permission.replied` event as `{ sessionID, permissionID,
-response }`. The app models the request as `PermissionRequest` in
+mirrored back on the `permission.replied` event as `{ sessionID, requestID,
+reply }`. The app models the request as `PermissionRequest` in
 `lib/core/models/permission.dart`.
+
+### Questions (separate from permissions)
+
+Questions are a **distinct** API from permissions. They represent prompts the
+agent asks the user to choose among options (or provide free text). The app does
+NOT treat questions as permissions — it polls and renders them separately.
+
+- `GET /question` — returns the list of pending `QuestionRequest` objects
+  (`id` prefixed `que_…`, `sessionID`, `questions[]`, `tool: { messageID,
+  callID }`). Each question has `question`, `header`, `options[]` (each
+  `{ label, description }`), `multiple` (bool), and `custom` (bool for free
+  text). The app keys pending questions by `messageID`/`callID` so a tool chip
+  can look up its matching request.
+- `POST /question/:requestID/reply` — body `{ "answers": [[label], ...] }`
+  (an array of label-arrays, one per question; for single-select, each inner
+  array has one label). For free-text (`custom`) questions the answer is the
+  typed string.
+- `POST /question/:requestID/reject` — dismiss/reject the request.
+
+The app models these as `QuestionRequest` (`lib/core/models/question.dart`),
+fetches via `OpencodeClient.listQuestions()` / `replyQuestion()` /
+`rejectQuestion()`, and tracks them in `pendingQuestionsProvider`
+(`lib/core/api/question_provider.dart`). `QuestionListenerController` polls
+`GET /question` every 8s and also refreshes on `question.*` SSE events and
+`server.reconnected`. The tool chip's question sheet (`_QuestionSheetBody` in
+`lib/features/chat/message_bubble.dart`) looks up the pending request by
+`messageID`/`callID`, renders selectable option chips (single vs multi per
+`multiple`), and submits via `replyQuestion`.
 
 ## Conventions
 

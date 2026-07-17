@@ -20,4 +20,8 @@ class Endpoints {
   static String diff(String id) => '/session/$id/diff';
   static String permission(String sessionId, String permissionId) =>
       '/session/$sessionId/permissions/$permissionId';
+  static String questionList = '/question';
+  static String questionReply(String requestId) => '/question/$requestId/reply';
+  static String questionReject(String requestId) =>
+      '/question/$requestId/reject';
 }

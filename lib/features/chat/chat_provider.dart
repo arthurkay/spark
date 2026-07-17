@@ -434,9 +434,8 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> respondPermission(
-    String response, {
-    bool remember = false,
-  }) async {
+    String response,
+  ) async {
     final client = _client;
     final permission = state.pendingPermission;
     if (client == null || permission == null) return;
@@ -447,7 +446,6 @@ class ChatController extends ChangeNotifier {
         sessionId: sessionId,
         permissionId: permission.id,
         response: response,
-        remember: remember,
       );
     } on OpencodeApiException catch (e) {
       state = state.copyWith(error: e.message);

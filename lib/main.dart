@@ -6,6 +6,7 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'app/router.dart';
 import 'app/theme.dart';
 import 'core/api/permission_provider.dart';
+import 'core/api/question_provider.dart';
 import 'core/api/providers.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/settings_provider.dart';
@@ -23,6 +24,7 @@ Future<void> main() async {
     },
   );
   container.read(permissionListenerProvider);
+  container.read(questionListenerProvider);
   runApp(
     UncontrolledProviderScope(
       container: container,

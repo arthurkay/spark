@@ -197,8 +197,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         showPermissionSheet(
           context: context,
           permission: permission,
-          onRespond: (response, remember) =>
-              controller.respondPermission(response, remember: remember),
+          onRespond: (response) =>
+              controller.respondPermission(response),
         );
       });
     }

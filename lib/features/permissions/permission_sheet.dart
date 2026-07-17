@@ -8,7 +8,7 @@ import '../../shared/widgets/sheet_keyboard_padding.dart';
 
 const _filePermissionTypes = {'glob', 'read', 'edit', 'write'};
 
-typedef PermissionResponder = void Function(String response, bool remember);
+typedef PermissionResponder = void Function(String response);
 
 void showPermissionSheet({
   required BuildContext context,
@@ -137,7 +137,7 @@ class _PermissionSheetContentState
               const Gap(20),
               PrimaryButton(
                 onPressed: () {
-                  widget.onRespond('always', true);
+                  widget.onRespond('always');
                   closeSheet(context);
                 },
                 child: const Text('Always allow'),
@@ -145,7 +145,7 @@ class _PermissionSheetContentState
               const Gap(8),
               OutlineButton(
                 onPressed: () {
-                  widget.onRespond('once', false);
+                  widget.onRespond('once');
                   closeSheet(context);
                 },
                 child: const Text('Allow once'),
@@ -153,7 +153,7 @@ class _PermissionSheetContentState
               const Gap(8),
               DestructiveButton(
                 onPressed: () {
-                  widget.onRespond('reject', false);
+                  widget.onRespond('reject');
                   closeSheet(context);
                 },
                 child: const Text('Reject'),

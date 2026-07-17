@@ -178,7 +178,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
     showPermissionSheet(
       context: context,
       permission: permission,
-      onRespond: (response, remember) {
+      onRespond: (response) {
         final map = {...ref.read(pendingPermissionsProvider)};
         if (map.remove(permission.id) != null) {
           ref.read(pendingPermissionsProvider.notifier).state =
@@ -190,7 +190,6 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
               sessionId: permission.sessionID,
               permissionId: permission.id,
               response: response,
-              remember: remember,
             )
             .catchError((_) {});
       },
@@ -215,7 +214,6 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
             sessionId: permission.sessionID,
             permissionId: permission.id,
             response: response,
-            remember: response == 'always',
           )
           .catchError((_) {});
     }

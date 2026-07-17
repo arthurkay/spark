@@ -7,6 +7,7 @@ import '../models/file_node.dart';
 import '../models/message.dart';
 import '../models/project.dart';
 import '../models/provider.dart';
+import '../models/question.dart';
 import '../models/server_connection.dart';
 import '../models/session.dart';
 import 'endpoints.dart';
@@ -188,12 +189,11 @@ class OpencodeClient {
     required String sessionId,
     required String permissionId,
     required String response,
-    bool remember = false,
   }) async {
     try {
       await _dio.post<dynamic>(
         Endpoints.permission(sessionId, permissionId),
-        data: {'response': response, 'remember': remember},
+        data: {'response': response},
       );
     } on DioException catch (e) {
       _rethrow(e);
@@ -311,6 +311,40 @@ class OpencodeClient {
           .whereType<Map<String, dynamic>>()
           .map(FileDiff.fromJson)
           .toList();
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<QuestionRequest>> listQuestions() async {
+    try {
+      final res = await _dio.get<List<dynamic>>(Endpoints.questionList);
+      return (res.data ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(QuestionRequest.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> replyQuestion({
+    required String requestId,
+    required List<List<String>> answers,
+  }) async {
+    try {
+      await _dio.post<dynamic>(
+        Endpoints.questionReply(requestId),
+        data: {'answers': answers},
+      );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> rejectQuestion({required String requestId}) async {
+    try {
+      await _dio.post<dynamic>(Endpoints.questionReject(requestId));
     } on DioException catch (e) {
       _rethrow(e);
     }
