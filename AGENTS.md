@@ -4,18 +4,28 @@ Guidance for AI coding agents working in this repository.
 
 ## Project
 
-`opencode_companion` — a Flutter mobile app (Android/iOS) that acts as a remote
-client for a running `opencode serve` HTTP server. It lets users browse sessions,
-chat with the AI (with live streaming), approve permission requests, pick
-models/agents, and browse project files and diffs.
+**Spark** — a Flutter mobile app (Android/iOS) that acts as a remote client for a
+running `opencode serve` HTTP server. The app's UI branding refers to the backend
+as **SparkCode** (e.g. placeholders, headers, notifications). Under the hood it is
+still the opencode server API. Spark lets users browse sessions, chat with the AI
+(with live streaming), approve permission requests, pick models/agents, and browse
+project files and diffs.
 
-- UI library: **shadcn_flutter** (New York theme, no Material/Cupertino).
+- App display name: **Spark** (`android:label`, `ShadcnApp.title`).
+- UI library: **shadcn_flutter** (New York theme, zinc `#18181b` bg, cyan `#38bdf8`
+  accent, no Material/Cupertino).
 - State management: **flutter_riverpod**.
 - Networking: **dio** (REST) + manual SSE parsing for the `/event` stream.
 - Routing: **go_router**.
 - Serialization: hand-written `fromJson`/`toJson` on model classes (build_runner
   is incompatible with the installed Dart 3.10 toolchain, so no codegen).
-- Storage: **flutter_secure_storage** (server password) + **shared_preferences** (host/port).
+- Storage: **flutter_secure_storage** (server password) + **shared_preferences**
+  (host/port, workspace selection, theme, collapse preference).
+- Branding note: the opencode server API username (`opencode`) and the internal
+  Dart identifiers (`opencodeClientProvider`, `OpencodeClient`, SharedPreferences
+  keys `opencode_*`) are **real server API values** and must NOT be renamed to
+  `spark`/`sparkcode` — doing so breaks auth and persistence. Only user-facing
+  strings should say "SparkCode".
 
 ## Commands
 
@@ -67,6 +77,14 @@ Key endpoints used:
 Note: a `directory` query param (not a body field) scopes sessions, files, and
 file content to a project worktree. This is how the app keeps a session's file
 browser limited to that project.
+
+Session listing gotcha: a bare `GET /session` (no `directory`) only returns
+global/unscoped sessions — sessions created with `?directory=<worktree>` are
+scoped to that worktree and will NOT appear in the unscoped list. So
+`allSessionsProvider` (`lib/features/sessions/sessions_provider.dart`) fetches the
+unscoped list AND one `GET /session?directory=<worktree>` per known project, then
+merges + dedupes by session id. This ensures sessions created from the app remain
+visible after navigating away.
 
 Auth: optional HTTP Basic auth. Username defaults to `opencode`
 (`OPENCODE_SERVER_USERNAME`), password from `OPENCODE_SERVER_PASSWORD`.
@@ -128,23 +146,33 @@ response }`. The app models the request as `PermissionRequest` in
   `package:flutter/material.dart` inside `markdown_view.dart` (it conflicts with
   shadcn's `Column`/`Row`/`Table`); it intentionally imports only
   `package:flutter/widgets.dart`.
+- Tool-call chips in `lib/features/chat/message_bubble.dart`: `_expandableToolTypes`
+  lists tools whose content expands inline (`glob`, `read`, `edit`, `todowrite`,
+  `write`, `bash`, `grep`). `_buildContentPreview` renders a structured widget per
+  tool — `todowrite` parses its JSON payload into a checkbox/todo list
+  (`_TodoRow` + `_TodoPriorityBadge`); `grep` shows Pattern/Path/Results; `bash`
+  shows Command + Output. Content blocks use `ConstrainedBox` + `SingleChildScrollView`
+  so short content (e.g. a single command or filename) stays minimal height while
+  long output scrolls within a cap. Do NOT give `_codeBlock`/`_diffBlock` a fixed
+  height or rely on `SelectableText.maxLines` for sizing (reserves full height).
 
 ## Layout
 
 ```
 lib/
-  main.dart              # ShadcnApp root, theme, router
+  main.dart              # ShadcnApp root, theme, router, app-lifecycle refresh
   app/                   # router, theme
   core/
-    api/                 # opencode_client, sse_client, endpoints
-    models/              # data models (json_serializable)
-    storage/             # connection persistence
+    api/                 # opencode_client, sse_client, endpoints, providers
+    models/              # data models (hand-written fromJson/toJson)
+    notifications/       # local notification service (permission alerts)
+    storage/             # connection + settings persistence
   features/
-    connection/          # server setup + connection state
-    sessions/            # sessions list
-    chat/                # message thread + composer + streaming
-    permissions/         # permission approval
+    connection/          # server setup, connection state, settings screen
+    sessions/            # sessions list, project grouping, workspace selection
+    chat/                # message thread + composer + streaming + tool chips
+    permissions/         # permission approval (banner + sheet)
     models/              # model + agent selector
     files/               # file browser + diff viewer
-  shared/widgets/        # reusable widgets
+  shared/widgets/        # reusable widgets (markdown, code highlight, sheets)
 ```

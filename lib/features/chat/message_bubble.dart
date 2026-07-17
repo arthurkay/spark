@@ -109,7 +109,112 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-const _expandableToolTypes = {'glob', 'read', 'edit', 'todowrite', 'write', 'bash'};
+const _expandableToolTypes = {'glob', 'read', 'edit', 'todowrite', 'write', 'bash', 'grep'};
+
+class _TodoItem {
+  const _TodoItem({
+    required this.content,
+    required this.status,
+    required this.priority,
+  });
+
+  final String content;
+  final String status;
+  final String priority;
+
+  bool get isCompleted => status == 'completed';
+  bool get isInProgress => status == 'in_progress' || status == 'inprogress';
+  bool get isCancelled => status == 'cancelled' || status == 'canceled';
+}
+
+class _TodoRow extends StatelessWidget {
+  const _TodoRow({required this.todo});
+
+  final _TodoItem todo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final IconData icon;
+    final Color color;
+    if (todo.isCompleted) {
+      icon = LucideIcons.check;
+      color = Colors.green;
+    } else if (todo.isCancelled) {
+      icon = LucideIcons.x;
+      color = theme.colorScheme.mutedForeground;
+    } else if (todo.isInProgress) {
+      icon = LucideIcons.loader;
+      color = theme.colorScheme.primary;
+    } else {
+      icon = LucideIcons.circle;
+      color = theme.colorScheme.mutedForeground;
+    }
+    final textColor = todo.isCompleted || todo.isCancelled
+        ? theme.colorScheme.mutedForeground
+        : theme.colorScheme.foreground;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 14, color: color),
+        ),
+        const Gap(8),
+        Expanded(
+          child: Text(
+            todo.content,
+            style: TextStyle(
+              color: textColor,
+              decoration: todo.isCompleted
+                  ? TextDecoration.lineThrough
+                  : TextDecoration.none,
+            ),
+          ).small,
+        ),
+        if (todo.priority.isNotEmpty) ...[
+          const Gap(6),
+          _TodoPriorityBadge(priority: todo.priority),
+        ],
+      ],
+    );
+  }
+}
+
+class _TodoPriorityBadge extends StatelessWidget {
+  const _TodoPriorityBadge({required this.priority});
+
+  final String priority;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final Color color;
+    switch (priority) {
+      case 'high':
+        color = Colors.red;
+      case 'medium':
+        color = Colors.orange;
+      case 'low':
+        color = Colors.green;
+      default:
+        color = theme.colorScheme.mutedForeground;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      child: Text(
+        priority,
+        style: TextStyle(color: color),
+      ).xSmall.semiBold,
+    );
+  }
+}
+
 
 IconData _toolIcon(String? name) {
   switch (name) {
@@ -229,6 +334,36 @@ class _ToolChipState extends State<_ToolChip> {
             ],
           ],
         );
+      case 'grep':
+        final pattern = input?['pattern'] as String? ?? '';
+        final path = input?['path'] as String? ??
+            input?['glob'] as String? ??
+            '';
+        if (pattern.isEmpty && path.isEmpty && output.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (pattern.isNotEmpty) ...[
+              _contentLabel('Pattern'),
+              const Gap(4),
+              _codeBlock(context, pattern),
+            ],
+            if (path.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Path'),
+              const Gap(4),
+              _codeBlock(context, path),
+            ],
+            if (output.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Results'),
+              const Gap(4),
+              _codeBlock(context, output, maxLines: 8),
+            ],
+          ],
+        );
       case 'read':
         final filePath =
             input?['filePath'] as String? ?? input?['path'] as String? ?? '';
@@ -304,12 +439,50 @@ class _ToolChipState extends State<_ToolChip> {
             input?['text'] as String? ??
             output;
         if (todoContent.isEmpty) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        final todos = _parseTodos(todoContent);
+        if (todos.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _contentLabel('Tasks'),
+              const Gap(4),
+              _codeBlock(context, todoContent, maxLines: 8),
+            ],
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _contentLabel('Tasks'),
-            const Gap(4),
-            _codeBlock(context, todoContent, maxLines: 8),
+            Row(
+              children: [
+                _contentLabel('Tasks'),
+                const Gap(6),
+                Text('${todos.where((t) => t.status == 'completed').length}/${todos.length}')
+                    .xSmall
+                    .muted,
+              ],
+            ),
+            const Gap(8),
+            Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.background,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: theme.colorScheme.border.withAlpha(120),
+                ),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < todos.length; i++) ...[
+                    if (i > 0) const Gap(8),
+                    _TodoRow(todo: todos[i]),
+                  ],
+                ],
+              ),
+            ),
           ],
         );
       case 'bash':
@@ -342,9 +515,40 @@ class _ToolChipState extends State<_ToolChip> {
     return Text(text).xSmall.semiBold.muted;
   }
 
+  List<_TodoItem> _parseTodos(String raw) {
+    String? text = raw.trim();
+    if (text.isEmpty) return const [];
+    if (text.startsWith('{')) text = '[$text]';
+    try {
+      final decoded = jsonDecode(text);
+      final list = decoded is List
+          ? decoded
+          : (decoded is Map ? [decoded] : null);
+      if (list == null) return const [];
+      return list.whereType<Map<String, dynamic>>().map((m) {
+        final status = (m['status'] as String? ?? 'pending').toLowerCase();
+        final priority = (m['priority'] as String? ?? '').toLowerCase();
+        final content = (m['content'] as String? ??
+                m['todo'] as String? ??
+                m['text'] as String? ??
+                m['title'] as String? ??
+                '')
+            .toString();
+        return _TodoItem(
+          content: content,
+          status: status,
+          priority: priority,
+        );
+      }).toList();
+    } on FormatException {
+      return const [];
+    }
+  }
+
   Widget _codeBlock(BuildContext context, String code, {int maxLines = 6}) {
     final theme = Theme.of(context);
     return Container(
+      constraints: BoxConstraints(maxHeight: 16.0 * maxLines + 20),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: theme.colorScheme.background,
@@ -353,15 +557,16 @@ class _ToolChipState extends State<_ToolChip> {
           color: theme.colorScheme.border.withAlpha(120),
         ),
       ),
-      child: SelectableText(
-        code,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          color: theme.colorScheme.foreground,
-          height: 1.5,
+      child: SingleChildScrollView(
+        child: SelectableText(
+          code,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: theme.colorScheme.foreground,
+            height: 1.5,
+          ),
         ),
-        maxLines: maxLines,
       ),
     );
   }
@@ -377,21 +582,23 @@ class _ToolChipState extends State<_ToolChip> {
     final border =
         isRemoved ? Colors.red.withAlpha(60) : Colors.green.withAlpha(60);
     return Container(
+      constraints: const BoxConstraints(maxHeight: 116),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: border),
       ),
-      child: SelectableText(
-        text,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          color: theme.colorScheme.foreground,
-          height: 1.5,
+      child: SingleChildScrollView(
+        child: SelectableText(
+          text,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: theme.colorScheme.foreground,
+            height: 1.5,
+          ),
         ),
-        maxLines: 6,
       ),
     );
   }
