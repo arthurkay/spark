@@ -78,6 +78,7 @@ class ChatController extends ChangeNotifier {
   Timer? _abortTimer;
   bool _paused = false;
   bool _aborting = false;
+  bool _optimisticBusy = false;
 
   static const int initialLimit = 40;
   static const int olderChunkSize = 40;
@@ -120,15 +121,18 @@ class ChatController extends ChangeNotifier {
       final window = _tailWindow;
       final fetched = await client.listMessages(sessionId, limit: window);
       final merged = _mergeTail(fetched);
-      final working = _deriveWorking(merged) && !_aborting;
-      ref
-          .read(sessionActivityProvider.notifier)
-          .setBusy(sessionId, working && !_aborting);
+      // If the tail message shows the session is idle, any optimistic "busy"
+      // flag from send() is stale (no idle event arrived) — clear it.
+      if (_optimisticBusy && !_deriveWorking(merged)) {
+        _optimisticBusy = false;
+      }
+      final working = _computeWorking(merged);
+      ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
       state = state.copyWith(
         messages: merged,
         loading: false,
         clearError: true,
-        working: working && !_aborting,
+        working: working,
       );
     } on OpencodeApiException catch (e) {
       state = state.copyWith(loading: false, error: e.message, working: false);
@@ -156,7 +160,10 @@ class ChatController extends ChangeNotifier {
       }
       _tailWindow += newOnes.length;
       final merged = [...newOnes, ...state.messages];
-      final working = _deriveWorking(merged);
+      if (_optimisticBusy && !_deriveWorking(merged)) {
+        _optimisticBusy = false;
+      }
+      final working = _computeWorking(merged);
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
       state = state.copyWith(
         messages: merged,
@@ -291,9 +298,11 @@ class ChatController extends ChangeNotifier {
         if (forThisSession || sid == null) {
           if (isIdle) {
             _clearAbort();
+            _optimisticBusy = false;
             state = state.copyWith(working: false, aborting: false);
             if (forThisSession) load();
           } else if (isBusy) {
+            _optimisticBusy = true;
             if (!_aborting) state = state.copyWith(working: true);
           }
         }
@@ -302,6 +311,7 @@ class ChatController extends ChangeNotifier {
         if (sid != null) activity.setBusy(sid, false);
         if (forThisSession || sid == null) {
           _clearAbort();
+          _optimisticBusy = false;
           state = state.copyWith(working: false, aborting: false);
           if (forThisSession) load();
         }
@@ -319,6 +329,7 @@ class ChatController extends ChangeNotifier {
             _clearAbort();
             state = state.copyWith(working: false, aborting: false);
           } else {
+            _optimisticBusy = false;
             state = state.copyWith(working: false);
           }
           if (forThisSession) load();
@@ -335,6 +346,7 @@ class ChatController extends ChangeNotifier {
         break;
       case 'session.error':
         if (forThisSession || sid == null) {
+          _optimisticBusy = false;
           state = state.copyWith(working: false);
         }
         break;
@@ -342,13 +354,20 @@ class ChatController extends ChangeNotifier {
   }
 
   bool _deriveWorking(List<MessageWithParts> messages) {
-    for (var i = messages.length - 1; i >= 0; i--) {
-      final m = messages[i];
-      if (m.info.role == 'assistant') {
-        return m.info.timeCompleted == null;
-      }
-    }
-    return false;
+    if (messages.isEmpty) return false;
+    final last = messages.last;
+    // Busy only while the model is actively generating at the tail of the
+    // conversation. A stale, incomplete assistant message that another
+    // message follows (e.g. after the server was restarted mid-turn) must
+    // NOT keep the session flagged as working.
+    if (last.info.role != 'assistant') return false;
+    return last.info.timeCompleted == null;
+  }
+
+  bool _computeWorking(List<MessageWithParts> messages) {
+    if (_aborting) return false;
+    if (_optimisticBusy) return true;
+    return _deriveWorking(messages);
   }
 
   String? _sessionIdFromProps(Map<String, dynamic> props) {
@@ -378,6 +397,8 @@ class ChatController extends ChangeNotifier {
     final client = _client;
     if (client == null || text.trim().isEmpty) return;
     _aborting = false;
+    _optimisticBusy = true;
+    ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
     state = state.copyWith(
       sending: true,
       working: true,
@@ -392,13 +413,22 @@ class ChatController extends ChangeNotifier {
         agent: agent,
         attachments: attachments,
       );
-      ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
       await load();
+      _scheduleSettlingReloads();
     } catch (e) {
       final message = e is OpencodeApiException ? e.message : e.toString();
+      _optimisticBusy = false;
       state = state.copyWith(error: message, working: false);
     } finally {
       state = state.copyWith(sending: false);
+    }
+  }
+
+  void _scheduleSettlingReloads() {
+    for (final delay in const [400, 1200, 2500, 4500]) {
+      Timer(Duration(milliseconds: delay), () {
+        if (!_aborting) load();
+      });
     }
   }
 

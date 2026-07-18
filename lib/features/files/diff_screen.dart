@@ -75,64 +75,87 @@ class DiffScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: diffs.length,
-            separatorBuilder: (context, index) => const Gap(12),
-            itemBuilder: (context, index) => _DiffCard(diff: diffs[index]),
+          final totalAdd = diffs.fold(0, (s, d) => s + d.additions);
+          final totalDel = diffs.fold(0, (s, d) => s + d.deletions);
+          final combined = diffs
+              .map((d) => d.displayPatch)
+              .where((p) => p.isNotEmpty)
+              .join('\n\n');
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '${diffs.length} file${diffs.length == 1 ? '' : 's'} changed',
+                        ).semiBold.small,
+                        const Gap(8),
+                        Text(
+                          '+$totalAdd',
+                          style: const TextStyle(
+                            color: Color(0xff22c55e),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ).xSmall,
+                        const Gap(8),
+                        Text(
+                          '-$totalDel',
+                          style: const TextStyle(
+                            color: Color(0xffef4444),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ).xSmall,
+                      ],
+                    ),
+                    const Gap(8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final d in diffs)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .muted
+                                  .withAlpha(40),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(d.file).xSmall.muted,
+                          ),
+                      ],
+                    ),
+                    const Gap(8),
+                    const Divider(),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: CodeHighlightView(
+                    code: combined,
+                    language: 'diff',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
-  }
-}
-
-class _DiffCard extends StatelessWidget {
-  const _DiffCard({required this.diff});
-
-  final FileDiff diff;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  diff.file,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ).semiBold.small,
-              ),
-              const Gap(8),
-              if (diff.additions > 0 || diff.deletions > 0)
-                Text('+${diff.additions} -${diff.deletions}').muted.xSmall,
-            ],
-          ),
-          const Gap(8),
-          const Divider(),
-          const Gap(8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: _DiffText(patch: diff.displayPatch, path: diff.file),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiffText extends StatelessWidget {
-  const _DiffText({required this.patch, this.path});
-
-  final String patch;
-  final String? path;
-
-  @override
-  Widget build(BuildContext context) {
-    return CodeHighlightView(code: patch, language: 'diff', fontSize: 12);
   }
 }

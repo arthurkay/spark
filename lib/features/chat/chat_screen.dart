@@ -197,8 +197,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         showPermissionSheet(
           context: context,
           permission: permission,
-          onRespond: (response) =>
-              controller.respondPermission(response),
+          onRespond: (response) => controller.respondPermission(response),
         );
       });
     }
@@ -289,6 +288,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             sending: state.sending,
             working: working,
             aborting: state.aborting,
+            error: state.error,
             attachments: _attachments,
             onPickFiles: _pickFiles,
             onRemoveAttachment: _removeAttachment,
@@ -430,6 +430,7 @@ class _Composer extends ConsumerWidget {
     required this.sending,
     required this.working,
     required this.aborting,
+    required this.error,
     required this.attachments,
     required this.onPickFiles,
     required this.onRemoveAttachment,
@@ -442,6 +443,7 @@ class _Composer extends ConsumerWidget {
   final bool sending;
   final bool working;
   final bool aborting;
+  final String? error;
   final List<Attachment> attachments;
   final VoidCallback onPickFiles;
   final void Function(int index) onRemoveAttachment;
@@ -473,6 +475,31 @@ class _Composer extends ConsumerWidget {
                   Expanded(child: ModelSelectorBar(sessionId: sessionId)),
                 ],
               ),
+              if (error != null) ...[
+                const Gap(8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.triangleAlert,
+                          size: 14, color: Colors.red),
+                      const Gap(6),
+                      Expanded(
+                        child: Text(error!).xSmall,
+                      ),
+                      TextButton(
+                        onPressed: onAbort,
+                        child: const Text('Abort session').xSmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const Gap(10),
               if (attachments.isNotEmpty) ...[
                 SizedBox(
@@ -518,7 +545,7 @@ class _Composer extends ConsumerWidget {
                       ),
                     ),
                     const Gap(4),
-                    if (working || aborting)
+                    if (working || aborting || error != null)
                       IconButton.destructive(
                         icon: const Icon(LucideIcons.square),
                         size: ButtonSize.small,

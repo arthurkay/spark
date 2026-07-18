@@ -23,7 +23,7 @@ class NotificationService {
   }) async {
     _onTap = onTap;
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@mipmap/ic_notification',
     );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -83,6 +83,7 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       ticker: 'Confirmation required',
+      icon: '@mipmap/ic_notification',
     );
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,

@@ -10,6 +10,48 @@ import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 
+String _unifiedEditDiff(String oldText, String newText) {
+  final a = oldText.split('\n');
+  if (a.isNotEmpty && a.last.isEmpty) a.removeLast();
+  final b = newText.split('\n');
+  if (b.isNotEmpty && b.last.isEmpty) b.removeLast();
+  final n = a.length;
+  final m = b.length;
+  final lcs = List.generate(n + 1, (_) => List.filled(m + 1, 0));
+  for (var i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] == b[j]
+          ? lcs[i + 1][j + 1] + 1
+          : (lcs[i + 1][j] >= lcs[i][j + 1] ? lcs[i + 1][j] : lcs[i][j + 1]);
+    }
+  }
+  final out = <String>[];
+  var i = 0;
+  var j = 0;
+  while (i < n && j < m) {
+    if (a[i] == b[j]) {
+      out.add(' ${a[i]}');
+      i++;
+      j++;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      out.add('-$a[i]');
+      i++;
+    } else {
+      out.add('+$b[j]');
+      j++;
+    }
+  }
+  while (i < n) {
+    out.add('-$a[i]');
+    i++;
+  }
+  while (j < m) {
+    out.add('+$b[j]');
+    j++;
+  }
+  return out.join('\n');
+}
+
 class MessageBubble extends StatelessWidget {
   const MessageBubble({super.key, required this.message});
 
@@ -395,6 +437,7 @@ class _ToolChipState extends State<_ToolChip> {
         final newString = input?['newString'] as String? ??
             input?['new_string'] as String? ??
             '';
+        final hasBoth = oldString.isNotEmpty && newString.isNotEmpty;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -403,17 +446,33 @@ class _ToolChipState extends State<_ToolChip> {
               const Gap(4),
               _codeBlock(context, filePath),
             ],
-            if (oldString.isNotEmpty) ...[
+            if (hasBoth) ...[
               const Gap(8),
-              _contentLabel('Removed'),
+              _contentLabel('Diff'),
               const Gap(4),
-              _diffBlock(context, oldString, isRemoved: true),
-            ],
-            if (newString.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Added'),
-              const Gap(4),
-              _diffBlock(context, newString, isRemoved: false),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: SingleChildScrollView(
+                  child: CodeHighlightView(
+                    code: _unifiedEditDiff(oldString, newString),
+                    language: 'diff',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ] else ...[
+              if (oldString.isNotEmpty) ...[
+                const Gap(8),
+                _contentLabel('Removed'),
+                const Gap(4),
+                _diffBlock(context, oldString, isRemoved: true),
+              ],
+              if (newString.isNotEmpty) ...[
+                const Gap(8),
+                _contentLabel('Added'),
+                const Gap(4),
+                _diffBlock(context, newString, isRemoved: false),
+              ],
             ],
           ],
         );
@@ -730,6 +789,8 @@ class _ToolChipState extends State<_ToolChip> {
                 sessionID: sessionID,
                 toolName: widget.part.toolName ?? 'question',
                 state: widget.part.state ?? '',
+                messageKey: messageID ?? '',
+                callKey: callID ?? '',
                 answer: isCompleted ? output : null,
                 isRunning: !isCompleted,
               ),
@@ -998,6 +1059,8 @@ class _QuestionSheetBody extends StatefulWidget {
     required this.sessionID,
     required this.toolName,
     required this.state,
+    required this.messageKey,
+    required this.callKey,
     this.answer,
     this.isRunning = false,
   });
@@ -1007,6 +1070,8 @@ class _QuestionSheetBody extends StatefulWidget {
   final String sessionID;
   final String toolName;
   final String state;
+  final String messageKey;
+  final String callKey;
   final String? answer;
   final bool isRunning;
 
@@ -1038,15 +1103,24 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
   }
 
   bool get _canSubmit {
-    if (!widget.isRunning) return false;
     if (_hasOptions) {
       return _selections.every((s) => s.isNotEmpty);
     }
     return _controller.text.trim().isNotEmpty;
   }
 
+  String _resolveRequestId() {
+    if (widget.requestId.isNotEmpty) return widget.requestId;
+    final container = ProviderScope.containerOf(context);
+    final pending = container.read(pendingQuestionsProvider);
+    final byKey = pending[widget.messageKey] ?? pending[widget.callKey];
+    return byKey?.id ?? '';
+  }
+
   Future<void> _submit() async {
     if (!_canSubmit) return;
+    final requestId = _resolveRequestId();
+    if (requestId.isEmpty) return;
     final container = ProviderScope.containerOf(context);
     final client = container.read(opencodeClientProvider);
     final answers = <List<String>>[];
@@ -1058,11 +1132,9 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
         answers.add([_controller.text.trim()]);
       }
     }
-    if (widget.requestId.isNotEmpty) {
-      await client
-          ?.replyQuestion(requestId: widget.requestId, answers: answers)
-          .catchError((_) {});
-    }
+    await client
+        ?.replyQuestion(requestId: requestId, answers: answers)
+        .catchError((_) {});
     if (mounted) closeSheet(context);
   }
 

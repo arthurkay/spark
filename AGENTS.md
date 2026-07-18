@@ -161,7 +161,10 @@ fetches via `OpencodeClient.listQuestions()` / `replyQuestion()` /
 `server.reconnected`. The tool chip's question sheet (`_QuestionSheetBody` in
 `lib/features/chat/message_bubble.dart`) looks up the pending request by
 `messageID`/`callID`, renders selectable option chips (single vs multi per
-`multiple`), and submits via `replyQuestion`.
+`multiple`), and submits via `replyQuestion`. It resolves the `requestID` **live**
+from `pendingQuestionsProvider` at submit time (via `messageKey`/`callKey`) so a
+question that was populated after the sheet opened still submits — do NOT rely only
+on the `requestID` captured when the sheet was built (it may be empty).
 
 ## Conventions
 
@@ -189,6 +192,35 @@ fetches via `OpencodeClient.listQuestions()` / `replyQuestion()` /
   so short content (e.g. a single command or filename) stays minimal height while
   long output scrolls within a cap. Do NOT give `_codeBlock`/`_diffBlock` a fixed
   height or rely on `SelectableText.maxLines` for sizing (reserves full height).
+- **edit tool chips** render a single interleaved unified diff (green `+` / red `-`
+  lines via `CodeHighlightView(language: 'diff')`) under a "Diff" label, instead of
+  two separate Removed/Added blocks. The diff is computed by `_unifiedEditDiff()`
+  (LCS-based, in `message_bubble.dart`) from the tool's `oldString`/`newString`.
+  When only one side exists it falls back to the single colored block.
+- **App + notification icons** are generated, not codegen'd. Run
+  `python3 tools/generate_icons.py` (Pillow only) to (re)write
+  `android/app/src/main/res/mipmap-*/ic_launcher.png` (color launcher, zinc rounded
+  square + cyan sparkle — matches the `LucideIcons.sparkles` AI chat avatar) and
+  `ic_notification.png` (monochrome white sparkle for the status bar). The
+  notification small icon is referenced in `lib/core/notifications/notification_service.dart`
+  via `@mipmap/ic_notification`. Do NOT use `flutter_launcher_icons` — it is not wired
+  up and would overwrite these hand-generated assets. Keep the launcher glyph in sync
+  with the chat AI avatar if that icon changes.
+
+## Chat working state
+
+- `ChatController` (`lib/features/chat/chat_provider.dart`) drives the "working"
+  indicator. On `send()` it sets `_optimisticBusy = true` and marks the session busy;
+  it is cleared when `session.idle` / `session.status` idle / `idle` / `step-finish` /
+  `session.error` SSE events arrive, OR when a `load()` observes the conversation tail
+  is no longer an in-progress assistant message (robust against missing idle events).
+- `_deriveWorking()` treats the session as busy ONLY when the **last message** is an
+  assistant message with no `timeCompleted`. A stale incomplete assistant message left
+  by an interrupted turn (server restarted mid-generation) must NOT keep "working" on
+  once a newer message follows it.
+- On a failed `send()` the error is surfaced in the composer (red banner) and the
+  **Abort session** action is shown so a stuck/busy session can be recovered via
+  `controller.abort()`.
 
 ## Layout
 
