@@ -269,11 +269,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               onPressed: () =>
                   context.push('/session/${widget.sessionId}/files'),
             ),
-            IconButton.ghost(
-              icon: const Icon(LucideIcons.settings),
-              onPressed: () =>
-                  context.push('/session/${widget.sessionId}/diff'),
-            ),
+            // IconButton.ghost(
+            //   icon: const Icon(LucideIcons.settings),
+            //   onPressed: () =>
+            //       context.push('/session/${widget.sessionId}/diff'),
+            // ),
           ],
         ),
       ],
