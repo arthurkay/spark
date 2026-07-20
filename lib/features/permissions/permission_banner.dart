@@ -187,9 +187,8 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
         }
         client
             ?.respondPermission(
-              sessionId: permission.sessionID,
               permissionId: permission.id,
-              response: response,
+              reply: response,
             )
             .catchError((_) {});
       },
@@ -211,9 +210,8 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
     if (client != null && client is OpencodeClient) {
       client
           .respondPermission(
-            sessionId: permission.sessionID,
             permissionId: permission.id,
-            response: response,
+            reply: response,
           )
           .catchError((_) {});
     }

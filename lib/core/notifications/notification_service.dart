@@ -4,10 +4,12 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../core/models/permission.dart';
+import '../../core/models/question.dart';
 
 const String _channelId = 'opencode_permission';
 const String _channelName = 'Permission requests';
 const int _permissionNotificationId = 1;
+const int _questionNotificationId = 2;
 
 class NotificationService {
   NotificationService._();
@@ -16,10 +18,10 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  void Function(String permissionID, String sessionID)? _onTap;
+  void Function(String id, String sessionID)? _onTap;
 
   Future<void> init({
-    required void Function(String permissionID, String sessionID) onTap,
+    required void Function(String id, String sessionID) onTap,
   }) async {
     _onTap = onTap;
     const androidSettings = AndroidInitializationSettings(
@@ -66,10 +68,12 @@ class NotificationService {
     if (payload == null) return;
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
-      final permissionID = (data['permissionID'] ?? '').toString();
+      final id =
+          (data['permissionID'] ?? data['questionID'] ?? data['id'] ?? '')
+              .toString();
       final sessionID = (data['sessionID'] ?? '').toString();
-      if (permissionID.isNotEmpty && sessionID.isNotEmpty) {
-        _onTap?.call(permissionID, sessionID);
+      if (id.isNotEmpty && sessionID.isNotEmpty) {
+        _onTap?.call(id, sessionID);
       }
     } catch (_) {}
   }
@@ -115,5 +119,45 @@ class NotificationService {
   Future<void> cancelPermission() async {
     if (!_available) return;
     await _plugin.cancel(_permissionNotificationId);
+  }
+
+  Future<void> showQuestion(QuestionRequest question) async {
+    if (!_available) return;
+    final androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: 'Questions from the SparkCode server',
+      importance: Importance.high,
+      priority: Priority.high,
+      ticker: 'Question from assistant',
+      icon: '@mipmap/ic_notification',
+    );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    );
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+    final firstQuestion =
+        question.questions.isNotEmpty ? question.questions.first : null;
+    final title = firstQuestion?.header ?? 'Question from assistant';
+    final body = firstQuestion?.question ?? 'Tap to respond.';
+    await _plugin.show(
+      _questionNotificationId,
+      title,
+      body,
+      details,
+      payload: jsonEncode({
+        'questionID': question.id,
+        'sessionID': question.sessionID,
+      }),
+    );
+  }
+
+  Future<void> cancelQuestion() async {
+    if (!_available) return;
+    await _plugin.cancel(_questionNotificationId);
   }
 }

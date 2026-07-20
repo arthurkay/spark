@@ -11,6 +11,7 @@ class Endpoints {
   static const fileContent = '/file/content';
   static const project = '/project';
   static const projectCurrent = '/project/current';
+  static const permissionList = '/permission';
 
   static String sessionById(String id) => '/session/$id';
   static String messages(String id) => '/session/$id/message';
@@ -18,9 +19,9 @@ class Endpoints {
   static String prompt(String id) => '/session/$id/message';
   static String abort(String id) => '/session/$id/abort';
   static String diff(String id) => '/session/$id/diff';
-  static String permission(String sessionId, String permissionId) =>
-      '/session/$sessionId/permissions/$permissionId';
-  static String questionList = '/question';
+  static String permissionReply(String requestId) =>
+      '/permission/$requestId/reply';
+  static const questionList = '/question';
   static String questionReply(String requestId) => '/question/$requestId/reply';
   static String questionReject(String requestId) =>
       '/question/$requestId/reject';

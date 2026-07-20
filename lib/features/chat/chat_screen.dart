@@ -5,11 +5,11 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
-import '../permissions/permission_sheet.dart';
 import '../permissions/permission_banner.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
+import '../../shared/widgets/path_utils.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
 
@@ -168,7 +168,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _scrollToBottom();
   }
 
-  String? _shownPermissionId;
   int _lastMessageCount = 0;
   bool _initialScrollDone = false;
 
@@ -189,18 +188,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final controller = ref.watch(chatControllerProvider(widget.sessionId));
     final state = controller.state;
 
-    final permission = state.pendingPermission;
-    if (permission != null && permission.id != _shownPermissionId) {
-      _shownPermissionId = permission.id;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        showPermissionSheet(
-          context: context,
-          permission: permission,
-          onRespond: (response) => controller.respondPermission(response),
-        );
-      });
-    }
     final count = state.messages.length;
     if (count != _lastMessageCount || (!_initialScrollDone && count > 0)) {
       _lastMessageCount = count;
@@ -239,6 +226,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               onPressed: () => context.pop(),
             ),
           ],
+          title: Builder(
+            builder: (context) {
+              final workspaceAsync =
+                  ref.watch(sessionDirectoryProvider(widget.sessionId));
+              final workspaceName = workspaceAsync.maybeWhen(
+                data: (v) => v,
+                orElse: () => null,
+              );
+              return workspaceName != null && workspaceName.isNotEmpty
+                  ? Text(
+                      compactPath(workspaceName),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : const SizedBox.shrink();
+            },
+          ),
           subtitle: subtitleParts.isNotEmpty
               ? DefaultTextStyle(
                   style: TextStyle(
@@ -410,9 +414,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 if (working && index == itemCount - 1) {
                   return _buildWorkingIndicator();
                 }
-                return MessageBubble(
-                  key: ValueKey(visible[messageIndex].info.id),
-                  message: visible[messageIndex],
+                return RepaintBoundary(
+                  child: MessageBubble(
+                    key: ValueKey(visible[messageIndex].info.id),
+                    message: visible[messageIndex],
+                  ),
                 );
               },
             ),

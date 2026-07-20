@@ -154,9 +154,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       color: Theme.of(context).colorScheme.primary,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       LucideIcons.server,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.primaryForeground,
                       size: 28,
                     ),
                   ),

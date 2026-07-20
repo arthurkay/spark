@@ -5,14 +5,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/api/opencode_client.dart';
-import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/sse_client.dart';
 import '../../core/models/attachment.dart';
 import '../../core/models/message.dart';
-import '../../core/notifications/notification_service.dart';
-import '../../core/models/permission.dart';
 import '../../core/models/provider.dart';
+
+final sessionDirectoryProvider =
+    FutureProvider.family<String?, String>((ref, sessionId) async {
+  final client = ref.watch(opencodeClientProvider);
+  if (client == null) return null;
+  final session = await client.getSession(sessionId);
+  return session?.directory;
+});
 
 class ChatState {
   const ChatState({
@@ -24,7 +29,6 @@ class ChatState {
     this.working = false,
     this.aborting = false,
     this.error,
-    this.pendingPermission,
   });
 
   final List<MessageWithParts> messages;
@@ -35,7 +39,6 @@ class ChatState {
   final bool working;
   final bool aborting;
   final String? error;
-  final PermissionRequest? pendingPermission;
 
   ChatState copyWith({
     List<MessageWithParts>? messages,
@@ -47,8 +50,6 @@ class ChatState {
     bool? aborting,
     String? error,
     bool clearError = false,
-    PermissionRequest? pendingPermission,
-    bool clearPermission = false,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -59,9 +60,6 @@ class ChatState {
       working: working ?? this.working,
       aborting: aborting ?? this.aborting,
       error: clearError ? null : (error ?? this.error),
-      pendingPermission: clearPermission
-          ? null
-          : (pendingPermission ?? this.pendingPermission),
     );
   }
 }
@@ -76,6 +74,8 @@ class ChatController extends ChangeNotifier {
   Timer? _reloadTimer;
   Timer? _pollTimer;
   Timer? _abortTimer;
+  Timer? _deltaThrottleTimer;
+  Map<String, dynamic>? _pendingPartJson;
   bool _paused = false;
   bool _aborting = false;
   bool _optimisticBusy = false;
@@ -231,6 +231,8 @@ class ChatController extends ChangeNotifier {
       return;
     }
     final apply = () {
+      final targetJson = _pendingPartJson ?? partJson;
+      _pendingPartJson = null;
       final messages = state.messages;
       final index = messages.indexWhere((m) => m.info.id == messageID);
       if (index == -1) {
@@ -243,7 +245,7 @@ class ChatController extends ChangeNotifier {
         load();
         return;
       }
-      final updatedPart = MessagePart.fromJson(partJson);
+      final updatedPart = MessagePart.fromJson(targetJson);
       final updatedParts = List<MessagePart>.from(target.parts);
       updatedParts[partIndex] = updatedPart;
       final updatedMessage = MessageWithParts(
@@ -255,7 +257,11 @@ class ChatController extends ChangeNotifier {
       state = state.copyWith(messages: newMessages);
     };
     if (immediate) {
-      apply();
+      _pendingPartJson = partJson;
+      if (_deltaThrottleTimer != null && _deltaThrottleTimer!.isActive) {
+        return;
+      }
+      _deltaThrottleTimer = Timer(const Duration(milliseconds: 60), apply);
     } else {
       _reloadTimer?.cancel();
       _reloadTimer = Timer(const Duration(milliseconds: 200), apply);
@@ -337,12 +343,6 @@ class ChatController extends ChangeNotifier {
         break;
       case 'server.reconnected':
         if (forThisSession || sid == null) load();
-        break;
-      case 'permission.updated':
-        final permission = PermissionRequest.fromProps(props);
-        if (permission.id.isNotEmpty && permission.sessionID == sessionId) {
-          state = state.copyWith(pendingPermission: permission);
-        }
         break;
       case 'session.error':
         if (forThisSession || sid == null) {
@@ -463,37 +463,10 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> respondPermission(
-    String response,
-  ) async {
-    final client = _client;
-    final permission = state.pendingPermission;
-    if (client == null || permission == null) return;
-    _clearGlobalPermission(permission.id);
-    state = state.copyWith(clearPermission: true);
-    try {
-      await client.respondPermission(
-        sessionId: sessionId,
-        permissionId: permission.id,
-        response: response,
-      );
-    } on OpencodeApiException catch (e) {
-      state = state.copyWith(error: e.message);
-    }
-  }
-
-  void _clearGlobalPermission(String permissionID) {
-    final map = {...ref.read(pendingPermissionsProvider)};
-    if (map.remove(permissionID) != null) {
-      ref.read(pendingPermissionsProvider.notifier).state =
-          map.isEmpty ? const <String, PermissionRequest>{} : map;
-      if (map.isEmpty) NotificationService.instance.cancelPermission();
-    }
-  }
-
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _deltaThrottleTimer?.cancel();
     _pollTimer?.cancel();
     _abortTimer?.cancel();
     super.dispose();

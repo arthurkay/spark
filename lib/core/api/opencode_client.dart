@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../models/attachment.dart';
 import '../models/file_node.dart';
 import '../models/message.dart';
+import '../models/permission.dart';
 import '../models/project.dart';
 import '../models/provider.dart';
 import '../models/question.dart';
@@ -186,15 +187,26 @@ class OpencodeClient {
   }
 
   Future<void> respondPermission({
-    required String sessionId,
     required String permissionId,
-    required String response,
+    required String reply,
   }) async {
     try {
       await _dio.post<dynamic>(
-        Endpoints.permission(sessionId, permissionId),
-        data: {'response': response},
+        Endpoints.permissionReply(permissionId),
+        data: {'reply': reply},
       );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<PermissionRequest>> listPermissions() async {
+    try {
+      final res = await _dio.get<List<dynamic>>(Endpoints.permissionList);
+      return (res.data ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PermissionRequest.fromJson)
+          .toList();
     } on DioException catch (e) {
       _rethrow(e);
     }

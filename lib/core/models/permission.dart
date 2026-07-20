@@ -25,18 +25,17 @@ class PermissionRequest {
     final data = json['data'] is Map<String, dynamic>
         ? json['data'] as Map<String, dynamic>
         : json;
-    final id = (data['id'] ??
-            data['permissionID'] ??
-            data['requestID'] ??
-            '')
+    final id = (data['id'] ?? data['permissionID'] ?? data['requestID'] ?? '')
         .toString();
-    final action = data['permission'] as String? ??
-        (data['action'] as String?);
+    final action = data['permission'] as String? ?? (data['action'] as String?);
     final title = (data['title'] as String?) ?? action;
     final tool = data['tool'] is Map<String, dynamic>
         ? data['tool'] as Map<String, dynamic>
         : null;
-    final rawPattern = data['patterns'] ?? data['pattern'];
+    final source = data['source'] is Map<String, dynamic>
+        ? data['source'] as Map<String, dynamic>
+        : null;
+    final rawPattern = data['patterns'] ?? data['pattern'] ?? data['resources'];
     final pattern = rawPattern is List
         ? rawPattern.map((e) => e.toString()).toList()
         : (rawPattern is String ? [rawPattern] : null);
@@ -46,9 +45,12 @@ class PermissionRequest {
       title: title,
       type: (data['type'] as String?) ?? action,
       metadata: data['metadata'] as Map<String, dynamic>? ?? const {},
-      callID: data['callID'] as String? ?? tool?['callID'] as String?,
-      messageID:
-          data['messageID'] as String? ?? tool?['messageID'] as String?,
+      callID: data['callID'] as String? ??
+          tool?['callID'] as String? ??
+          source?['callID'] as String?,
+      messageID: data['messageID'] as String? ??
+          tool?['messageID'] as String? ??
+          source?['messageID'] as String?,
       pattern: pattern,
     );
   }

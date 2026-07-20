@@ -10,7 +10,19 @@ import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 
+final _diffCache = <String, String>{};
+
 String _unifiedEditDiff(String oldText, String newText) {
+  final key = '$oldText\x00$newText';
+  final cached = _diffCache[key];
+  if (cached != null) return cached;
+  final result = _computeDiff(oldText, newText);
+  if (_diffCache.length > 64) _diffCache.clear();
+  _diffCache[key] = result;
+  return result;
+}
+
+String _computeDiff(String oldText, String newText) {
   final a = oldText.split('\n');
   if (a.isNotEmpty && a.last.isEmpty) a.removeLast();
   final b = newText.split('\n');
@@ -84,7 +96,9 @@ class MessageBubble extends StatelessWidget {
           child: Icon(
             _isUser ? LucideIcons.user : LucideIcons.sparkles,
             size: 15,
-            color: _isUser ? Colors.white : theme.colorScheme.foreground,
+            color: _isUser
+                ? theme.colorScheme.primaryForeground
+                : theme.colorScheme.foreground,
           ),
         ),
         const Gap(12),
@@ -111,11 +125,13 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget? _buildPart(BuildContext context, MessagePart part) {
+    final streaming = message.info.timeCompleted == null;
     switch (part.type) {
       case 'text':
         final text = part.text?.trim();
         if (text == null || text.isEmpty) return null;
-        final isMarkdown = text.contains(RegExp(r'[`*_#>\n]|^\s*- '));
+        final isMarkdown =
+            !streaming && text.contains(RegExp(r'[`*_#>\n]|^\s*- '));
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: isMarkdown ? MarkdownView(data: text) : _text(context, text),
