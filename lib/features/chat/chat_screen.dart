@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
 import '../permissions/permission_banner.dart';
+import '../../core/api/connectivity_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
@@ -522,8 +523,7 @@ class _ComposerState extends ConsumerState<_Composer> {
       onResult: (result) {
         if (result.recognizedWords.isNotEmpty) {
           final base = _textBeforeListening;
-          final suffix =
-              base.isNotEmpty && !base.endsWith(' ') ? ' ' : '';
+          final suffix = base.isNotEmpty && !base.endsWith(' ') ? ' ' : '';
           setState(() {
             widget.controller.text = '$base$suffix${result.recognizedWords}';
             widget.controller.selection = TextSelection.fromPosition(
@@ -568,6 +568,25 @@ class _ComposerState extends ConsumerState<_Composer> {
                       child: ModelSelectorBar(sessionId: widget.sessionId)),
                 ],
               ),
+              if (!ref.watch(connectivityProvider)) ...[
+                const Gap(4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.wifiOff,
+                          size: 12, color: Colors.orange),
+                      const Gap(4),
+                      Text('Offline — messages will be queued').xSmall,
+                    ],
+                  ),
+                ),
+              ],
               if (widget.error != null) ...[
                 const Gap(8),
                 Container(

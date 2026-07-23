@@ -294,6 +294,17 @@ class OpencodeClient {
     }
   }
 
+  Future<Map<String, dynamic>> configProvidersRaw() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        Endpoints.configProviders,
+      );
+      return res.data ?? {};
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
   Future<List<Agent>> listAgents() async {
     try {
       final res = await _dio.get<List<dynamic>>(Endpoints.agent);

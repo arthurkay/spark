@@ -9,6 +9,7 @@ import 'core/api/permission_provider.dart';
 import 'core/api/question_provider.dart';
 import 'core/api/providers.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
 import 'features/sessions/sessions_provider.dart';
 
@@ -64,6 +65,7 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
         ref.invalidate(eventStreamProvider);
         ref.invalidate(sessionsProvider);
         ref.invalidate(allSessionsProvider);
+        _drainQueue();
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         ref.read(appPausedProvider.notifier).state = true;
@@ -71,6 +73,12 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
       case AppLifecycleState.hidden:
         break;
     }
+  }
+
+  Future<void> _drainQueue() async {
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+    await MessageQueue().drain(client);
   }
 
   @override

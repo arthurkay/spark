@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../../core/api/connectivity_provider.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/sse_client.dart';
 import '../../core/models/attachment.dart';
 import '../../core/models/message.dart';
 import '../../core/models/provider.dart';
+import '../../core/storage/cache_service.dart';
+import '../../core/storage/message_queue.dart';
 
 final sessionDirectoryProvider =
     FutureProvider.family<String?, String>((ref, sessionId) async {
@@ -73,7 +77,6 @@ class ChatController extends ChangeNotifier {
   final String sessionId;
   Timer? _reloadTimer;
   Timer? _pollTimer;
-  Timer? _abortTimer;
   Timer? _deltaThrottleTimer;
   Timer? _stuckTimer;
   Map<String, dynamic>? _pendingPartJson;
@@ -99,6 +102,10 @@ class ChatController extends ChangeNotifier {
   }
 
   OpencodeClient? get _client => ref.read(opencodeClientProvider);
+
+  String get _cacheKey => 'messages/$sessionId.json';
+
+  final MessageQueue _messageQueue = MessageQueue();
 
   Future<void> _init() async {
     _paused = ref.read(appPausedProvider);
@@ -164,6 +171,7 @@ class ChatController extends ChangeNotifier {
         _optimisticBusy = false;
       }
       final working = _computeWorking(merged);
+      if (!working) _stuck = false;
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
       state = state.copyWith(
         messages: merged,
@@ -171,8 +179,27 @@ class ChatController extends ChangeNotifier {
         clearError: true,
         working: working,
       );
+      await CacheService.instance.write(_cacheKey, {
+        'items': merged.map((m) => m.toJson()).toList(),
+      });
     } on OpencodeApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.message, working: false);
+      final cached = await CacheService.instance.read(_cacheKey);
+      if (cached != null && state.messages.isEmpty) {
+        final items = cached['items'] as List<dynamic>? ?? [];
+        final messages = items
+            .whereType<Map<String, dynamic>>()
+            .map(MessageWithParts.fromJson)
+            .toList();
+        state = state.copyWith(
+          messages: messages,
+          loading: false,
+          error: 'Offline — showing cached messages',
+          working: false,
+        );
+      } else {
+        state =
+            state.copyWith(loading: false, error: e.message, working: false);
+      }
     }
   }
 
@@ -392,7 +419,7 @@ class ChatController extends ChangeNotifier {
         }
         break;
       case 'server.reconnected':
-        if (forThisSession || sid == null) load();
+        _verifySessionStatus();
         break;
       case 'session.error':
         if (forThisSession || sid == null) {
@@ -440,6 +467,20 @@ class ChatController extends ChangeNotifier {
     return null;
   }
 
+  Future<void> _verifySessionStatus() async {
+    _stuck = false;
+    _optimisticBusy = false;
+    _lastSseActivity = null;
+    final messages = state.messages;
+    if (messages.isNotEmpty) {
+      final last = messages.last;
+      if (last.info.role == 'assistant' && last.info.timeCompleted == null) {
+        state = state.copyWith(working: false, aborting: false);
+      }
+    }
+    load();
+  }
+
   void _debouncedReload() {
     _reloadTimer?.cancel();
     _reloadTimer = Timer(const Duration(milliseconds: 200), load);
@@ -453,6 +494,29 @@ class ChatController extends ChangeNotifier {
   }) async {
     final client = _client;
     if (client == null || text.trim().isEmpty) return;
+    final connected = ref.read(connectivityProvider);
+    if (!connected) {
+      final attachmentData = attachments
+          .map((a) => {
+                'name': a.name,
+                'path': a.path,
+                'mime': a.mime,
+                'bytes': base64Encode(a.bytes),
+              })
+          .toList();
+      await _messageQueue.enqueue(QueuedMessage(
+        sessionId: sessionId,
+        text: text.trim(),
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        model: model,
+        agent: agent,
+        attachmentData: attachmentData.isNotEmpty ? attachmentData : null,
+      ));
+      state = state.copyWith(
+        error: 'Offline — message queued for later',
+      );
+      return;
+    }
     _aborting = false;
     _optimisticBusy = true;
     ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
@@ -491,42 +555,21 @@ class ChatController extends ChangeNotifier {
 
   void _clearAbort() {
     _aborting = false;
-    _abortTimer?.cancel();
-    _abortTimer = null;
   }
 
   Future<void> abort() async {
     final client = _client;
     if (client == null) return;
     _aborting = true;
-    state = state.copyWith(aborting: true, clearError: true);
-    _abortTimer?.cancel();
-    _abortTimer = Timer(const Duration(seconds: 10), () {
-      if (_aborting) {
-        _aborting = false;
-        _optimisticBusy = false;
-        _stuck = true;
-        state = state.copyWith(
-          aborting: false,
-          working: false,
-          error: 'Abort timed out. Session may be stuck — dismiss to continue.',
-        );
-        load();
-      }
-    });
+    _optimisticBusy = false;
+    _stuck = false;
+    state = state.copyWith(working: false, aborting: true, clearError: true);
     try {
-      final stopped = await client.abort(sessionId);
-      if (!stopped) {
-        _clearAbort();
-        _optimisticBusy = false;
-        state = state.copyWith(working: false, aborting: false);
-        load();
-      }
-    } on OpencodeApiException catch (e) {
-      _abortTimer?.cancel();
-      _aborting = false;
-      state = state.copyWith(aborting: false, error: e.message);
-    }
+      await client.abort(sessionId);
+    } catch (_) {}
+    _clearAbort();
+    state = state.copyWith(aborting: false);
+    _scheduleSettlingReloads();
   }
 
   @override
@@ -534,7 +577,6 @@ class ChatController extends ChangeNotifier {
     _reloadTimer?.cancel();
     _deltaThrottleTimer?.cancel();
     _pollTimer?.cancel();
-    _abortTimer?.cancel();
     _stuckTimer?.cancel();
     super.dispose();
   }

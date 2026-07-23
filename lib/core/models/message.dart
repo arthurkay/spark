@@ -49,6 +49,17 @@ class MessageInfo {
       time: time is Map<String, dynamic> ? time : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'role': role,
+        if (sessionID != null) 'sessionID': sessionID,
+        if (modelID != null) 'modelID': modelID,
+        if (providerID != null) 'providerID': providerID,
+        if (agent != null) 'agent': agent,
+        if (mode != null) 'mode': mode,
+        if (time != null) 'time': time,
+      };
 }
 
 class MessagePart {
@@ -85,6 +96,8 @@ class MessagePart {
       raw: json,
     );
   }
+
+  Map<String, dynamic> toJson() => raw;
 }
 
 class MessageWithParts {
@@ -103,4 +116,9 @@ class MessageWithParts {
       parts: partsJson,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'info': info.toJson(),
+        'parts': parts.map((p) => p.toJson()).toList(),
+      };
 }

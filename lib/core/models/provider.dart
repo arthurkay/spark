@@ -7,6 +7,8 @@ class ModelInfo {
   factory ModelInfo.fromJson(String id, Map<String, dynamic> json) {
     return ModelInfo(id: id, name: (json['name'] ?? id).toString());
   }
+
+  Map<String, dynamic> toJson() => {'name': name};
 }
 
 class ProviderInfo {
@@ -31,6 +33,12 @@ class ProviderInfo {
       models: models,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'models': {for (final m in models) m.id: m.toJson()},
+      };
 }
 
 class Agent {
@@ -54,6 +62,13 @@ class Agent {
       hidden: json['hidden'] == true,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (description != null) 'description': description,
+        'mode': mode,
+        'hidden': hidden,
+      };
 }
 
 class ModelSelection {

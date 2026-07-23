@@ -80,6 +80,10 @@ class ModelSelectorBar extends ConsumerWidget {
             builder: (context, ref, _) {
               final providersAsync = ref.watch(providersProvider);
               final selectedModel = ref.watch(selectedModelProvider);
+              final currentSelection = sessionId != null
+                  ? ref.watch(currentModelSelectionProvider(sessionId!))
+                  : null;
+              final effectiveSelected = selectedModel ?? currentSelection;
               return SafeArea(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -97,10 +101,9 @@ class ModelSelectorBar extends ConsumerWidget {
                           error: (e, _) => Text('$e').muted,
                           data: (providers) => _ModelPickerList(
                             providers: providers,
-                            selectedModel: selectedModel,
+                            selectedModel: effectiveSelected,
                             onSelect: (selection) {
-                              ref.read(selectedModelProvider.notifier).state =
-                                  selection;
+                              setSelectedModel(ref, selection);
                               closeSheet(context);
                             },
                           ),
