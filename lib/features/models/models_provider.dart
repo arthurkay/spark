@@ -20,7 +20,27 @@ final agentsProvider = FutureProvider<List<Agent>>((ref) async {
 final selectedModelProvider = StateProvider<ModelSelection?>((ref) => null);
 final selectedAgentProvider = StateProvider<String?>((ref) => null);
 
-final sessionModeProvider = StateProvider<String>((ref) => 'build');
+final serverConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final client = ref.watch(opencodeClientProvider);
+  if (client == null) return {};
+  return client.getConfig();
+});
+
+final defaultAgentProvider = Provider<String?>((ref) {
+  final configAsync = ref.watch(serverConfigProvider);
+  return configAsync.whenOrNull(
+    data: (config) => (config['default_agent'] as String?) ?? 'build',
+  );
+});
+
+final primaryAgentsProvider = Provider<AsyncValue<List<Agent>>>((ref) {
+  final agentsAsync = ref.watch(agentsProvider);
+  return agentsAsync.whenData(
+    (agents) => agents
+        .where((a) => (a.mode == 'primary' || a.mode == 'all') && !a.hidden)
+        .toList(),
+  );
+});
 
 final currentModelProvider = Provider.family<String?, String>((ref, sessionId) {
   final controller = ref.watch(chatControllerProvider(sessionId));
@@ -42,8 +62,7 @@ final currentModeProvider = Provider.family<String?, String>((ref, sessionId) {
   final messages = controller.state.messages;
   for (final message in messages.reversed) {
     final agent = message.info.agent;
-    if (agent == 'plan') return 'plan';
-    if (agent == 'build') return 'build';
+    if (agent != null && agent.isNotEmpty) return agent;
   }
   return null;
 });

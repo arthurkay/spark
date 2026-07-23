@@ -1,11 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/providers.dart';
 import '../../core/api/question_provider.dart';
 import '../../core/models/message.dart';
+import '../../core/models/question.dart';
+import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
@@ -765,7 +768,7 @@ class _ToolChipState extends State<_ToolChip> {
         widget.part.state == 'timeout';
 
     final messageID = widget.part.raw['messageID'] as String?;
-    final callID = widget.part.raw['callID'] as String?;
+    final callID = (widget.part.raw['callID'] as String?) ?? widget.part.id;
     final pendingQuestions = container.read(pendingQuestionsProvider);
     final question = pendingQuestions[messageID] ?? pendingQuestions[callID];
 
@@ -806,7 +809,7 @@ class _ToolChipState extends State<_ToolChip> {
                 toolName: widget.part.toolName ?? 'question',
                 state: widget.part.state ?? '',
                 messageKey: messageID ?? '',
-                callKey: callID ?? '',
+                callKey: callID,
                 answer: isCompleted ? output : null,
                 isRunning: !isCompleted,
               ),
@@ -1068,7 +1071,7 @@ class _QuestionOptionTile extends StatelessWidget {
   }
 }
 
-class _QuestionSheetBody extends StatefulWidget {
+class _QuestionSheetBody extends ConsumerStatefulWidget {
   const _QuestionSheetBody({
     required this.questions,
     required this.requestId,
@@ -1092,10 +1095,10 @@ class _QuestionSheetBody extends StatefulWidget {
   final bool isRunning;
 
   @override
-  State<_QuestionSheetBody> createState() => _QuestionSheetBodyState();
+  ConsumerState<_QuestionSheetBody> createState() => _QuestionSheetBodyState();
 }
 
-class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
+class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
   late final TextEditingController _controller;
   late List<List<String>> _selections;
 
@@ -1125,20 +1128,47 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
     return _controller.text.trim().isNotEmpty;
   }
 
+  QuestionRequest? _findQuestion() {
+    final pending = ref.read(pendingQuestionsProvider);
+    return pending[widget.messageKey] ??
+        pending[widget.callKey] ??
+        pending[widget.requestId];
+  }
+
   String _resolveRequestId() {
     if (widget.requestId.isNotEmpty) return widget.requestId;
-    final container = ProviderScope.containerOf(context);
-    final pending = container.read(pendingQuestionsProvider);
-    final byKey = pending[widget.messageKey] ?? pending[widget.callKey];
-    return byKey?.id ?? '';
+    return _findQuestion()?.id ?? '';
+  }
+
+  Future<String> _resolveRequestIdWithFetch() async {
+    final id = _resolveRequestId();
+    if (id.isNotEmpty) return id;
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return '';
+    try {
+      final requests = await client.listQuestions();
+      for (final r in requests) {
+        if (r.messageID == widget.messageKey ||
+            r.callID == widget.callKey ||
+            r.id == widget.requestId) {
+          return r.id;
+        }
+      }
+    } catch (_) {}
+    return '';
   }
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
-    final requestId = _resolveRequestId();
-    if (requestId.isEmpty) return;
-    final container = ProviderScope.containerOf(context);
-    final client = container.read(opencodeClientProvider);
+    final requestId = await _resolveRequestIdWithFetch();
+    if (requestId.isEmpty) {
+      if (mounted) {
+        showAppToast(context,
+            title: 'Question not received from server. Try again.');
+      }
+      return;
+    }
+    final client = ref.read(opencodeClientProvider);
     final answers = <List<String>>[];
     for (var i = 0; i < widget.questions.length; i++) {
       final q = widget.questions[i];
@@ -1155,18 +1185,17 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
   }
 
   Future<void> _reject() async {
-    final container = ProviderScope.containerOf(context);
-    final client = container.read(opencodeClientProvider);
-    if (widget.requestId.isNotEmpty) {
-      await client
-          ?.rejectQuestion(requestId: widget.requestId)
-          .catchError((_) {});
-    }
+    final requestId = await _resolveRequestIdWithFetch();
+    if (requestId.isEmpty) return;
+    final client = ref.read(opencodeClientProvider);
+    await client?.rejectQuestion(requestId: requestId).catchError((_) {});
     if (mounted) closeSheet(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(pendingQuestionsProvider);
+    final resolvedId = _resolveRequestId();
     final hasAnswer = widget.answer != null && widget.answer!.isNotEmpty;
     final showInput = !hasAnswer && widget.isRunning;
 
@@ -1254,7 +1283,9 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
           else ...[
             PrimaryButton(
               onPressed: _canSubmit ? _submit : null,
-              child: const Text('Submit'),
+              child: Text(resolvedId.isNotEmpty
+                  ? 'Submit'
+                  : 'Submit (waiting for server…)'),
             ),
             const Gap(8),
             DestructiveButton(
@@ -1279,9 +1310,26 @@ class _FilePartWidget extends StatelessWidget {
     final mime = part.raw['mime'] as String? ?? '';
     final filename = part.raw['filename'] as String? ?? 'file';
     final isImage = mime.startsWith('image/') && url.isNotEmpty;
+    final isSvg = mime == 'image/svg+xml' || url.startsWith('data:image/svg');
     final theme = Theme.of(context);
 
+    if (isSvg) {
+      return Container(
+        margin: const EdgeInsets.only(top: 4),
+        child: _buildSvgWidget(url, filename, theme),
+      );
+    }
+
     if (isImage) {
+      if (url.startsWith('data:')) {
+        return Container(
+          margin: const EdgeInsets.only(top: 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: _buildDataImage(url, filename, mime, theme),
+          ),
+        );
+      }
       return Container(
         margin: const EdgeInsets.only(top: 4),
         child: ClipRRect(
@@ -1301,6 +1349,50 @@ class _FilePartWidget extends StatelessWidget {
     }
 
     return _FileChip(filename: filename, mime: mime, theme: theme);
+  }
+
+  Widget _buildSvgWidget(String url, String filename, ThemeData theme) {
+    if (url.startsWith('data:')) {
+      try {
+        final data = url.substring(url.indexOf(',') + 1);
+        final decoded = utf8.decode(base64Decode(data));
+        return SvgPicture.string(
+          decoded,
+          width: 300,
+          fit: BoxFit.contain,
+        );
+      } catch (_) {
+        return _FileChip(
+            filename: filename, mime: 'image/svg+xml', theme: theme);
+      }
+    }
+    return SvgPicture.network(
+      url,
+      width: 300,
+      fit: BoxFit.contain,
+      placeholderBuilder: (_) =>
+          _FileChip(filename: filename, mime: 'image/svg+xml', theme: theme),
+    );
+  }
+
+  Widget _buildDataImage(
+      String url, String filename, String mime, ThemeData theme) {
+    try {
+      final data = url.substring(url.indexOf(',') + 1);
+      final bytes = base64Decode(data);
+      return Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        width: 300,
+        errorBuilder: (_, __, ___) => _FileChip(
+          filename: filename,
+          mime: mime,
+          theme: theme,
+        ),
+      );
+    } catch (_) {
+      return _FileChip(filename: filename, mime: mime, theme: theme);
+    }
   }
 }
 

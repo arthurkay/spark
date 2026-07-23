@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import 'code_highlight_view.dart';
@@ -322,70 +325,200 @@ class _MarkdownRenderer {
   }
 
   Widget _table(md.Element element) {
-    final rawRows = <({bool isHeader, List<Widget> cells})>[];
+    final rawRows = <({bool isHeader, List<String> textCells})>[];
     for (final child in element.children ?? const <md.Node>[]) {
       if (child is! md.Element) continue;
       final cells = child.children ?? [];
       final isHeader = child.tag == 'thead';
-      final rowChildren = cells.map((c) {
-        if (c is! md.Element) return const SizedBox.shrink();
-        final cellWidgets =
-            c.children?.map(_visit).whereType<Widget>().toList() ?? [];
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: cellWidgets,
-          ),
-        );
+      final textCells = cells.map((c) {
+        if (c is! md.Element) return '';
+        return c.textContent.trim();
       }).toList();
-      rawRows.add((isHeader: isHeader, cells: rowChildren));
+      rawRows.add((isHeader: isHeader, textCells: textCells));
     }
     if (rawRows.isEmpty) return const SizedBox.shrink();
 
-    final columnCount =
-        rawRows.map((r) => r.cells.length).reduce((a, b) => a > b ? a : b);
+    final headerRow = rawRows.firstWhere(
+      (r) => r.isHeader,
+      orElse: () => rawRows.first,
+    );
+    final bodyRows = rawRows.where((r) => !r.isHeader).toList();
+    final bodyColumnCount = bodyRows.isNotEmpty
+        ? bodyRows
+            .map((r) => r.textCells.length)
+            .reduce((a, b) => a > b ? a : b)
+        : headerRow.textCells.length;
 
-    final rows = rawRows.map((r) {
-      final cells = <Widget>[...r.cells];
-      while (cells.length < columnCount) {
-        cells.add(
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: SizedBox.shrink(),
-          ),
-        );
-      }
-      return TableRow(
-        decoration: r.isHeader
-            ? BoxDecoration(
-                color:
-                    isDark ? const Color(0xff2b303b) : const Color(0xfff1f5f9),
-              )
-            : null,
-        children: cells,
+    List<String> headerLabels = headerRow.textCells;
+    if (headerLabels.length < bodyColumnCount && bodyColumnCount > 1) {
+      headerLabels = _splitTransposedHeader(headerLabels, bodyColumnCount);
+    }
+
+    final columnCount = headerLabels.length > bodyColumnCount
+        ? headerLabels.length
+        : bodyColumnCount;
+
+    Widget makeCell(String text, {bool isHeader = false, bool isBold = false}) {
+      final style = baseStyle.copyWith(
+        fontSize: 13,
+        fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
       );
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(text, style: style, maxLines: 10),
+      );
+    }
+
+    final headerWidgets =
+        headerLabels.map((t) => makeCell(t, isHeader: true)).toList();
+    while (headerWidgets.length < columnCount) {
+      headerWidgets.add(makeCell(''));
+    }
+
+    final dataRows = bodyRows.map((r) {
+      final cells = r.textCells.map((t) => makeCell(t)).toList();
+      while (cells.length < columnCount) {
+        cells.add(makeCell(''));
+      }
+      return cells;
     }).toList();
 
-    return Table(
-      border: TableBorder.all(
-        color: isDark ? const Color(0xff3f4451) : const Color(0xffe2e8f0),
-        width: 1,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Table(
+            border: TableBorder.all(
+              color: isDark ? const Color(0xff3f4451) : const Color(0xffe2e8f0),
+              width: 1,
+            ),
+            columnWidths: {
+              for (var i = 0; i < columnCount; i++)
+                i: const IntrinsicColumnWidth(),
+            },
+            children: [
+              TableRow(
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xff2b303b)
+                      : const Color(0xfff1f5f9),
+                ),
+                children: headerWidgets,
+              ),
+              for (final row in dataRows) TableRow(children: row),
+            ],
+          ),
+        ],
       ),
-      columnWidths: {
-        for (var i = 0; i < columnCount; i++) i: const FlexColumnWidth(),
-      },
-      children: rows,
     );
   }
 
+  List<String> _splitTransposedHeader(List<String> cells, int targetCount) {
+    if (cells.isEmpty) return cells;
+    final first = cells.first;
+    if (cells.length == 1 && first.contains(RegExp(r'\s{2,}|\n'))) {
+      return first
+          .split(RegExp(r'\s{2,}|\n'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    if (cells.length == 1) {
+      final words =
+          first.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+      if (words.length >= targetCount) return words.sublist(0, targetCount);
+      if (words.length > 1) return words;
+    }
+    return cells;
+  }
+
   Widget _image(md.Element element) {
+    final src = element.attributes['src'] ?? '';
     final alt = element.attributes['alt'] ?? '';
+    if (src.isEmpty) {
+      return _block(
+        Text(alt, style: baseStyle.copyWith(fontStyle: FontStyle.italic)),
+        top: 4,
+        bottom: 4,
+      );
+    }
     return _block(
-      Text(alt, style: baseStyle.copyWith(fontStyle: FontStyle.italic)),
+      _buildImage(src, alt),
       top: 4,
       bottom: 4,
     );
+  }
+
+  Widget _buildImage(String src, String alt) {
+    if (src.startsWith('data:image/svg') || src.endsWith('.svg')) {
+      return _buildSvg(src, alt);
+    }
+    if (src.startsWith('data:')) {
+      return _buildDataImage(src, alt);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        src,
+        fit: BoxFit.contain,
+        width: 300,
+        errorBuilder: (_, __, ___) => Text(
+          alt.isNotEmpty ? alt : 'Image failed to load',
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSvg(String src, String alt) {
+    if (src.startsWith('data:')) {
+      final data = src.substring(src.indexOf(',') + 1);
+      final decoded = utf8.decode(base64Decode(data));
+      return SvgPicture.string(
+        decoded,
+        width: 300,
+        fit: BoxFit.contain,
+        placeholderBuilder: (_) => Text(
+          alt.isNotEmpty ? alt : 'Loading SVG...',
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+    return SvgPicture.network(
+      src,
+      width: 300,
+      fit: BoxFit.contain,
+      placeholderBuilder: (_) => Text(
+        alt.isNotEmpty ? alt : 'Loading SVG...',
+        style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+      ),
+    );
+  }
+
+  Widget _buildDataImage(String src, String alt) {
+    try {
+      final data = src.substring(src.indexOf(',') + 1);
+      final bytes = base64Decode(data);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          width: 300,
+          errorBuilder: (_, __, ___) => Text(
+            alt.isNotEmpty ? alt : 'Image failed to load',
+            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ),
+        ),
+      );
+    } catch (_) {
+      return Text(
+        alt.isNotEmpty ? alt : 'Invalid image data',
+        style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+      );
+    }
   }
 
   Widget _text(String text, TextStyle style) => Text(text, style: style);

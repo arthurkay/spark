@@ -75,10 +75,16 @@ class ChatController extends ChangeNotifier {
   Timer? _pollTimer;
   Timer? _abortTimer;
   Timer? _deltaThrottleTimer;
+  Timer? _stuckTimer;
   Map<String, dynamic>? _pendingPartJson;
   bool _paused = false;
   bool _aborting = false;
   bool _optimisticBusy = false;
+  bool _stuck = false;
+  DateTime? _lastSseActivity;
+
+  static const Duration _stuckThreshold = Duration(seconds: 60);
+  static const Duration _stuckCheckInterval = Duration(seconds: 10);
 
   static const int initialLimit = 40;
   static const int olderChunkSize = 40;
@@ -102,6 +108,12 @@ class ChatController extends ChangeNotifier {
     await load();
     _subscribeEvents();
     _startPolling();
+    _startStuckTimer();
+  }
+
+  void _startStuckTimer() {
+    _stuckTimer?.cancel();
+    _stuckTimer = Timer.periodic(_stuckCheckInterval, (_) => _checkStuck());
   }
 
   void _startPolling() {
@@ -109,6 +121,31 @@ class ChatController extends ChangeNotifier {
     _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       if (!_paused) load();
     });
+  }
+
+  void _checkStuck() {
+    if (_stuck || !state.working || _aborting) return;
+    final last = _lastSseActivity;
+    final since = last == null
+        ? const Duration(days: 365)
+        : DateTime.now().difference(last);
+    if (since >= _stuckThreshold) {
+      _stuck = true;
+      _optimisticBusy = false;
+      _clearAbort();
+      state = state.copyWith(
+        working: false,
+        aborting: false,
+        error: 'Session appears unresponsive. You can dismiss this.',
+      );
+    }
+  }
+
+  void dismissStuck() {
+    if (!_stuck && state.error == null) return;
+    _stuck = false;
+    _lastSseActivity = DateTime.now();
+    state = state.copyWith(working: false, clearError: true);
   }
 
   Future<void> load() async {
@@ -146,10 +183,12 @@ class ChatController extends ChangeNotifier {
     _loadingOlder = true;
     state = state.copyWith(loadingOlder: true);
     try {
+      final oldestId =
+          state.messages.isNotEmpty ? state.messages.first.info.id : null;
       final fetched = await client.listMessages(
         sessionId,
         limit: olderChunkSize,
-        offset: _tailWindow,
+        before: oldestId,
       );
       final existingIds = {for (final m in state.messages) m.info.id};
       final newOnes =
@@ -172,7 +211,12 @@ class ChatController extends ChangeNotifier {
         working: working,
       );
     } on OpencodeApiException catch (e) {
-      state = state.copyWith(loadingOlder: false, error: e.message);
+      _loadingOlder = false;
+      if (e.statusCode == 400) {
+        state = state.copyWith(loadingOlder: false, hasMoreOlder: false);
+      } else {
+        state = state.copyWith(loadingOlder: false, error: e.message);
+      }
     } finally {
       _loadingOlder = false;
     }
@@ -211,7 +255,8 @@ class ChatController extends ChangeNotifier {
     if (a.parts.length != b.parts.length) return false;
     for (var i = 0; i < a.parts.length; i++) {
       if (a.parts[i].text != b.parts[i].text ||
-          a.parts[i].type != b.parts[i].type) {
+          a.parts[i].type != b.parts[i].type ||
+          a.parts[i].state != b.parts[i].state) {
         return false;
       }
     }
@@ -279,6 +324,9 @@ class ChatController extends ChangeNotifier {
     final props = event.properties;
     final sid = _sessionIdFromProps(props);
     final forThisSession = sid == sessionId;
+    if (forThisSession || sid == null) {
+      _lastSseActivity = DateTime.now();
+    }
     final activity = ref.read(sessionActivityProvider.notifier);
     switch (event.type) {
       case 'message.part.delta':
@@ -296,8 +344,10 @@ class ChatController extends ChangeNotifier {
         break;
       case 'session.status':
         final status = props['status'];
-        final isBusy = status is Map && status['type'] == 'busy';
-        final isIdle = status is Map && status['type'] == 'idle';
+        final statusType =
+            status is Map ? status['type']?.toString() : status?.toString();
+        final isBusy = statusType == 'busy';
+        final isIdle = statusType == 'idle';
         if (sid != null) {
           activity.setBusy(sid, isBusy && !isIdle && !_aborting);
         }
@@ -346,8 +396,15 @@ class ChatController extends ChangeNotifier {
         break;
       case 'session.error':
         if (forThisSession || sid == null) {
+          _clearAbort();
           _optimisticBusy = false;
-          state = state.copyWith(working: false);
+          state = state.copyWith(working: false, aborting: false);
+        }
+        break;
+      case 'session.compacted':
+        if (forThisSession) {
+          _tailWindow = initialLimit;
+          load();
         }
         break;
     }
@@ -447,15 +504,24 @@ class ChatController extends ChangeNotifier {
     _abortTimer = Timer(const Duration(seconds: 10), () {
       if (_aborting) {
         _aborting = false;
+        _optimisticBusy = false;
+        _stuck = true;
         state = state.copyWith(
           aborting: false,
-          error: 'Abort timed out. The session may still be running.',
+          working: false,
+          error: 'Abort timed out. Session may be stuck — dismiss to continue.',
         );
         load();
       }
     });
     try {
-      await client.abort(sessionId);
+      final stopped = await client.abort(sessionId);
+      if (!stopped) {
+        _clearAbort();
+        _optimisticBusy = false;
+        state = state.copyWith(working: false, aborting: false);
+        load();
+      }
     } on OpencodeApiException catch (e) {
       _abortTimer?.cancel();
       _aborting = false;
@@ -469,6 +535,7 @@ class ChatController extends ChangeNotifier {
     _deltaThrottleTimer?.cancel();
     _pollTimer?.cancel();
     _abortTimer?.cancel();
+    _stuckTimer?.cancel();
     super.dispose();
   }
 }

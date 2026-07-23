@@ -156,9 +156,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     setState(() => _attachments.clear());
     _composerController.clear();
     final model = ref.read(selectedModelProvider);
-    final mode = ref.read(sessionModeProvider);
-    final agent =
-        mode == 'plan' ? 'plan' : ref.read(selectedAgentProvider) ?? 'build';
+    final userAgent = ref.read(selectedAgentProvider);
+    final agent = userAgent ?? ref.read(defaultAgentProvider) ?? 'build';
     await ref.read(chatControllerProvider(widget.sessionId).notifier).send(
           text,
           model: model,
@@ -204,17 +203,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
 
     final currentModel = ref.watch(currentModelProvider(widget.sessionId));
-    final currentMode = ref.watch(currentModeProvider(widget.sessionId));
+    final currentAgent = ref.watch(currentModeProvider(widget.sessionId));
     final globalBusy =
         ref.watch(sessionActivityProvider).contains(widget.sessionId);
     final working = (state.working || globalBusy) && !state.aborting;
-    final modeLabel = currentMode == 'plan'
-        ? 'plan mode'
-        : (currentMode == 'build' ? 'build mode' : null);
+    final agentLabel = currentAgent;
     final subtitleParts = [
       if (working) 'working...',
       if (currentModel != null) currentModel,
-      if (modeLabel != null) modeLabel,
+      if (agentLabel != null) agentLabel,
     ];
 
     return Scaffold(
@@ -263,11 +260,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 )
               : null,
           trailing: [
-            if (_showScrollToBottom)
-              IconButton.outline(
-                icon: const Icon(LucideIcons.arrowDown, size: 18),
-                onPressed: () => _scrollToBottom(),
-              ),
             IconButton.ghost(
               icon: const Icon(LucideIcons.folderTree),
               onPressed: () =>
@@ -298,6 +290,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             onRemoveAttachment: _removeAttachment,
             onSend: _send,
             onAbort: controller.abort,
+            onDismiss: controller.dismissStuck,
           ),
         ],
       ),
@@ -341,13 +334,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
     if (state.error != null && state.messages.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(LucideIcons.triangleAlert, size: 40).iconMutedForeground,
-            const Gap(12),
-            Text(state.error!).muted.textCenter,
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.triangleAlert, size: 40)
+                  .iconMutedForeground,
+              const Gap(12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Text(
+                  state.error!,
+                  textAlign: TextAlign.center,
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                ).muted,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -424,6 +429,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ),
           ),
         ),
+        if (_showScrollToBottom)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: IconButton.primary(
+              icon: const Icon(LucideIcons.arrowDown, size: 18),
+              onPressed: () => _scrollToBottom(),
+            ),
+          ),
       ],
     );
   }
@@ -442,6 +456,7 @@ class _Composer extends ConsumerWidget {
     required this.onRemoveAttachment,
     required this.onSend,
     required this.onAbort,
+    required this.onDismiss,
   });
 
   final String sessionId;
@@ -455,6 +470,7 @@ class _Composer extends ConsumerWidget {
   final void Function(int index) onRemoveAttachment;
   final VoidCallback onSend;
   final VoidCallback onAbort;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -476,8 +492,6 @@ class _Composer extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  const ModeToggle(),
-                  const Spacer(),
                   Expanded(child: ModelSelectorBar(sessionId: sessionId)),
                 ],
               ),
@@ -499,6 +513,10 @@ class _Composer extends ConsumerWidget {
                         child: Text(error!).xSmall,
                       ),
                       TextButton(
+                        onPressed: onDismiss,
+                        child: const Text('Dismiss').xSmall,
+                      ),
+                      TextButton(
                         onPressed: onAbort,
                         child: const Text('Abort session').xSmall,
                       ),
@@ -513,7 +531,7 @@ class _Composer extends ConsumerWidget {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: attachments.length,
-                    separatorBuilder: (_, _) => const Gap(6),
+                    separatorBuilder: (_, __) => const Gap(6),
                     itemBuilder: (context, index) {
                       final a = attachments[index];
                       return _AttachmentChip(

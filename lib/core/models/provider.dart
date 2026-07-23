@@ -34,15 +34,24 @@ class ProviderInfo {
 }
 
 class Agent {
-  const Agent({required this.name, this.description});
+  const Agent({
+    required this.name,
+    this.description,
+    this.mode = 'primary',
+    this.hidden = false,
+  });
 
   final String name;
   final String? description;
+  final String mode;
+  final bool hidden;
 
   factory Agent.fromJson(Map<String, dynamic> json) {
     return Agent(
       name: (json['name'] ?? '').toString(),
       description: json['description'] as String?,
+      mode: (json['mode'] ?? 'primary').toString(),
+      hidden: json['hidden'] == true,
     );
   }
 }

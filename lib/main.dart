@@ -25,6 +25,7 @@ Future<void> main() async {
   );
   container.read(permissionListenerProvider);
   container.read(questionListenerProvider);
+  container.read(sessionLifecycleProvider);
   runApp(
     UncontrolledProviderScope(
       container: container,

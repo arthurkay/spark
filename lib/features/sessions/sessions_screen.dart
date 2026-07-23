@@ -12,6 +12,7 @@ import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
 import '../connection/connection_screen.dart';
 import '../permissions/permission_banner.dart';
+import 'create_project_sheet.dart';
 import 'sessions_provider.dart';
 import 'workspace_provider.dart';
 
@@ -105,6 +106,24 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       if (!context.mounted) return;
       showAppToast(context, title: 'Failed to delete', description: e.message);
     }
+  }
+
+  void _showCreateProject(BuildContext context, WidgetRef ref) {
+    final recent = ref.read(projectsProvider).maybeWhen(
+          data: (projects) => projects
+              .where((p) => !p.isGlobal)
+              .map((p) => p.worktree)
+              .toList(),
+          orElse: () => const <String>[],
+        );
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: CreateProjectSheet(recentDirectories: recent),
+      ),
+    );
   }
 
   List<_WorkspaceGroup> _buildWorkspaces(
@@ -251,7 +270,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: 3,
-                      separatorBuilder: (_, _) => const Gap(8),
+                      separatorBuilder: (_, __) => const Gap(8),
                       itemBuilder: (context, index) {
                         final options = [
                           ('all', 'All'),
@@ -290,7 +309,25 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     ),
                   ),
                   const Gap(16),
-                  const Text('Projects').small.semiBold.muted,
+                  Row(
+                    children: [
+                      const Text('Projects').small.semiBold.muted,
+                      const Spacer(),
+                      GhostButton(
+                        density: ButtonDensity.compact,
+                        size: ButtonSize.small,
+                        onPressed: () => _showCreateProject(context, ref),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.plus, size: 12),
+                            Gap(4),
+                            Text('Add project'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                   const Gap(16),
                 ],
               ),
@@ -337,7 +374,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     },
                   ),
                 ),
-                error: (_, _) => SliverPadding(
+                error: (_, __) => SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList.builder(
                     itemCount: projects.length,
@@ -457,6 +494,130 @@ class _SessionTile extends ConsumerWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
+  void _showSessionMenu(BuildContext context, WidgetRef ref) {
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Session actions').h4,
+              const Gap(16),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _renameSession(context, ref);
+                },
+                child: const Text('Rename'),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _forkSession(context, ref);
+                },
+                child: const Text('Fork session'),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _shareSession(context, ref);
+                },
+                child: const Text('Share'),
+              ),
+              const Gap(8),
+              DestructiveButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  onDelete();
+                },
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameSession(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(text: session.title ?? '');
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Rename session').h4,
+              const Gap(12),
+              TextField(
+                controller: controller,
+                placeholder: const Text('Session title'),
+              ),
+              const Gap(16),
+              PrimaryButton(
+                onPressed: () async {
+                  final title = controller.text.trim();
+                  if (title.isEmpty) return;
+                  closeSheet(sheetContext);
+                  try {
+                    await ref
+                        .read(opencodeClientProvider)!
+                        .renameSession(session.id, title);
+                    ref.read(sessionsRefreshProvider.notifier).state++;
+                  } on OpencodeApiException catch (e) {
+                    if (!context.mounted) return;
+                    showAppToast(context,
+                        title: 'Failed to rename', description: e.message);
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _forkSession(BuildContext context, WidgetRef ref) async {
+    try {
+      final forked =
+          await ref.read(opencodeClientProvider)!.forkSession(session.id);
+      ref.read(sessionsRefreshProvider.notifier).state++;
+      if (!context.mounted) return;
+      context.push('/session/${forked.id}');
+    } on OpencodeApiException catch (e) {
+      if (!context.mounted) return;
+      showAppToast(context, title: 'Failed to fork', description: e.message);
+    }
+  }
+
+  Future<void> _shareSession(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(opencodeClientProvider)!.shareSession(session.id);
+      ref.read(sessionsRefreshProvider.notifier).state++;
+      if (!context.mounted) return;
+      showAppToast(context, title: 'Session shared');
+    } on OpencodeApiException catch (e) {
+      if (!context.mounted) return;
+      showAppToast(context, title: 'Failed to share', description: e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final title = session.title?.trim().isNotEmpty == true
@@ -507,16 +668,10 @@ class _SessionTile extends ConsumerWidget {
             ),
             const Gap(8),
             if (busy) const SecondaryBadge(child: Text('working')),
-            Icon(
-              LucideIcons.externalLink,
-              size: 16,
-              color: theme.colorScheme.mutedForeground,
-            ),
-            const Gap(8),
             GestureDetector(
-              onTap: onDelete,
+              onTap: () => _showSessionMenu(context, ref),
               child: Icon(
-                LucideIcons.trash2,
+                LucideIcons.ellipsisVertical,
                 size: 16,
                 color: theme.colorScheme.mutedForeground,
               ),

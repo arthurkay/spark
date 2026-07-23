@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/api/providers.dart';
+import '../../core/api/sse_client.dart';
 import '../../core/models/session.dart';
 import 'workspace_provider.dart';
 
@@ -48,3 +49,24 @@ final sessionsRefreshProvider = StateProvider<int>((ref) => 0);
 void refreshSessions(Ref ref) {
   ref.read(sessionsRefreshProvider.notifier).state++;
 }
+
+class SessionLifecycleListener extends Notifier<void> {
+  @override
+  void build() {
+    ref.listen<AsyncValue<OpencodeEvent>>(eventStreamProvider, (prev, next) {
+      final event = next.value;
+      if (event == null) return;
+      switch (event.type) {
+        case 'session.created':
+        case 'session.deleted':
+          refreshSessions(ref);
+          refreshProjects(ref);
+      }
+    });
+  }
+}
+
+final sessionLifecycleProvider =
+    NotifierProvider<SessionLifecycleListener, void>(
+  SessionLifecycleListener.new,
+);

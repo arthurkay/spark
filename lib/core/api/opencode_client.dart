@@ -5,7 +5,6 @@ import 'package:dio/dio.dart';
 import '../models/attachment.dart';
 import '../models/file_node.dart';
 import '../models/message.dart';
-import '../models/permission.dart';
 import '../models/project.dart';
 import '../models/provider.dart';
 import '../models/question.dart';
@@ -55,9 +54,24 @@ class OpencodeClient {
   Never _rethrow(DioException e) {
     final status = e.response?.statusCode;
     final data = e.response?.data;
-    final message = data is Map && data['message'] != null
-        ? data['message'].toString()
-        : e.message ?? 'Request failed';
+    String? message;
+    if (data is Map) {
+      final raw = data['message'];
+      if (raw is String && raw.isNotEmpty) {
+        message = raw;
+      } else if (data['_tag'] is String) {
+        message = data['_tag'] as String;
+      }
+    }
+    message ??= switch (status) {
+      400 => 'Bad request',
+      401 => 'Unauthorized',
+      403 => 'Forbidden',
+      404 => 'Not found',
+      409 => 'Conflict',
+      500 => 'Server error',
+      _ => 'Request failed',
+    };
     throw OpencodeApiException(message, statusCode: status);
   }
 
@@ -115,6 +129,60 @@ class OpencodeClient {
     }
   }
 
+  Future<Session> renameSession(String id, String title) async {
+    try {
+      final res = await _dio.patch<Map<String, dynamic>>(
+        Endpoints.sessionById(id),
+        data: {'title': title},
+      );
+      return Session.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Session> forkSession(String id, {String? messageID}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.sessionFork(id),
+        data: {if (messageID != null) 'messageID': messageID},
+      );
+      return Session.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Session> shareSession(String id) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.sessionShare(id),
+      );
+      return Session.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Session> unshareSession(String id) async {
+    try {
+      final res = await _dio.delete<Map<String, dynamic>>(
+        Endpoints.sessionShare(id),
+      );
+      return Session.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> compactSession(String id) async {
+    try {
+      await _dio.post<dynamic>(Endpoints.sessionCompact(id));
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
   Future<Map<String, dynamic>> sessionStatus() async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(Endpoints.sessionStatus);
@@ -127,14 +195,14 @@ class OpencodeClient {
   Future<List<MessageWithParts>> listMessages(
     String sessionId, {
     int? limit,
-    int? offset,
+    String? before,
   }) async {
     try {
       final res = await _dio.get<List<dynamic>>(
         Endpoints.messages(sessionId),
         queryParameters: {
           if (limit != null) 'limit': limit,
-          if (offset != null) 'offset': offset,
+          if (before != null) 'before': before,
         },
       );
       return (res.data ?? [])
@@ -178,35 +246,34 @@ class OpencodeClient {
     }
   }
 
-  Future<void> abort(String sessionId) async {
+  Future<bool> abort(String sessionId) async {
     try {
-      await _dio.post<dynamic>(Endpoints.abort(sessionId));
+      final res = await _dio.post<dynamic>(Endpoints.abort(sessionId));
+      return res.data == true;
     } on DioException catch (e) {
       _rethrow(e);
     }
   }
 
   Future<void> respondPermission({
+    required String sessionId,
     required String permissionId,
     required String reply,
   }) async {
     try {
       await _dio.post<dynamic>(
-        Endpoints.permissionReply(permissionId),
-        data: {'reply': reply},
+        Endpoints.permissionReply(sessionId, permissionId),
+        data: {'response': reply},
       );
     } on DioException catch (e) {
       _rethrow(e);
     }
   }
 
-  Future<List<PermissionRequest>> listPermissions() async {
+  Future<Map<String, dynamic>> getConfig() async {
     try {
-      final res = await _dio.get<List<dynamic>>(Endpoints.permissionList);
-      return (res.data ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(PermissionRequest.fromJson)
-          .toList();
+      final res = await _dio.get<Map<String, dynamic>>(Endpoints.config);
+      return res.data ?? {};
     } on DioException catch (e) {
       _rethrow(e);
     }
@@ -292,6 +359,132 @@ class OpencodeClient {
       final data = res.data;
       if (data == null) return null;
       return Project.fromJson(data);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Project> initProjectGit({String? directory}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.projectGitInit,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return Project.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Project> updateProject(
+    String id, {
+    String? name,
+    Map<String, dynamic>? icon,
+    Map<String, dynamic>? commands,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (icon != null) body['icon'] = icon;
+      if (commands != null) body['commands'] = commands;
+      final res = await _dio.patch<Map<String, dynamic>>(
+        Endpoints.projectById(id),
+        data: body,
+      );
+      return Project.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<String>> listProjectDirectories(String id) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        Endpoints.projectDirectories(id),
+      );
+      final dirs = res.data?['directories'];
+      if (dirs is List) {
+        return dirs.whereType<String>().toList();
+      }
+      return const [];
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> createWorktree(Map<String, dynamic> input,
+      {String? directory}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.worktrees,
+        data: input,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return res.data ?? const <String, dynamic>{};
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<String>> listWorktrees({String? directory}) async {
+    try {
+      final res = await _dio.get<List<dynamic>>(
+        Endpoints.worktrees,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return (res.data ?? []).whereType<String>().toList();
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> createProjectCopy(
+    String id, {
+    required String directory,
+    String? name,
+    String? strategy,
+    String? sourceDirectory,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'directory': directory,
+        if (name != null) 'name': name,
+        if (strategy != null) 'strategy': strategy,
+      };
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.projectCopy(id),
+        data: body,
+        queryParameters: {
+          if (sourceDirectory != null) 'directory': sourceDirectory
+        },
+      );
+      return res.data ?? const <String, dynamic>{};
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<String> generateProjectCopyName(
+    String id, {
+    String? directory,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.projectCopyGenerateName(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return (res.data?['name'] as String?) ?? '';
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> refreshProjectCopy(String id, {String? directory}) async {
+    try {
+      await _dio.post<dynamic>(
+        Endpoints.projectCopyRefresh(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
     } on DioException catch (e) {
       _rethrow(e);
     }

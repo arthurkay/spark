@@ -14,12 +14,13 @@ class ModelSelectorBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedModel = ref.watch(selectedModelProvider);
     final selectedAgent = ref.watch(selectedAgentProvider);
+    final defaultAgent = ref.watch(defaultAgentProvider);
     final currentModel =
         sessionId != null ? ref.watch(currentModelProvider(sessionId!)) : null;
 
     final modelLabel =
         selectedModel?.modelID ?? currentModel ?? 'Default model';
-    final agentLabel = selectedAgent ?? 'Default agent';
+    final agentLabel = selectedAgent ?? defaultAgent ?? 'Default agent';
 
     return Row(
       children: [
@@ -78,6 +79,7 @@ class ModelSelectorBar extends ConsumerWidget {
           child: Consumer(
             builder: (context, ref, _) {
               final providersAsync = ref.watch(providersProvider);
+              final selectedModel = ref.watch(selectedModelProvider);
               return SafeArea(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -95,6 +97,7 @@ class ModelSelectorBar extends ConsumerWidget {
                           error: (e, _) => Text('$e').muted,
                           data: (providers) => _ModelPickerList(
                             providers: providers,
+                            selectedModel: selectedModel,
                             onSelect: (selection) {
                               ref.read(selectedModelProvider.notifier).state =
                                   selection;
@@ -123,7 +126,10 @@ class ModelSelectorBar extends ConsumerWidget {
         return SheetKeyboardPadding(
           child: Consumer(
             builder: (context, ref, _) {
-              final agentsAsync = ref.watch(agentsProvider);
+              final selectedAgent = ref.watch(selectedAgentProvider);
+              final defaultAgent = ref.watch(defaultAgentProvider);
+              final agentsAsync = ref.watch(primaryAgentsProvider);
+              final effectiveAgent = selectedAgent ?? defaultAgent;
               return SafeArea(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -139,25 +145,66 @@ class ModelSelectorBar extends ConsumerWidget {
                           loading: () =>
                               const Center(child: CircularProgressIndicator()),
                           error: (e, _) => Text('$e').muted,
-                          data: (agents) => ListView(
-                            shrinkWrap: true,
-                            children: [
-                              for (final agent in agents)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: GhostButton(
-                                    alignment: Alignment.centerLeft,
-                                    onPressed: () {
-                                      ref
-                                          .read(selectedAgentProvider.notifier)
-                                          .state = agent.name;
-                                      closeSheet(context);
-                                    },
-                                    child: Text(agent.name),
+                          data: (agents) {
+                            if (agents.isEmpty) {
+                              return const Text('No agents available').muted;
+                            }
+                            return ListView(
+                              shrinkWrap: true,
+                              children: [
+                                if (selectedAgent != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: GhostButton(
+                                      alignment: Alignment.centerLeft,
+                                      onPressed: () {
+                                        ref
+                                            .read(
+                                                selectedAgentProvider.notifier)
+                                            .state = null;
+                                        closeSheet(context);
+                                      },
+                                      child: const Text('Reset to default'),
+                                    ),
                                   ),
-                                ),
-                            ],
-                          ),
+                                for (final agent in agents)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: GhostButton(
+                                      alignment: Alignment.centerLeft,
+                                      onPressed: () {
+                                        ref
+                                            .read(
+                                                selectedAgentProvider.notifier)
+                                            .state = agent.name;
+                                        closeSheet(context);
+                                      },
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(agent.name),
+                                                if (agent.description != null &&
+                                                    agent.description!
+                                                        .isNotEmpty)
+                                                  Text(agent.description!)
+                                                      .muted,
+                                              ],
+                                            ),
+                                          ),
+                                          if (effectiveAgent == agent.name)
+                                            const Icon(LucideIcons.check,
+                                                size: 16),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -172,88 +219,15 @@ class ModelSelectorBar extends ConsumerWidget {
   }
 }
 
-class ModeToggle extends ConsumerWidget {
-  const ModeToggle({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(sessionModeProvider);
-    return SizedBox(
-      width: 180,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.muted,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(3),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ModeSegment(
-              label: 'Plan',
-              icon: LucideIcons.map,
-              active: mode == 'plan',
-              onTap: () =>
-                  ref.read(sessionModeProvider.notifier).state = 'plan',
-            ),
-            _ModeSegment(
-              label: 'Build',
-              icon: LucideIcons.hammer,
-              active: mode == 'build',
-              onTap: () =>
-                  ref.read(sessionModeProvider.notifier).state = 'build',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeSegment extends StatelessWidget {
-  const _ModeSegment({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.onTap,
+class _ModelPickerList extends StatefulWidget {
+  const _ModelPickerList({
+    required this.providers,
+    required this.selectedModel,
+    required this.onSelect,
   });
 
-  final String label;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: active ? theme.colorScheme.background : null,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 13),
-              const Gap(6),
-              Text(label).small.semiBold,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ModelPickerList extends StatefulWidget {
-  const _ModelPickerList({required this.providers, required this.onSelect});
-
   final List<ProviderInfo> providers;
+  final ModelSelection? selectedModel;
   final ValueChanged<ModelSelection> onSelect;
 
   @override
@@ -309,7 +283,15 @@ class _ModelPickerListState extends State<_ModelPickerList> {
                               modelID: model.id,
                             ),
                           ),
-                          child: Text(model.name),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(model.name)),
+                              if (widget.selectedModel?.providerID ==
+                                      provider.id &&
+                                  widget.selectedModel?.modelID == model.id)
+                                const Icon(LucideIcons.check, size: 16),
+                            ],
+                          ),
                         ),
                       ),
                 ],

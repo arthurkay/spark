@@ -12,9 +12,22 @@ class OpencodeEvent {
   final Map<String, dynamic> properties;
 
   factory OpencodeEvent.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> props;
+    final direct = json['properties'] ?? json['data'];
+    if (direct is Map<String, dynamic>) {
+      props = direct;
+    } else {
+      final payload = json['payload'];
+      if (payload is Map<String, dynamic>) {
+        final nested = payload['properties'] ?? payload['data'];
+        props = nested is Map<String, dynamic> ? nested : const {};
+      } else {
+        props = const {};
+      }
+    }
     return OpencodeEvent(
       type: (json['type'] ?? '').toString(),
-      properties: json['properties'] as Map<String, dynamic>? ?? const {},
+      properties: props,
     );
   }
 }
