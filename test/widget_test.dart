@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:opencode_companion/core/models/server_connection.dart';
+import 'package:spark/core/models/server_connection.dart';
 
 void main() {
   test('ServerConnection builds base url', () {

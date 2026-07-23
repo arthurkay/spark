@@ -1,4 +1,4 @@
-package ai.opencode.opencode_companion
+package ai.opencode.spark
 
 import io.flutter.embedding.android.FlutterActivity
 

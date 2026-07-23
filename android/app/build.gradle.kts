@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "ai.opencode.opencode_companion"
+    namespace = "ai.opencode.spark"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "ai.opencode.opencode_companion"
+        applicationId = "ai.opencode.spark"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
