@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
@@ -443,7 +444,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 }
 
-class _Composer extends ConsumerWidget {
+class _Composer extends ConsumerStatefulWidget {
   const _Composer({
     required this.sessionId,
     required this.controller,
@@ -473,7 +474,78 @@ class _Composer extends ConsumerWidget {
   final VoidCallback onDismiss;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends ConsumerState<_Composer> {
+  final SpeechToText _speech = SpeechToText();
+  bool _speechAvailable = false;
+  bool _isListening = false;
+  String _textBeforeListening = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+  }
+
+  @override
+  void dispose() {
+    _speech.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initSpeech() async {
+    _speechAvailable = await _speech.initialize(
+      onStatus: _onSpeechStatus,
+      onError: (_) => _stopListening(),
+    );
+  }
+
+  void _onSpeechStatus(String status) {
+    if (status == 'done' || status == 'notListening') {
+      _stopListening();
+    }
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      _stopListening();
+      return;
+    }
+    if (!_speechAvailable) {
+      await _initSpeech();
+      if (!_speechAvailable) return;
+    }
+    _textBeforeListening = widget.controller.text;
+    await _speech.listen(
+      onResult: (result) {
+        if (result.recognizedWords.isNotEmpty) {
+          final base = _textBeforeListening;
+          final suffix =
+              base.isNotEmpty && !base.endsWith(' ') ? ' ' : '';
+          setState(() {
+            widget.controller.text = '$base$suffix${result.recognizedWords}';
+            widget.controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: widget.controller.text.length),
+            );
+          });
+        }
+      },
+      listenOptions: SpeechListenOptions(
+        listenMode: ListenMode.dictation,
+      ),
+    );
+    setState(() => _isListening = true);
+  }
+
+  void _stopListening() {
+    _speech.stop();
+    if (_isListening) setState(() => _isListening = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -492,10 +564,11 @@ class _Composer extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Expanded(child: ModelSelectorBar(sessionId: sessionId)),
+                  Expanded(
+                      child: ModelSelectorBar(sessionId: widget.sessionId)),
                 ],
               ),
-              if (error != null) ...[
+              if (widget.error != null) ...[
                 const Gap(8),
                 Container(
                   padding:
@@ -510,14 +583,14 @@ class _Composer extends ConsumerWidget {
                           size: 14, color: Colors.red),
                       const Gap(6),
                       Expanded(
-                        child: Text(error!).xSmall,
+                        child: Text(widget.error!).xSmall,
                       ),
                       TextButton(
-                        onPressed: onDismiss,
+                        onPressed: widget.onDismiss,
                         child: const Text('Dismiss').xSmall,
                       ),
                       TextButton(
-                        onPressed: onAbort,
+                        onPressed: widget.onAbort,
                         child: const Text('Abort session').xSmall,
                       ),
                     ],
@@ -525,18 +598,18 @@ class _Composer extends ConsumerWidget {
                 ),
               ],
               const Gap(10),
-              if (attachments.isNotEmpty) ...[
+              if (widget.attachments.isNotEmpty) ...[
                 SizedBox(
                   height: 48,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: attachments.length,
+                    itemCount: widget.attachments.length,
                     separatorBuilder: (_, __) => const Gap(6),
                     itemBuilder: (context, index) {
-                      final a = attachments[index];
+                      final a = widget.attachments[index];
                       return _AttachmentChip(
                         attachment: a,
-                        onRemove: () => onRemoveAttachment(index),
+                        onRemove: () => widget.onRemoveAttachment(index),
                       );
                     },
                   ),
@@ -555,29 +628,40 @@ class _Composer extends ConsumerWidget {
                     IconButton.ghost(
                       icon: const Icon(LucideIcons.paperclip, size: 18),
                       size: ButtonSize.small,
-                      onPressed: onPickFiles,
+                      onPressed: widget.onPickFiles,
                     ),
+                    if (_speechAvailable)
+                      IconButton.ghost(
+                        icon: _isListening
+                            ? const Icon(LucideIcons.circleDot,
+                                size: 18, color: Colors.red)
+                            : const Icon(LucideIcons.mic, size: 18),
+                        size: ButtonSize.small,
+                        onPressed: _toggleListening,
+                      ),
                     Expanded(
                       child: TextField(
-                        controller: controller,
+                        controller: widget.controller,
                         placeholder: const Text('Message SparkCode...'),
                         border: Border.all(color: Colors.transparent),
                         borderRadius: BorderRadius.zero,
                         maxLines: 5,
                         minLines: 1,
-                        onSubmitted: (_) => onSend(),
+                        onSubmitted: (_) => widget.onSend(),
                       ),
                     ),
                     const Gap(4),
-                    if (working || aborting || error != null)
+                    if (widget.working ||
+                        widget.aborting ||
+                        widget.error != null)
                       IconButton.destructive(
                         icon: const Icon(LucideIcons.square),
                         size: ButtonSize.small,
-                        onPressed: onAbort,
+                        onPressed: widget.onAbort,
                       )
                     else
                       IconButton.primary(
-                        icon: sending
+                        icon: widget.sending
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
@@ -587,11 +671,22 @@ class _Composer extends ConsumerWidget {
                               )
                             : const Icon(LucideIcons.arrowUp),
                         size: ButtonSize.small,
-                        onPressed: sending ? null : onSend,
+                        onPressed: widget.sending ? null : widget.onSend,
                       ),
                   ],
                 ),
               ),
+              if (_isListening) ...[
+                const Gap(6),
+                Row(
+                  children: [
+                    const Icon(LucideIcons.circleDot,
+                        size: 12, color: Colors.red),
+                    const Gap(6),
+                    Text('Listening...').xSmall.muted,
+                  ],
+                ),
+              ],
             ],
           ),
         ),
