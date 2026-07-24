@@ -79,6 +79,7 @@ class ChatController extends ChangeNotifier {
   Timer? _pollTimer;
   Timer? _deltaThrottleTimer;
   Timer? _stuckTimer;
+  Timer? _abortTimer;
   Map<String, dynamic>? _pendingPartJson;
   bool _paused = false;
   bool _aborting = false;
@@ -476,6 +477,12 @@ class ChatController extends ChangeNotifier {
       final last = messages.last;
       if (last.info.role == 'assistant' && last.info.timeCompleted == null) {
         state = state.copyWith(working: false, aborting: false);
+        final client = _client;
+        if (client != null) {
+          try {
+            await client.abort(sessionId);
+          } catch (_) {}
+        }
       }
     }
     load();
@@ -554,6 +561,8 @@ class ChatController extends ChangeNotifier {
   }
 
   void _clearAbort() {
+    _abortTimer?.cancel();
+    _abortTimer = null;
     _aborting = false;
   }
 
@@ -567,8 +576,13 @@ class ChatController extends ChangeNotifier {
     try {
       await client.abort(sessionId);
     } catch (_) {}
-    _clearAbort();
-    state = state.copyWith(aborting: false);
+    _abortTimer?.cancel();
+    _abortTimer = Timer(const Duration(seconds: 15), () {
+      if (_aborting) {
+        _clearAbort();
+        state = state.copyWith(working: false, aborting: false);
+      }
+    });
     _scheduleSettlingReloads();
   }
 
@@ -578,6 +592,7 @@ class ChatController extends ChangeNotifier {
     _deltaThrottleTimer?.cancel();
     _pollTimer?.cancel();
     _stuckTimer?.cancel();
+    _abortTimer?.cancel();
     super.dispose();
   }
 }

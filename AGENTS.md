@@ -221,6 +221,13 @@ on the `requestID` captured when the sheet was built (it may be empty).
 - On a failed `send()` the error is surfaced in the composer (red banner) and the
   **Abort session** action is shown so a stuck/busy session can be recovered via
   `controller.abort()`.
+- `abort()` calls `POST /session/:id/abort` then keeps `_aborting = true` until a
+  `session.idle` / `session.status` idle event arrives (via `_clearAbort()`), OR a
+  15-second `_abortTimer` fires as a fallback. This prevents subsequent
+  `session.status` busy events from re-enabling "working" before the server
+  confirms the session actually stopped. On `server.reconnected`,
+  `_verifySessionStatus()` auto-aborts if the conversation tail is a stale
+  incomplete assistant message.
 
 ## Layout
 
