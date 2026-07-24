@@ -34,45 +34,32 @@ class QuestionListenerController extends Notifier<void> {
       case 'server.reconnected':
         _refresh();
         break;
-      case 'message.part.updated':
-        _extractFromPartEvent(event.properties);
+      case 'question.asked':
+        _onQuestionAsked(event.properties);
+        break;
+      case 'question.replied':
+      case 'question.rejected':
+        _onQuestionResolved(event.properties);
         break;
     }
   }
 
-  void _extractFromPartEvent(Map<String, dynamic> props) {
-    final part = props['part'];
-    if (part is! Map<String, dynamic>) return;
-    if (part['type'] != 'tool') return;
-    final tool = part['tool'];
-    if (tool != 'question') return;
-    final state = part['state'];
-    if (state is! Map<String, dynamic>) return;
-    final status = state['status'];
-    if (status != 'pending') return;
-    final input = state['input'];
-    if (input is! Map<String, dynamic>) return;
-    final questions = input['questions'] as List<dynamic>?;
-    if (questions == null || questions.isEmpty) return;
-    final sessionId = part['sessionID'] as String? ?? '';
-    final messageId = part['messageID'] as String? ?? '';
-    final callId = part['callID'] as String? ?? part['id'] as String? ?? '';
-    final requestId = part['id'] as String? ?? '';
-    final existing = ref.read(pendingQuestionsProvider);
-    if (existing.containsKey(messageId) || existing.containsKey(callId)) return;
-    final questionInfos = questions
-        .whereType<Map<String, dynamic>>()
-        .map(QuestionInfo.fromJson)
-        .toList();
-    if (questionInfos.isEmpty) return;
-    final request = QuestionRequest(
-      id: requestId,
-      sessionID: sessionId,
-      questions: questionInfos,
-      messageID: messageId.isNotEmpty ? messageId : null,
-      callID: callId.isNotEmpty ? callId : null,
-    );
-    _add(request);
+  void _onQuestionAsked(Map<String, dynamic> props) {
+    try {
+      final request = QuestionRequest.fromJson(props);
+      if (request.id.isEmpty) return;
+      _add(request);
+    } catch (_) {}
+  }
+
+  void _onQuestionResolved(Map<String, dynamic> props) {
+    final requestId =
+        props['requestID'] as String? ?? props['id'] as String? ?? '';
+    if (requestId.isEmpty) return;
+    final map = {...ref.read(pendingQuestionsProvider)};
+    map.removeWhere((key, value) => value.id == requestId);
+    ref.read(pendingQuestionsProvider.notifier).state = map;
+    if (map.isEmpty) NotificationService.instance.cancelQuestion();
   }
 
   void _add(QuestionRequest request) {
