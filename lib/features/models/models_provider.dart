@@ -67,9 +67,12 @@ final agentsProvider = FutureProvider<List<Agent>>((ref) async {
 
 final _selectedModelOverride = StateProvider<ModelSelection?>((ref) => null);
 
-final selectedModelProvider = Provider<ModelSelection?>((ref) {
+final selectedModelProvider =
+    Provider.family<ModelSelection?, String>((ref, sessionId) {
   final override = ref.watch(_selectedModelOverride);
   if (override != null) return override;
+  final fromLastMessage = ref.watch(currentModelSelectionProvider(sessionId));
+  if (fromLastMessage != null) return fromLastMessage;
   final defaultsAsync = ref.watch(configProvidersProvider);
   return defaultsAsync.whenOrNull(
     data: (config) {

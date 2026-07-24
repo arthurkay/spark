@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -32,6 +33,7 @@ String _computeDiff(String oldText, String newText) {
   if (b.isNotEmpty && b.last.isEmpty) b.removeLast();
   final n = a.length;
   final m = b.length;
+
   final lcs = List.generate(n + 1, (_) => List.filled(m + 1, 0));
   for (var i = n - 1; i >= 0; i--) {
     for (var j = m - 1; j >= 0; j--) {
@@ -40,30 +42,112 @@ String _computeDiff(String oldText, String newText) {
           : (lcs[i + 1][j] >= lcs[i][j + 1] ? lcs[i + 1][j] : lcs[i][j + 1]);
     }
   }
-  final out = <String>[];
+
+  // Reconstruct the edit script: list of (type, aLine, bLine)
+  // type: 'e' = equal, 'd' = delete, 'i' = insert
+  final edits = <(String, int, int)>[];
   var i = 0;
   var j = 0;
   while (i < n && j < m) {
     if (a[i] == b[j]) {
-      out.add(' ${a[i]}');
+      edits.add(('e', i, j));
       i++;
       j++;
     } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
-      out.add('-$a[i]');
+      edits.add(('d', i, -1));
       i++;
     } else {
-      out.add('+$b[j]');
+      edits.add(('i', -1, j));
       j++;
     }
   }
   while (i < n) {
-    out.add('-$a[i]');
+    edits.add(('d', i, -1));
     i++;
   }
   while (j < m) {
-    out.add('+$b[j]');
+    edits.add(('i', -1, j));
     j++;
   }
+
+  // Mark changed regions (consecutive d/i edits)
+  final changeRanges = <(int start, int end)>[];
+  var idx = 0;
+  while (idx < edits.length) {
+    if (edits[idx].$1 != 'e') {
+      final start = idx;
+      while (idx < edits.length && edits[idx].$1 != 'e') idx++;
+      changeRanges.add((start, idx));
+    } else {
+      idx++;
+    }
+  }
+
+  // Build hunks with context
+  const contextLines = 3;
+  final hunkRanges = <(int changeStart, int changeEnd)>[];
+  for (final (cs, ce) in changeRanges) {
+    final hunkStart = (cs - contextLines).clamp(0, edits.length);
+    final hunkEnd = (ce + contextLines).clamp(0, edits.length);
+    if (hunkRanges.isNotEmpty && hunkStart <= hunkRanges.last.$2) {
+      // Merge overlapping hunks
+      hunkRanges[hunkRanges.length - 1] = (hunkRanges.last.$1, hunkEnd);
+    } else {
+      hunkRanges.add((hunkStart, hunkEnd));
+    }
+  }
+
+  if (hunkRanges.isEmpty) {
+    return '';
+  }
+
+  final out = <String>[];
+
+  for (final (hStart, hEnd) in hunkRanges) {
+    var oldLine = 0;
+    var newLine = 0;
+    // Compute starting line numbers for hunk header
+    for (var k = 0; k < hStart; k++) {
+      final e = edits[k];
+      if (e.$1 == 'e') {
+        oldLine++;
+        newLine++;
+      } else if (e.$1 == 'd') {
+        oldLine++;
+      } else {
+        newLine++;
+      }
+    }
+
+    // Count lines in this hunk for the header
+    var oldCount = 0;
+    var newCount = 0;
+    for (var k = hStart; k < hEnd && k < edits.length; k++) {
+      final e = edits[k];
+      if (e.$1 == 'e') {
+        oldCount++;
+        newCount++;
+      } else if (e.$1 == 'd') {
+        oldCount++;
+      } else {
+        newCount++;
+      }
+    }
+
+    out.add('@@ -$oldLine,$oldCount +$newLine,$newCount @@');
+
+    for (var k = hStart; k < hEnd && k < edits.length; k++) {
+      final e = edits[k];
+      if (e.$1 == 'e') {
+        out.add(' ${a[e.$2]}');
+      } else if (e.$1 == 'd') {
+        out.add('-${a[e.$2]}');
+      } else {
+        out.add('+${b[e.$3]}');
+      }
+    }
+  }
+
   return out.join('\n');
 }
 
@@ -84,34 +168,99 @@ class MessageBubble extends StatelessWidget {
     if (children.isEmpty) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          margin: const EdgeInsets.only(top: 2),
-          decoration: BoxDecoration(
-            color:
-                _isUser ? theme.colorScheme.primary : theme.colorScheme.muted,
-            borderRadius: BorderRadius.circular(8),
+    final timestamp = message.info.timeCreated;
+    final timeLabel = _formatTimestamp(timestamp);
+    return GestureDetector(
+      onLongPress: () => _showContextMenu(context),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            margin: const EdgeInsets.only(top: 2),
+            decoration: BoxDecoration(
+              color:
+                  _isUser ? theme.colorScheme.primary : theme.colorScheme.muted,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              _isUser ? LucideIcons.user : LucideIcons.sparkles,
+              size: 15,
+              color: _isUser
+                  ? theme.colorScheme.primaryForeground
+                  : theme.colorScheme.foreground,
+            ),
           ),
-          child: Icon(
-            _isUser ? LucideIcons.user : LucideIcons.sparkles,
-            size: 15,
-            color: _isUser
-                ? theme.colorScheme.primaryForeground
-                : theme.colorScheme.foreground,
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ...children,
+                if (timeLabel != null) ...[
+                  const Gap(4),
+                  Text(timeLabel).xSmall.muted,
+                ],
+              ],
+            ),
           ),
-        ),
-        const Gap(12),
-        Expanded(
+        ],
+      ),
+    );
+  }
+
+  static String? _formatTimestamp(int? millis) {
+    if (millis == null) return null;
+    final dt = DateTime.fromMillisecondsSinceEpoch(millis);
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1)
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _showContextMenu(BuildContext context) {
+    final text = message.parts
+        .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
+        .map((p) => p.text!)
+        .join('\n\n');
+    if (text.isEmpty) return;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: children,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Message actions').h4,
+              const Gap(12),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  Clipboard.setData(ClipboardData(text: text));
+                  showAppToast(context, title: 'Copied to clipboard');
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.copy, size: 16),
+                    Gap(10),
+                    Text('Copy text'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -175,7 +324,10 @@ const _expandableToolTypes = {
   'todowrite',
   'write',
   'bash',
-  'grep'
+  'grep',
+  'task',
+  'websearch',
+  'webfetch',
 };
 
 class _TodoItem {
@@ -587,6 +739,79 @@ class _ToolChipState extends State<_ToolChip> {
             ],
           ],
         );
+      case 'task':
+        final description = input?['description'] as String? ?? '';
+        final prompt = input?['prompt'] as String? ?? '';
+        if (description.isEmpty && prompt.isEmpty && output.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (description.isNotEmpty) ...[
+              _contentLabel('Description'),
+              const Gap(4),
+              _codeBlock(context, description),
+            ],
+            if (prompt.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Prompt'),
+              const Gap(4),
+              _codeBlock(context, prompt, maxLines: 8),
+            ],
+            if (output.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Result'),
+              const Gap(4),
+              _codeBlock(context, output, maxLines: 12),
+            ],
+          ],
+        );
+      case 'websearch':
+        final query = input?['query'] as String? ?? '';
+        if (query.isEmpty && output.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (query.isNotEmpty) ...[
+              _contentLabel('Query'),
+              const Gap(4),
+              _codeBlock(context, query),
+            ],
+            if (output.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Results'),
+              const Gap(4),
+              _codeBlock(context, output, maxLines: 12),
+            ],
+          ],
+        );
+      case 'webfetch':
+        final url = input?['url'] as String? ?? '';
+        final format = input?['format'] as String? ?? '';
+        if (url.isEmpty && output.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (url.isNotEmpty) ...[
+              _contentLabel('URL'),
+              const Gap(4),
+              _codeBlock(context, url),
+            ],
+            if (format.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Format'),
+              const Gap(4),
+              _codeBlock(context, format),
+            ],
+            if (output.isNotEmpty) ...[
+              const Gap(8),
+              _contentLabel('Content'),
+              const Gap(4),
+              _codeBlock(context, output, maxLines: 12),
+            ],
+          ],
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -738,9 +963,13 @@ class _ToolChipState extends State<_ToolChip> {
             ),
           ),
           if (_expanded && hasContent) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: _buildContentPreview(context),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: _buildContentPreview(context),
+              ),
             ),
           ],
         ],

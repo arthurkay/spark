@@ -12,7 +12,8 @@ class ModelSelectorBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedModel = ref.watch(selectedModelProvider);
+    final selectedModel =
+        sessionId != null ? ref.watch(selectedModelProvider(sessionId!)) : null;
     final selectedAgent = ref.watch(selectedAgentProvider);
     final defaultAgent = ref.watch(defaultAgentProvider);
     final currentModel =
@@ -79,7 +80,9 @@ class ModelSelectorBar extends ConsumerWidget {
           child: Consumer(
             builder: (context, ref, _) {
               final providersAsync = ref.watch(providersProvider);
-              final selectedModel = ref.watch(selectedModelProvider);
+              final selectedModel = sessionId != null
+                  ? ref.watch(selectedModelProvider(sessionId!))
+                  : null;
               final currentSelection = sessionId != null
                   ? ref.watch(currentModelSelectionProvider(sessionId!))
                   : null;

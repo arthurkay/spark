@@ -10,6 +10,8 @@ import '../../core/models/server_config.dart';
 import '../../core/models/session.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
+import '../../shared/widgets/shimmer_loading.dart';
+import '../luse/providers/luse_provider.dart';
 import '../connection/connection_screen.dart';
 import '../permissions/permission_banner.dart';
 import 'create_project_sheet.dart';
@@ -215,6 +217,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final ref = this.ref;
     final sessionsAsync = ref.watch(allSessionsProvider);
     final projectsAsync = ref.watch(projectsProvider);
+    final luseEnabled = ref.watch(luseEnabledProvider);
 
     ref.listen<AsyncValue<OpencodeEvent>>(eventStreamProvider, (prev, next) {
       final event = next.value;
@@ -233,6 +236,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             ),
           ],
           trailing: [
+            if (luseEnabled)
+              IconButton.ghost(
+                icon: const Icon(LucideIcons.chartBar),
+                onPressed: () => context.push('/luse'),
+              ),
             IconButton.ghost(
               icon: const Icon(LucideIcons.refreshCw),
               onPressed: () {
@@ -339,8 +347,40 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           ),
           const SliverToBoxAdapter(child: Gap(12)),
           projectsAsync.when(
-            loading: () => const SliverToBoxAdapter(
-              child: Center(child: CircularProgressIndicator()),
+            loading: () => SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList.builder(
+                itemCount: 3,
+                itemBuilder: (context, index) {
+                  return ShimmerLoading(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          const SkeletonBox(width: 20, height: 20),
+                          const Gap(12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SkeletonBox(
+                                  width: 120 + (index * 40).toDouble(),
+                                  height: 14,
+                                ),
+                                const Gap(6),
+                                SkeletonBox(
+                                  width: 80 + (index * 20).toDouble(),
+                                  height: 10,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
             error: (e, _) => SliverToBoxAdapter(
               child: _ErrorState(
@@ -810,13 +850,22 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
             ),
           ),
           if (_expanded)
-            ...widget.sessions.map(
-              (session) => _SessionTile(
-                session: session,
-                onTap: () => context.push('/session/${session.id}'),
-                onDelete: widget.onDeleteSession != null
-                    ? () => widget.onDeleteSession!(session)
-                    : () {},
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: Column(
+                children: widget.sessions
+                    .map(
+                      (session) => _SessionTile(
+                        session: session,
+                        onTap: () => context.push('/session/${session.id}'),
+                        onDelete: widget.onDeleteSession != null
+                            ? () => widget.onDeleteSession!(session)
+                            : () {},
+                      ),
+                    )
+                    .toList(),
               ),
             ),
         ],

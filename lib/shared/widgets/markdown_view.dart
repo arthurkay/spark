@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
+import 'package:url_launcher/url_launcher.dart';
 
 import 'code_highlight_view.dart';
 
@@ -282,12 +285,9 @@ class _MarkdownRenderer {
       final match = RegExp(r'language-(\w+)').firstMatch(cls);
       if (match != null) language = match.group(1);
     }
+    final cleaned = code.replaceAll(RegExp(r'\n$'), '');
     return _block(
-      CodeHighlightView(
-        code: code.replaceAll(RegExp(r'\n$'), ''),
-        language: language,
-        lineNumbers: false,
-      ),
+      _CopyableCode(code: cleaned, language: language),
       top: 4,
       bottom: 4,
     );
@@ -525,5 +525,68 @@ class _MarkdownRenderer {
 
   void _openLink(String href) {
     if (href.isEmpty) return;
+    final uri = Uri.tryParse(href);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+}
+
+class _CopyableCode extends StatefulWidget {
+  const _CopyableCode({required this.code, this.language});
+
+  final String code;
+  final String? language;
+
+  @override
+  State<_CopyableCode> createState() => _CopyableCodeState();
+}
+
+class _CopyableCodeState extends State<_CopyableCode> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    return Stack(
+      children: [
+        CodeHighlightView(
+          code: widget.code,
+          language: widget.language,
+          lineNumbers: false,
+        ),
+        Positioned(
+          top: 6,
+          right: 6,
+          child: GestureDetector(
+            onTap: _copy,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xff3f4451).withAlpha(180)
+                    : const Color(0xffe2e8f0).withAlpha(180),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                _copied ? LucideIcons.check : LucideIcons.copy,
+                size: 12,
+                color:
+                    isDark ? const Color(0xffa0aec0) : const Color(0xff64748b),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -37,6 +38,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     super.initState();
     _scrollController.addListener(_onScroll);
     NotificationService.instance.requestPermission();
+    _loadDraft();
     _workingAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -60,11 +62,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   @override
   void dispose() {
+    _saveDraft();
     _scrollController.removeListener(_onScroll);
     _composerController.dispose();
     _scrollController.dispose();
     _workingAnimController.dispose();
     super.dispose();
+  }
+
+  static String _draftKey(String sessionId) => 'draft_$sessionId';
+
+  Future<void> _loadDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final draft = prefs.getString(_draftKey(widget.sessionId));
+    if (draft != null && draft.isNotEmpty) {
+      _composerController.text = draft;
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final text = _composerController.text;
+    final prefs = await SharedPreferences.getInstance();
+    if (text.trim().isEmpty) {
+      await prefs.remove(_draftKey(widget.sessionId));
+    } else {
+      await prefs.setString(_draftKey(widget.sessionId), text);
+    }
+  }
+
+  Future<void> _clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_draftKey(widget.sessionId));
   }
 
   void _scrollToBottom({bool animate = true}) {
@@ -157,7 +185,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final attachments = List<Attachment>.from(_attachments);
     setState(() => _attachments.clear());
     _composerController.clear();
-    final model = ref.read(selectedModelProvider);
+    _clearDraft();
+    final model = ref.read(selectedModelProvider(widget.sessionId));
     final userAgent = ref.read(selectedAgentProvider);
     final agent = userAgent ?? ref.read(defaultAgentProvider) ?? 'build';
     await ref.read(chatControllerProvider(widget.sessionId).notifier).send(
@@ -596,21 +625,32 @@ class _ComposerState extends ConsumerState<_Composer> {
                     color: Colors.red.withAlpha(15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(LucideIcons.triangleAlert,
-                          size: 14, color: Colors.red),
+                      Row(
+                        children: [
+                          const Icon(LucideIcons.triangleAlert,
+                              size: 14, color: Colors.red),
+                          const Gap(6),
+                          Expanded(
+                            child: Text(widget.error!).xSmall,
+                          ),
+                        ],
+                      ),
                       const Gap(6),
-                      Expanded(
-                        child: Text(widget.error!).xSmall,
-                      ),
-                      TextButton(
-                        onPressed: widget.onDismiss,
-                        child: const Text('Dismiss').xSmall,
-                      ),
-                      TextButton(
-                        onPressed: widget.onAbort,
-                        child: const Text('Abort session').xSmall,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          TextButton(
+                            onPressed: widget.onDismiss,
+                            child: const Text('Dismiss').xSmall,
+                          ),
+                          TextButton(
+                            onPressed: widget.onAbort,
+                            child: const Text('Abort session').xSmall,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -688,7 +728,7 @@ class _ComposerState extends ConsumerState<_Composer> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(LucideIcons.arrowUp),
+                            : const Icon(LucideIcons.send),
                         size: ButtonSize.small,
                         onPressed: widget.sending ? null : widget.onSend,
                       ),

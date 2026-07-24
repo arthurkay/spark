@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,6 +7,8 @@ import '../features/chat/chat_screen.dart';
 import '../features/connection/settings_screen.dart';
 import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
+import '../features/luse/screens/luse_screen.dart';
+import '../features/luse/screens/fundamentals_screen.dart';
 import '../features/sessions/sessions_screen.dart';
 
 GoRouter createRouter(Ref ref) {
@@ -14,31 +16,157 @@ GoRouter createRouter(Ref ref) {
     initialLocation: '/',
     refreshListenable: _ConnectionListenable(ref),
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const ProjectsScreen()),
+      GoRoute(
+        path: '/',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const ProjectsScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const SettingsScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.3, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
       ),
       GoRoute(
         path: '/session/:id',
-        builder: (context, state) =>
-            ChatScreen(sessionId: state.pathParameters['id']!),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: ChatScreen(sessionId: state.pathParameters['id']!),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
       ),
       GoRoute(
         path: '/session/:id/files',
-        builder: (context, state) =>
-            FilesScreen(sessionId: state.pathParameters['id']!),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: FilesScreen(sessionId: state.pathParameters['id']!),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
       ),
       GoRoute(
         path: '/workspace/:worktree/files',
-        builder: (context, state) => FilesScreen(
-          directory: Uri.decodeComponent(state.pathParameters['worktree']!),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: FilesScreen(
+            directory: Uri.decodeComponent(state.pathParameters['worktree']!),
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
         ),
       ),
       GoRoute(
         path: '/session/:id/diff',
-        builder: (context, state) =>
-            DiffScreen(sessionId: state.pathParameters['id']!),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: DiffScreen(sessionId: state.pathParameters['id']!),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/luse',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const LuseScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/luse/fundamentals',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const FundamentalsScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: FadeTransition(opacity: curved, child: child),
+            );
+          },
+        ),
       ),
     ],
   );
