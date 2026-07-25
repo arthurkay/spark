@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../models/attachment.dart';
 import '../models/file_node.dart';
 import '../models/message.dart';
+import '../models/permission.dart';
 import '../models/project.dart';
 import '../models/provider.dart';
 import '../models/question.dart';
@@ -259,12 +260,29 @@ class OpencodeClient {
     required String sessionId,
     required String permissionId,
     required String reply,
+    String? directory,
   }) async {
     try {
       await _dio.post<dynamic>(
         Endpoints.permissionReply(sessionId, permissionId),
+        queryParameters: {if (directory != null) 'directory': directory},
         data: {'response': reply},
       );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<PermissionRequest>> listPermissions({String? directory}) async {
+    try {
+      final res = await _dio.get<List<dynamic>>(
+        '/permission',
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return (res.data ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PermissionRequest.fromJson)
+          .toList();
     } on DioException catch (e) {
       _rethrow(e);
     }
@@ -532,9 +550,12 @@ class OpencodeClient {
     }
   }
 
-  Future<List<QuestionRequest>> listQuestions() async {
+  Future<List<QuestionRequest>> listQuestions({String? directory}) async {
     try {
-      final res = await _dio.get<List<dynamic>>(Endpoints.questionList);
+      final res = await _dio.get<List<dynamic>>(
+        Endpoints.questionList,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
       return (res.data ?? [])
           .whereType<Map<String, dynamic>>()
           .map(QuestionRequest.fromJson)

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../../features/sessions/workspace_provider.dart';
 import '../models/question.dart';
 import '../notifications/notification_service.dart';
 import 'opencode_client.dart';
@@ -33,14 +34,14 @@ class QuestionListenerController extends Notifier<void> {
     switch (event.type) {
       case 'server.reconnected':
         _refresh();
-        break;
       case 'question.asked':
+      case 'question.v2.asked':
         _onQuestionAsked(event.properties);
-        break;
       case 'question.replied':
+      case 'question.v2.replied':
       case 'question.rejected':
+      case 'question.v2.rejected':
         _onQuestionResolved(event.properties);
-        break;
     }
   }
 
@@ -80,20 +81,41 @@ class QuestionListenerController extends Notifier<void> {
     final client = ref.read(opencodeClientProvider);
     if (client == null) return;
     try {
-      final requests = await client.listQuestions();
-      final map = <String, QuestionRequest>{};
-      for (final r in requests) {
-        map[r.key] = r;
+      final seen = <String, QuestionRequest>{};
+      for (final r in await client.listQuestions()) {
+        if (r.id.isEmpty) continue;
+        seen[r.key] = r;
         if (r.messageID != null && r.messageID!.isNotEmpty) {
-          map[r.messageID!] = r;
+          seen[r.messageID!] = r;
         }
         if (r.callID != null && r.callID!.isNotEmpty) {
-          map[r.callID!] = r;
+          seen[r.callID!] = r;
         }
-        map[r.id] = r;
+        seen[r.id] = r;
       }
-      ref.read(pendingQuestionsProvider.notifier).state = map;
-      if (map.isEmpty) NotificationService.instance.cancelQuestion();
+      final projects = await ref.read(projectsProvider.future);
+      for (final project in projects) {
+        if (project.isGlobal) continue;
+        try {
+          for (final r in await client.listQuestions(
+            directory: project.worktree,
+          )) {
+            if (r.id.isEmpty) continue;
+            seen.putIfAbsent(r.key, () => r);
+            if (r.messageID != null && r.messageID!.isNotEmpty) {
+              seen.putIfAbsent(r.messageID!, () => r);
+            }
+            if (r.callID != null && r.callID!.isNotEmpty) {
+              seen.putIfAbsent(r.callID!, () => r);
+            }
+            seen.putIfAbsent(r.id, () => r);
+          }
+        } on OpencodeApiException {
+          // Ignore per-project errors; keep other results.
+        }
+      }
+      ref.read(pendingQuestionsProvider.notifier).state = seen;
+      if (seen.isEmpty) NotificationService.instance.cancelQuestion();
     } on OpencodeApiException {
       // Ignore transient errors; poll will retry.
     }

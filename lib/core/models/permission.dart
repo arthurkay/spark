@@ -10,6 +10,7 @@ class PermissionRequest {
     this.callID,
     this.messageID,
     this.pattern,
+    this.directory,
   });
 
   final String id;
@@ -20,6 +21,21 @@ class PermissionRequest {
   final String? callID;
   final String? messageID;
   final List<String>? pattern;
+  final String? directory;
+
+  PermissionRequest copyWith({String? directory}) {
+    return PermissionRequest(
+      id: id,
+      sessionID: sessionID,
+      title: title,
+      type: type,
+      metadata: metadata,
+      callID: callID,
+      messageID: messageID,
+      pattern: pattern,
+      directory: directory ?? this.directory,
+    );
+  }
 
   factory PermissionRequest.fromJson(Map<String, dynamic> json) {
     final data = json['data'] is Map<String, dynamic>
@@ -52,6 +68,7 @@ class PermissionRequest {
           tool?['messageID'] as String? ??
           source?['messageID'] as String?,
       pattern: pattern,
+      directory: data['directory'] as String?,
     );
   }
 

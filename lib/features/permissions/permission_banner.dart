@@ -190,6 +190,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
               sessionId: permission.sessionID,
               permissionId: permission.id,
               reply: response,
+              directory: permission.directory,
             )
             .catchError((_) {});
       },
@@ -214,6 +215,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
             sessionId: permission.sessionID,
             permissionId: permission.id,
             reply: response,
+            directory: permission.directory,
           )
           .catchError((_) {});
     }
