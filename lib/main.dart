@@ -28,6 +28,9 @@ Future<void> main() async {
     onTap: (permissionID, sessionID) {
       container.read(_routerProvider).go('/session/$sessionID');
     },
+    onRouteTap: (route) {
+      container.read(_routerProvider).go(route);
+    },
   );
   container.read(permissionListenerProvider);
   container.read(questionListenerProvider);

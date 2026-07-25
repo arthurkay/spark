@@ -8,6 +8,8 @@ class LuseFundamentals {
     this.dividendAmount,
     this.marketCap,
     this.lastPrice,
+    this.change,
+    this.changePercent,
     this.sector,
     this.currency,
     this.isin,
@@ -22,10 +24,15 @@ class LuseFundamentals {
   final double? dividendAmount;
   final double? marketCap;
   final double? lastPrice;
+  final double? change;
+  final double? changePercent;
   final String? sector;
   final String? currency;
   final String? isin;
   final DateTime? lastUpdated;
+
+  bool get isGainer => (change ?? 0) > 0;
+  bool get isLoser => (change ?? 0) < 0;
 
   factory LuseFundamentals.fromJson(Map<String, dynamic> json) {
     return LuseFundamentals(
@@ -37,6 +44,8 @@ class LuseFundamentals {
       dividendAmount: _parseDouble(json['dividendAmount']),
       marketCap: _parseDouble(json['marketCap']),
       lastPrice: _parseDouble(json['lastPrice']),
+      change: _parseDouble(json['change']),
+      changePercent: _parseDouble(json['changePercent']),
       sector: json['sector']?.toString(),
       currency: json['currency']?.toString(),
       isin: json['isin']?.toString(),
@@ -55,6 +64,8 @@ class LuseFundamentals {
         if (dividendAmount != null) 'dividendAmount': dividendAmount,
         if (marketCap != null) 'marketCap': marketCap,
         if (lastPrice != null) 'lastPrice': lastPrice,
+        if (change != null) 'change': change,
+        if (changePercent != null) 'changePercent': changePercent,
         if (sector != null) 'sector': sector,
         if (currency != null) 'currency': currency,
         if (isin != null) 'isin': isin,

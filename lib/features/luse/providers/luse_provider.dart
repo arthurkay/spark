@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/api/luse_client.dart';
-import '../../../core/api/mansa_client.dart';
 import '../../../core/api/africanfinancials_client.dart';
 import '../../../core/storage/luse_store.dart';
 import '../models/luse_market_snapshot.dart';
@@ -11,7 +10,11 @@ import '../models/luse_company_profile.dart';
 
 final luseStoreProvider = Provider<LuseStore>((ref) => LuseStore());
 
-final luseClientProvider = Provider<LuseClient>((ref) => LuseClient());
+final luseClientProvider = Provider<LuseClient>((ref) {
+  return LuseClient(
+    africanfinancialsClient: ref.read(africanfinancialsClientProvider),
+  );
+});
 
 final luseEnabledProvider =
     StateNotifierProvider<LuseEnabledNotifier, bool>((ref) {
@@ -84,34 +87,13 @@ final luseHistoryProvider =
   return store.getHistory();
 });
 
-final mansaClientProvider = Provider<MansaApiClient>((ref) => MansaApiClient());
-
 final africanfinancialsClientProvider =
     Provider<AfricanfinancialsClient>((ref) => AfricanfinancialsClient());
 
 final luseFundamentalsProvider =
     FutureProvider.autoDispose<List<LuseFundamentals>>((ref) async {
-  final client = ref.read(mansaClientProvider);
-  final stocks = await client.fetchAllStocks();
-  final fundamentals = <LuseFundamentals>[];
-
-  for (final stock in stocks) {
-    final symbol = stock['symbol']?.toString() ?? '';
-    if (symbol.isNotEmpty) {
-      final fund = await client.fetchFundamentals(symbol);
-      if (fund != null) {
-        fundamentals.add(fund);
-      }
-    }
-  }
-
-  return fundamentals;
-});
-
-final luseMoversProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final client = ref.read(mansaClientProvider);
-  return client.fetchMovers();
+  final afClient = ref.read(africanfinancialsClientProvider);
+  return afClient.fetchAllFundamentals();
 });
 
 final luseCompanyProfileProvider =
@@ -121,3 +103,15 @@ final luseCompanyProfileProvider =
     return client.fetchProfile(symbol);
   },
 );
+
+final luseStockHistoryProvider =
+    FutureProvider.autoDispose<Map<String, List<Map<String, dynamic>>>>(
+        (ref) async {
+  final store = ref.read(luseStoreProvider);
+  final watchlist = ref.read(luseWatchlistProvider);
+  final result = <String, List<Map<String, dynamic>>>{};
+  for (final symbol in watchlist) {
+    result[symbol] = await store.getStockHistory(symbol);
+  }
+  return result;
+});

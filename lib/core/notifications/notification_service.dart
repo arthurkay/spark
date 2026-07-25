@@ -19,11 +19,14 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   void Function(String id, String sessionID)? _onTap;
+  void Function(String route)? _onRouteTap;
 
   Future<void> init({
     required void Function(String id, String sessionID) onTap,
+    void Function(String route)? onRouteTap,
   }) async {
     _onTap = onTap;
+    _onRouteTap = onRouteTap;
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_notification',
     );
@@ -68,6 +71,11 @@ class NotificationService {
     if (payload == null) return;
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
+      final route = data['route'] as String?;
+      if (route != null && route.isNotEmpty) {
+        _onRouteTap?.call(route);
+        return;
+      }
       final id =
           (data['permissionID'] ?? data['questionID'] ?? data['id'] ?? '')
               .toString();
@@ -200,6 +208,7 @@ class NotificationService {
       title,
       body.toString(),
       details,
+      payload: jsonEncode({'route': '/luse'}),
     );
   }
 

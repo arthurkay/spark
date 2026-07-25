@@ -162,28 +162,26 @@ class StockDetailSheet extends ConsumerWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _StatItem(
-                                label: 'P/E',
-                                value: fund.peRatio != null
-                                    ? fund.peRatio!.toStringAsFixed(1)
-                                    : '--',
-                              ),
-                              _StatItem(
-                                label: 'EPS',
-                                value: fund.eps != null
-                                    ? 'K${fund.eps!.toStringAsFixed(2)}'
-                                    : '--',
-                              ),
-                              _StatItem(
-                                label: 'Div Yield',
-                                value: fund.dividendYield != null
-                                    ? '${fund.dividendYield!.toStringAsFixed(1)}%'
-                                    : '--',
-                              ),
-                              if (fund.marketCap != null)
+                              if (fund.sector != null)
                                 _StatItem(
-                                  label: 'Market Cap',
-                                  value: _formatMarketCap(fund.marketCap!),
+                                  label: 'Sector',
+                                  value: fund.sector!,
+                                ),
+                              if (fund.peRatio != null)
+                                _StatItem(
+                                  label: 'P/E',
+                                  value: fund.peRatio!.toStringAsFixed(1),
+                                ),
+                              if (fund.eps != null)
+                                _StatItem(
+                                  label: 'EPS',
+                                  value: 'K${fund.eps!.toStringAsFixed(2)}',
+                                ),
+                              if (fund.dividendYield != null)
+                                _StatItem(
+                                  label: 'Div Yield',
+                                  value:
+                                      '${fund.dividendYield!.toStringAsFixed(1)}%',
                                 ),
                             ],
                           ),
@@ -198,13 +196,6 @@ class StockDetailSheet extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  String _formatMarketCap(double value) {
-    if (value >= 1e9) return '${(value / 1e9).toStringAsFixed(1)}B';
-    if (value >= 1e6) return '${(value / 1e6).toStringAsFixed(1)}M';
-    if (value >= 1e3) return '${(value / 1e3).toStringAsFixed(1)}K';
-    return value.toStringAsFixed(0);
   }
 }
 

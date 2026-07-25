@@ -19,6 +19,11 @@ class FundamentalsCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final watchlist = ref.watch(luseWatchlistProvider);
     final isWatched = watchlist.contains(fundamental.symbol);
+    final changeColor = fundamental.isGainer
+        ? const Color(0xFF34D399)
+        : fundamental.isLoser
+            ? const Color(0xFFF87171)
+            : Theme.of(context).colorScheme.mutedForeground;
 
     return GestureDetector(
       onTap: onTap,
@@ -62,39 +67,53 @@ class FundamentalsCard extends ConsumerWidget {
                       .semiBold,
               ],
             ),
-            const Gap(10),
+            const Gap(8),
             Row(
               children: [
-                _Metric(
-                  label: 'P/E',
-                  value: fundamental.peRatio != null
-                      ? fundamental.peRatio!.toStringAsFixed(1)
-                      : '--',
-                  color: _peColor(fundamental.peRatio),
-                ),
-                const Gap(8),
-                _Metric(
-                  label: 'EPS',
-                  value: fundamental.eps != null
-                      ? 'K${fundamental.eps!.toStringAsFixed(2)}'
-                      : '--',
-                  color: _epsColor(fundamental.eps),
-                ),
-                const Gap(8),
-                _Metric(
-                  label: 'Div Yield',
-                  value: fundamental.dividendYield != null
-                      ? '${fundamental.dividendYield!.toStringAsFixed(1)}%'
-                      : '--',
-                  color: _divColor(fundamental.dividendYield),
-                ),
-                const Spacer(),
-                if (fundamental.marketCap != null)
-                  _Metric(
-                    label: 'Market Cap',
-                    value: _formatMarketCap(fundamental.marketCap!),
-                    color: Theme.of(context).colorScheme.mutedForeground,
+                if (fundamental.sector != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .foreground
+                          .withAlpha(15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(fundamental.sector!).xSmall,
                   ),
+                  const Gap(8),
+                ],
+                if (fundamental.changePercent != null)
+                  Text(
+                    '${fundamental.changePercent! >= 0 ? '+' : ''}${fundamental.changePercent!.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: changeColor,
+                    ),
+                  ),
+                const Spacer(),
+                if (fundamental.peRatio != null)
+                  _Metric(
+                      label: 'P/E',
+                      value: fundamental.peRatio!.toStringAsFixed(1)),
+                if (fundamental.eps != null) ...[
+                  const Gap(8),
+                  _Metric(
+                      label: 'EPS',
+                      value: 'K${fundamental.eps!.toStringAsFixed(2)}'),
+                ],
+                if (fundamental.dividendYield != null) ...[
+                  const Gap(8),
+                  _Metric(
+                      label: 'Div',
+                      value:
+                          '${fundamental.dividendYield!.toStringAsFixed(1)}%'),
+                ],
               ],
             ),
           ],
@@ -102,45 +121,13 @@ class FundamentalsCard extends ConsumerWidget {
       ),
     );
   }
-
-  Color? _peColor(double? pe) {
-    if (pe == null) return null;
-    if (pe > 20) return const Color(0xFFF87171);
-    if (pe > 10) return const Color(0xFFFBBF24);
-    return const Color(0xFF34D399);
-  }
-
-  Color? _epsColor(double? eps) {
-    if (eps == null) return null;
-    if (eps < 0) return const Color(0xFFF87171);
-    return const Color(0xFF34D399);
-  }
-
-  Color? _divColor(double? div) {
-    if (div == null) return null;
-    if (div > 5) return const Color(0xFF34D399);
-    if (div > 2) return const Color(0xFFFBBF24);
-    return null;
-  }
-
-  String _formatMarketCap(double value) {
-    if (value >= 1e9) return '${(value / 1e9).toStringAsFixed(1)}B';
-    if (value >= 1e6) return '${(value / 1e6).toStringAsFixed(1)}M';
-    if (value >= 1e3) return '${(value / 1e3).toStringAsFixed(1)}K';
-    return value.toStringAsFixed(0);
-  }
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({
-    required this.label,
-    required this.value,
-    this.color,
-  });
+  const _Metric({required this.label, required this.value});
 
   final String label;
   final String value;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -149,14 +136,7 @@ class _Metric extends StatelessWidget {
       children: [
         Text(label).xSmall.muted,
         const Gap(2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: color ?? Theme.of(context).colorScheme.foreground,
-          ),
-        ),
+        Text(value).small.semiBold,
       ],
     );
   }

@@ -86,14 +86,12 @@ class _FundamentalsScreenState extends ConsumerState<FundamentalsScreen> {
             ..sort((a, b) {
               int cmp;
               switch (_sortField) {
-                case 'pe':
-                  cmp = _compareNullable(a.peRatio, b.peRatio);
-                case 'eps':
-                  cmp = _compareNullable(a.eps, b.eps);
-                case 'dividend':
-                  cmp = _compareNullable(a.dividendYield, b.dividendYield);
-                case 'marketCap':
-                  cmp = _compareNullable(a.marketCap, b.marketCap);
+                case 'price':
+                  cmp = _compareNullable(a.lastPrice, b.lastPrice);
+                case 'change':
+                  cmp = _compareNullable(a.changePercent, b.changePercent);
+                case 'sector':
+                  cmp = (a.sector ?? 'zzz').compareTo(b.sector ?? 'zzz');
                 default:
                   cmp = a.symbol.compareTo(b.symbol);
               }
@@ -156,24 +154,24 @@ class _FundamentalsScreenState extends ConsumerState<FundamentalsScreen> {
                       ),
                       const Gap(8),
                       _SortChip(
-                        label: 'P/E',
-                        active: _sortField == 'pe',
+                        label: 'Price',
+                        active: _sortField == 'price',
                         asc: _sortAsc,
-                        onTap: () => _toggleSort('pe'),
+                        onTap: () => _toggleSort('price'),
                       ),
                       const Gap(8),
                       _SortChip(
-                        label: 'EPS',
-                        active: _sortField == 'eps',
+                        label: 'Change',
+                        active: _sortField == 'change',
                         asc: _sortAsc,
-                        onTap: () => _toggleSort('eps'),
+                        onTap: () => _toggleSort('change'),
                       ),
                       const Spacer(),
                       _SortChip(
-                        label: 'Div Yield',
-                        active: _sortField == 'dividend',
+                        label: 'Sector',
+                        active: _sortField == 'sector',
                         asc: _sortAsc,
-                        onTap: () => _toggleSort('dividend'),
+                        onTap: () => _toggleSort('sector'),
                       ),
                     ],
                   ),

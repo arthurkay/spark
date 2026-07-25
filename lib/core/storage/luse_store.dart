@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/luse/models/luse_market_snapshot.dart';
 import '../../features/luse/models/luse_company_profile.dart';
+import '../../features/luse/models/luse_stock.dart';
 
 class LuseStore {
   static const _enabledKey = 'luse_enabled';
@@ -11,6 +12,8 @@ class LuseStore {
   static const _historyKey = 'luse_history';
   static const _lastFetchKey = 'luse_last_fetch';
   static const _lastNotifiedKey = 'luse_last_notified';
+  static const _stockHistoryPrefix = 'luse_stock_history_';
+  static const _maxStockHistoryDays = 90;
 
   Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -135,6 +138,70 @@ class LuseStore {
   Future<void> clearCompanyProfiles() async {
     final prefs = await SharedPreferences.getInstance();
     final keys = prefs.getKeys().where((k) => k.startsWith(_profilePrefix));
+    for (final key in keys) {
+      await prefs.remove(key);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getStockHistory(String symbol) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_stockHistoryPrefix$symbol');
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.whereType<Map<String, dynamic>>().toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveStockHistory({
+    required String symbol,
+    required double price,
+    required double change,
+    required double changePercent,
+  }) async {
+    final history = await getStockHistory(symbol);
+    final today = DateTime.now();
+    final dateKey =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+    history.removeWhere((e) => e['date'] == dateKey);
+    history.add({
+      'date': dateKey,
+      'price': price,
+      'change': change,
+      'changePercent': changePercent,
+    });
+    history
+        .sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    if (history.length > _maxStockHistoryDays) {
+      history.removeRange(0, history.length - _maxStockHistoryDays);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_stockHistoryPrefix$symbol', jsonEncode(history));
+  }
+
+  Future<void> saveWatchlistHistory(
+      List<String> watchlist, List<LuseStock> stocks) async {
+    for (final symbol in watchlist) {
+      final stock = stocks.where((s) => s.symbol == symbol).firstOrNull;
+      if (stock != null) {
+        await saveStockHistory(
+          symbol: symbol,
+          price: stock.lastPrice,
+          change: stock.change,
+          changePercent: stock.changePercent,
+        );
+      }
+    }
+  }
+
+  Future<void> clearStockHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys =
+        prefs.getKeys().where((k) => k.startsWith(_stockHistoryPrefix));
     for (final key in keys) {
       await prefs.remove(key);
     }

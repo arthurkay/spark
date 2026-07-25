@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../features/luse/models/luse_company_profile.dart';
+import '../../features/luse/models/luse_fundamentals.dart';
 import '../storage/cache_service.dart';
 
 class AfricanfinancialsClient {
@@ -20,6 +21,8 @@ class AfricanfinancialsClient {
   static const _baseUrl = 'https://africanfinancials.com';
   static const _cachePrefix = 'af_profile_';
   static const _cacheTtl = Duration(hours: 24);
+  static const _fundamentalsCacheKey = 'af_fundamentals.json';
+  static const _fundamentalsCacheTtl = Duration(hours: 24);
 
   static const _stockTickerMap = {
     'AECI': 'aeci',
@@ -204,5 +207,96 @@ class AfricanfinancialsClient {
         .replaceAll(RegExp(r'&#\d+;'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  Future<List<LuseFundamentals>> fetchAllFundamentals({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh) {
+      final cached = await CacheService.instance.read(
+        _fundamentalsCacheKey,
+        maxAge: _fundamentalsCacheTtl,
+      );
+      if (cached != null) {
+        final items = cached['items'] as List<dynamic>? ?? [];
+        return items
+            .whereType<Map<String, dynamic>>()
+            .map(LuseFundamentals.fromJson)
+            .toList();
+      }
+    }
+
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/lusaka-securities-exchange-share-prices/',
+      );
+      final html = response.data.toString();
+      final fundamentals = _parseSharePricesPage(html);
+
+      await CacheService.instance.write(
+        _fundamentalsCacheKey,
+        {'items': fundamentals.map((f) => f.toJson()).toList()},
+      );
+      return fundamentals;
+    } on DioException {
+      final cached = await CacheService.instance.read(_fundamentalsCacheKey);
+      if (cached != null) {
+        final items = cached['items'] as List<dynamic>? ?? [];
+        return items
+            .whereType<Map<String, dynamic>>()
+            .map(LuseFundamentals.fromJson)
+            .toList();
+      }
+      return [];
+    }
+  }
+
+  List<LuseFundamentals> _parseSharePricesPage(String html) {
+    final fundamentals = <LuseFundamentals>[];
+    final now = DateTime.now();
+
+    final tickerToSymbol = <String, String>{};
+    for (final entry in _stockTickerMap.entries) {
+      tickerToSymbol[entry.value] = entry.key;
+    }
+
+    final rowPattern = RegExp(
+      r'<tr[^>]*>\s*<td[^>]*>.*?<a[^>]*href="[^"]*company/zm-([^/"]+)/[^"]*"[^>]*title="([^"]*)"[^>]*>.*?</a>.*?</td>\s*'
+      r'<td[^>]*>\s*([\d,]+\.?\d*)\s*</td>\s*'
+      r'<td[^>]*>\s*([+\-]?[\d,]+\.?\d*)\s*%?\s*</td>\s*'
+      r'<td[^>]*>\s*([\d,]+)\s*</td>\s*'
+      r'<td[^>]*>\s*([\d,]+)\s*</td>\s*'
+      r'<td[^>]*>\s*([+\-]?[\d,]+\.?\d*)\s*%?\s*</td>\s*'
+      r'<td[^>]*>\s*([^<]*)\s*</td>',
+      multiLine: true,
+    );
+
+    for (final match in rowPattern.allMatches(html)) {
+      final slug = match.group(1) ?? '';
+      final fullName = match.group(2) ?? '';
+      final priceStr = match.group(3)?.replaceAll(',', '') ?? '';
+      final changeStr = match.group(4)?.replaceAll(',', '') ?? '';
+      final sector = match.group(8)?.trim() ?? '';
+
+      final symbol = tickerToSymbol[slug] ?? slug.toUpperCase();
+      final price = double.tryParse(priceStr);
+      final change = double.tryParse(changeStr);
+
+      if (price != null && price > 0) {
+        final changePercent = change ?? 0.0;
+        fundamentals.add(LuseFundamentals(
+          symbol: symbol,
+          name: _cleanHtml(fullName),
+          lastPrice: price,
+          change: changePercent,
+          changePercent: changePercent,
+          sector: sector.isNotEmpty ? sector : null,
+          lastUpdated: now,
+        ));
+      }
+    }
+
+    fundamentals.sort((a, b) => a.symbol.compareTo(b.symbol));
+    return fundamentals;
   }
 }
