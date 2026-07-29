@@ -11,7 +11,7 @@ import '../../core/models/session.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
 import '../../shared/widgets/shimmer_loading.dart';
-import '../luse/providers/luse_provider.dart';
+
 import '../connection/connection_screen.dart';
 import '../permissions/permission_banner.dart';
 import 'create_project_sheet.dart';
@@ -217,8 +217,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final ref = this.ref;
     final sessionsAsync = ref.watch(allSessionsProvider);
     final projectsAsync = ref.watch(projectsProvider);
-    final luseEnabled = ref.watch(luseEnabledProvider);
-
     ref.listen<AsyncValue<OpencodeEvent>>(eventStreamProvider, (prev, next) {
       final event = next.value;
       if (event != null && event.type == 'server.reconnected') {
@@ -236,11 +234,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             ),
           ],
           trailing: [
-            if (luseEnabled)
-              IconButton.ghost(
-                icon: const Icon(LucideIcons.chartBar),
-                onPressed: () => context.push('/luse'),
-              ),
             IconButton.ghost(
               icon: const Icon(LucideIcons.refreshCw),
               onPressed: () {

@@ -7,18 +7,15 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import 'app/router.dart';
 import 'app/theme.dart';
-import 'core/api/luse_client.dart';
 import 'core/api/permission_provider.dart';
 import 'core/api/question_provider.dart';
 import 'core/api/providers.dart';
 import 'core/notifications/notification_service.dart';
-import 'core/storage/luse_store.dart';
 import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
 import 'features/sessions/sessions_provider.dart';
 
 final _routerProvider = Provider<GoRouter>((ref) => createRouter(ref));
-Timer? _luseTimer;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,16 +32,6 @@ Future<void> main() async {
   container.read(permissionListenerProvider);
   container.read(questionListenerProvider);
   container.read(sessionLifecycleProvider);
-
-  // Start periodic LuSE background fetch (every 30 minutes) if enabled
-  final luseStore = LuseStore();
-  if (await luseStore.isEnabled()) {
-    _luseTimer = Timer.periodic(
-      const Duration(minutes: 30),
-      (_) => _fetchLuseAndNotify(),
-    );
-    _fetchLuseAndNotify();
-  }
 
   runApp(
     UncontrolledProviderScope(
@@ -140,34 +127,4 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
       ),
     );
   }
-}
-
-Future<void> _fetchLuseAndNotify() async {
-  try {
-    final store = LuseStore();
-    if (!await store.isEnabled()) return;
-
-    final client = LuseClient();
-    final snapshot = await client.fetchStocks();
-    if (snapshot.stocks.isEmpty) return;
-
-    if (!await store.hasSnapshotChanged(snapshot)) return;
-
-    final watchlist = await store.getWatchlist();
-    final watchlistChanges = watchlist.map((symbol) {
-      final stock =
-          snapshot.stocks.where((s) => s.symbol == symbol).firstOrNull;
-      if (stock == null) return '$symbol: N/A';
-      final sign = stock.changePercent >= 0 ? '+' : '';
-      return '$symbol: $sign${stock.changePercent.toStringAsFixed(2)}%';
-    }).join(', ');
-
-    await NotificationService.instance.showLuseSummary(
-      gainers: snapshot.gainers,
-      losers: snapshot.losers,
-      unchanged: snapshot.unchanged,
-      watchlistChanges: watchlistChanges,
-    );
-    await store.markSnapshotNotified(snapshot);
-  } catch (_) {}
 }

@@ -9,7 +9,7 @@ import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../connection/connection_screen.dart';
-import '../luse/providers/luse_provider.dart';
+
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -267,40 +267,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const Gap(28),
-          Text('Market Data').small.semiBold.muted,
-          const Gap(10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.muted,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.chartBar, size: 18),
-                const Gap(10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('LuSE stock tracking'),
-                      Text(
-                        'Track Zambian stock market daily data',
-                      ).xSmall.muted,
-                    ],
-                  ),
-                ),
-                const Gap(8),
-                Switch(
-                  value: ref.watch(luseEnabledProvider),
-                  onChanged: (_) {
-                    ref.read(luseEnabledProvider.notifier).toggle();
-                  },
-                ),
-              ],
-            ),
-          ),
+
         ],
       ),
     );

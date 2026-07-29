@@ -7,8 +7,6 @@ import '../features/chat/chat_screen.dart';
 import '../features/connection/settings_screen.dart';
 import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
-import '../features/luse/screens/luse_screen.dart';
-import '../features/luse/screens/fundamentals_screen.dart';
 import '../features/sessions/sessions_screen.dart';
 
 GoRouter createRouter(Ref ref) {
@@ -128,46 +126,7 @@ GoRouter createRouter(Ref ref) {
           },
         ),
       ),
-      GoRoute(
-        path: '/luse',
-        pageBuilder: (context, state) => CustomTransitionPage(
-          key: state.pageKey,
-          child: const LuseScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: FadeTransition(opacity: curved, child: child),
-            );
-          },
-        ),
-      ),
-      GoRoute(
-        path: '/luse/fundamentals',
-        pageBuilder: (context, state) => CustomTransitionPage(
-          key: state.pageKey,
-          child: const FundamentalsScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: FadeTransition(opacity: curved, child: child),
-            );
-          },
-        ),
-      ),
+
     ],
   );
 }

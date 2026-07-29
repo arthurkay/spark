@@ -511,6 +511,7 @@ class _ComposerState extends ConsumerState<_Composer> {
   final SpeechToText _speech = SpeechToText();
   bool _speechAvailable = false;
   bool _isListening = false;
+  bool _toolsExpanded = false;
   String _textBeforeListening = '';
 
   @override
@@ -684,20 +685,51 @@ class _ComposerState extends ConsumerState<_Composer> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    IconButton.ghost(
-                      icon: const Icon(LucideIcons.paperclip, size: 18),
-                      size: ButtonSize.small,
-                      onPressed: widget.onPickFiles,
-                    ),
-                    if (_speechAvailable)
-                      IconButton.ghost(
-                        icon: _isListening
-                            ? const Icon(LucideIcons.circleDot,
-                                size: 18, color: Colors.red)
-                            : const Icon(LucideIcons.mic, size: 18),
-                        size: ButtonSize.small,
-                        onPressed: _toggleListening,
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_toolsExpanded) ...[
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.x, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () =>
+                                  setState(() => _toolsExpanded = false),
+                            ),
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.paperclip, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () {
+                                setState(() => _toolsExpanded = false);
+                                widget.onPickFiles();
+                              },
+                            ),
+                            if (_speechAvailable)
+                              IconButton.ghost(
+                                icon: _isListening
+                                    ? const Icon(LucideIcons.circleDot,
+                                        size: 18, color: Colors.red)
+                                    : const Icon(LucideIcons.mic, size: 18),
+                                size: ButtonSize.small,
+                                onPressed: () {
+                                  if (!_isListening) {
+                                    setState(() => _toolsExpanded = false);
+                                  }
+                                  _toggleListening();
+                                },
+                              ),
+                          ] else
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.plus, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () =>
+                                  setState(() => _toolsExpanded = true),
+                            ),
+                        ],
                       ),
+                    ),
                     Expanded(
                       child: TextField(
                         controller: widget.controller,
