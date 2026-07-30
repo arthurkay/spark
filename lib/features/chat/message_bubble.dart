@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
+import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/question_provider.dart';
 import '../../core/models/message.dart';
 import '../../core/models/question.dart';
+import '../sessions/workspace_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
@@ -1339,6 +1341,14 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
   }
 
   @override
+  void didUpdateWidget(_QuestionSheetBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.questions.length != widget.questions.length) {
+      _selections = List.generate(widget.questions.length, (_) => <String>[]);
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -1351,10 +1361,18 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
   }
 
   bool get _canSubmit {
-    if (_hasOptions) {
-      return _selections.every((s) => s.isNotEmpty);
+    for (var i = 0; i < widget.questions.length; i++) {
+      final q = widget.questions[i];
+      if (q['options'] is List && (q['options'] as List).isNotEmpty) {
+        if (i >= _selections.length || _selections[i].isEmpty) return false;
+      } else {
+        if (_controller.text.trim().isEmpty) return false;
+      }
     }
-    return _controller.text.trim().isNotEmpty;
+    if (widget.questions.isEmpty) {
+      return _controller.text.trim().isNotEmpty;
+    }
+    return true;
   }
 
   QuestionRequest? _findQuestion() {
@@ -1362,6 +1380,10 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     return pending[widget.messageKey] ??
         pending[widget.callKey] ??
         pending[widget.requestId];
+  }
+
+  String? _resolveDirectory() {
+    return _findQuestion()?.directory;
   }
 
   String _resolveRequestId() {
@@ -1383,6 +1405,22 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
           return r.id;
         }
       }
+      final projects = await ref.read(projectsProvider.future);
+      for (final project in projects) {
+        if (project.isGlobal) continue;
+        try {
+          for (final r
+              in await client.listQuestions(directory: project.worktree)) {
+            if (r.messageID == widget.messageKey ||
+                r.callID == widget.callKey ||
+                r.id == widget.requestId) {
+              return r.id;
+            }
+          }
+        } on OpencodeApiException {
+          // Ignore per-project errors.
+        }
+      }
     } catch (_) {}
     return '';
   }
@@ -1402,23 +1440,46 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     for (var i = 0; i < widget.questions.length; i++) {
       final q = widget.questions[i];
       if (q['options'] is List && (q['options'] as List).isNotEmpty) {
-        answers.add(_selections[i]);
+        answers.add(i < _selections.length ? _selections[i] : <String>[]);
       } else {
         answers.add([_controller.text.trim()]);
       }
     }
-    await client
-        ?.replyQuestion(requestId: requestId, answers: answers)
-        .catchError((_) {});
-    if (mounted) closeSheet(context);
+    try {
+      await client?.replyQuestion(
+        requestId: requestId,
+        answers: answers,
+        directory: _resolveDirectory(),
+      );
+      if (mounted) closeSheet(context);
+    } on OpencodeApiException catch (e) {
+      if (mounted) {
+        showAppToast(context, title: 'Failed to submit: ${e.message}');
+      }
+    }
   }
 
   Future<void> _reject() async {
     final requestId = await _resolveRequestIdWithFetch();
-    if (requestId.isEmpty) return;
+    if (requestId.isEmpty) {
+      if (mounted) {
+        showAppToast(context,
+            title: 'Question not received from server. Try again.');
+      }
+      return;
+    }
     final client = ref.read(opencodeClientProvider);
-    await client?.rejectQuestion(requestId: requestId).catchError((_) {});
-    if (mounted) closeSheet(context);
+    try {
+      await client?.rejectQuestion(
+        requestId: requestId,
+        directory: _resolveDirectory(),
+      );
+      if (mounted) closeSheet(context);
+    } on OpencodeApiException catch (e) {
+      if (mounted) {
+        showAppToast(context, title: 'Failed to reject: ${e.message}');
+      }
+    }
   }
 
   @override

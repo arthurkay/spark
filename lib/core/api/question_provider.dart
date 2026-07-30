@@ -101,14 +101,15 @@ class QuestionListenerController extends Notifier<void> {
             directory: project.worktree,
           )) {
             if (r.id.isEmpty) continue;
-            seen.putIfAbsent(r.key, () => r);
-            if (r.messageID != null && r.messageID!.isNotEmpty) {
-              seen.putIfAbsent(r.messageID!, () => r);
+            final scoped = r.copyWith(directory: project.worktree);
+            seen.putIfAbsent(scoped.key, () => scoped);
+            if (scoped.messageID != null && scoped.messageID!.isNotEmpty) {
+              seen.putIfAbsent(scoped.messageID!, () => scoped);
             }
-            if (r.callID != null && r.callID!.isNotEmpty) {
-              seen.putIfAbsent(r.callID!, () => r);
+            if (scoped.callID != null && scoped.callID!.isNotEmpty) {
+              seen.putIfAbsent(scoped.callID!, () => scoped);
             }
-            seen.putIfAbsent(r.id, () => r);
+            seen.putIfAbsent(scoped.id, () => scoped);
           }
         } on OpencodeApiException {
           // Ignore per-project errors; keep other results.

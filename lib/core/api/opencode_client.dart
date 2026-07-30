@@ -568,10 +568,14 @@ class OpencodeClient {
   Future<void> replyQuestion({
     required String requestId,
     required List<List<String>> answers,
+    String? directory,
   }) async {
     try {
       await _dio.post<dynamic>(
         Endpoints.questionReply(requestId),
+        queryParameters: {
+          if (directory != null) 'directory': directory,
+        },
         data: {'answers': answers},
       );
     } on DioException catch (e) {
@@ -579,9 +583,17 @@ class OpencodeClient {
     }
   }
 
-  Future<void> rejectQuestion({required String requestId}) async {
+  Future<void> rejectQuestion({
+    required String requestId,
+    String? directory,
+  }) async {
     try {
-      await _dio.post<dynamic>(Endpoints.questionReject(requestId));
+      await _dio.post<dynamic>(
+        Endpoints.questionReject(requestId),
+        queryParameters: {
+          if (directory != null) 'directory': directory,
+        },
+      );
     } on DioException catch (e) {
       _rethrow(e);
     }

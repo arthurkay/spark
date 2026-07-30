@@ -49,6 +49,7 @@ class QuestionRequest {
     required this.questions,
     this.messageID,
     this.callID,
+    this.directory,
   });
 
   final String id;
@@ -56,6 +57,18 @@ class QuestionRequest {
   final List<QuestionInfo> questions;
   final String? messageID;
   final String? callID;
+  final String? directory;
+
+  QuestionRequest copyWith({String? directory}) {
+    return QuestionRequest(
+      id: id,
+      sessionID: sessionID,
+      questions: questions,
+      messageID: messageID,
+      callID: callID,
+      directory: directory ?? this.directory,
+    );
+  }
 
   factory QuestionRequest.fromJson(Map<String, dynamic> json) {
     final tool = json['tool'] is Map<String, dynamic>
@@ -71,6 +84,7 @@ class QuestionRequest {
       questions: questions,
       messageID: tool?['messageID'] as String?,
       callID: tool?['callID'] as String?,
+      directory: json['directory'] as String?,
     );
   }
 
