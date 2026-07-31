@@ -198,6 +198,86 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _scrollToBottom();
   }
 
+  void _showChatMenu(BuildContext context, WidgetRef ref) {
+    final selectedModel = ref.read(selectedModelProvider(widget.sessionId));
+    final currentModel = ref.read(currentModelProvider(widget.sessionId));
+    final modelLabel = selectedModel?.modelID ?? currentModel;
+    final selectedAgent = ref.read(selectedAgentProvider);
+    final defaultAgent = ref.read(defaultAgentProvider);
+    final agentLabel = selectedAgent ?? defaultAgent;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Session options').h4,
+              const Gap(16),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  context.push('/session/${widget.sessionId}/files');
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.folderOpen, size: 16),
+                    Gap(10),
+                    Text('Files'),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  openModelPicker(
+                    context: context,
+                    ref: ref,
+                    sessionId: widget.sessionId,
+                  );
+                },
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.cpu, size: 16),
+                    const Gap(10),
+                    const Text('Models'),
+                    if (modelLabel != null) ...[
+                      const Spacer(),
+                      Text(modelLabel).muted.xSmall,
+                    ],
+                  ],
+                ),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  openAgentPicker(context: context, ref: ref);
+                },
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.bot, size: 16),
+                    const Gap(10),
+                    const Text('Agents'),
+                    if (agentLabel != null) ...[
+                      const Spacer(),
+                      Text(agentLabel).muted.xSmall,
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   int _lastMessageCount = 0;
   bool _initialScrollDone = false;
 
@@ -292,15 +372,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               : null,
           trailing: [
             IconButton.ghost(
-              icon: const Icon(LucideIcons.folderTree),
-              onPressed: () =>
-                  context.push('/session/${widget.sessionId}/files'),
+              icon: const Icon(LucideIcons.ellipsisVertical),
+              onPressed: () => _showChatMenu(context, ref),
             ),
-            // IconButton.ghost(
-            //   icon: const Icon(LucideIcons.settings),
-            //   onPressed: () =>
-            //       context.push('/session/${widget.sessionId}/diff'),
-            // ),
           ],
         ),
       ],
@@ -577,14 +651,14 @@ class _ComposerState extends ConsumerState<_Composer> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final selectedModel = ref.watch(selectedModelProvider(widget.sessionId));
+    final currentModel = ref.watch(currentModelProvider(widget.sessionId));
+    final modelLabel = selectedModel?.modelID ?? currentModel;
+    final selectedAgent = ref.watch(selectedAgentProvider);
+    final defaultAgent = ref.watch(defaultAgentProvider);
+    final agentLabel = selectedAgent ?? defaultAgent;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.background,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.border, width: 1),
-        ),
-      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -592,12 +666,6 @@ class _ComposerState extends ConsumerState<_Composer> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                      child: ModelSelectorBar(sessionId: widget.sessionId)),
-                ],
-              ),
               if (!ref.watch(connectivityProvider)) ...[
                 const Gap(4),
                 Container(
@@ -682,88 +750,130 @@ class _ComposerState extends ConsumerState<_Composer> {
                   borderRadius: BorderRadius.circular(22),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeInOut,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_toolsExpanded) ...[
+                    TextField(
+                      controller: widget.controller,
+                      placeholder: const Text('Message SparkCode...'),
+                      border: Border.all(color: Colors.transparent),
+                      borderRadius: BorderRadius.zero,
+                      maxLines: 5,
+                      minLines: 2,
+                      onSubmitted: (_) => widget.onSend(),
+                    ),
+                    Row(
+                      children: [
+                        if (_toolsExpanded)
+                          IconButton.ghost(
+                            icon: const Icon(LucideIcons.x, size: 18),
+                            size: ButtonSize.small,
+                            onPressed: () =>
+                                setState(() => _toolsExpanded = false),
+                          )
+                        else
+                          IconButton.ghost(
+                            icon: const Icon(LucideIcons.plus, size: 18),
+                            size: ButtonSize.small,
+                            onPressed: () =>
+                                setState(() => _toolsExpanded = true),
+                          ),
+                        if (_toolsExpanded) ...[
+                          IconButton.ghost(
+                            icon: const Icon(LucideIcons.paperclip, size: 18),
+                            size: ButtonSize.small,
+                            onPressed: () {
+                              setState(() => _toolsExpanded = false);
+                              widget.onPickFiles();
+                            },
+                          ),
+                          if (_speechAvailable)
                             IconButton.ghost(
-                              icon: const Icon(LucideIcons.x, size: 18),
-                              size: ButtonSize.small,
-                              onPressed: () =>
-                                  setState(() => _toolsExpanded = false),
-                            ),
-                            IconButton.ghost(
-                              icon: const Icon(LucideIcons.paperclip, size: 18),
+                              icon: _isListening
+                                  ? const Icon(LucideIcons.circleDot,
+                                      size: 18, color: Colors.red)
+                                  : const Icon(LucideIcons.mic, size: 18),
                               size: ButtonSize.small,
                               onPressed: () {
-                                setState(() => _toolsExpanded = false);
-                                widget.onPickFiles();
+                                if (!_isListening) {
+                                  setState(() => _toolsExpanded = false);
+                                }
+                                _toggleListening();
                               },
                             ),
-                            if (_speechAvailable)
-                              IconButton.ghost(
-                                icon: _isListening
-                                    ? const Icon(LucideIcons.circleDot,
-                                        size: 18, color: Colors.red)
-                                    : const Icon(LucideIcons.mic, size: 18),
-                                size: ButtonSize.small,
-                                onPressed: () {
-                                  if (!_isListening) {
-                                    setState(() => _toolsExpanded = false);
-                                  }
-                                  _toggleListening();
-                                },
-                              ),
-                          ] else
-                            IconButton.ghost(
-                              icon: const Icon(LucideIcons.plus, size: 18),
-                              size: ButtonSize.small,
-                              onPressed: () =>
-                                  setState(() => _toolsExpanded = true),
-                            ),
                         ],
-                      ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => openModelPicker(
+                            context: context,
+                            ref: ref,
+                            sessionId: widget.sessionId,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.mutedForeground
+                                  .withAlpha(20),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              modelLabel ?? 'model',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.mutedForeground,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Gap(4),
+                        GestureDetector(
+                          onTap: () =>
+                              openAgentPicker(context: context, ref: ref),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.mutedForeground
+                                  .withAlpha(20),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              agentLabel ?? 'agent',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.mutedForeground,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Gap(4),
+                        if (widget.working ||
+                            widget.aborting ||
+                            widget.error != null)
+                          IconButton.destructive(
+                            icon: const Icon(LucideIcons.square),
+                            size: ButtonSize.small,
+                            shape: ButtonShape.circle,
+                            onPressed: widget.onAbort,
+                          )
+                        else
+                          IconButton.primary(
+                            icon: widget.sending
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(LucideIcons.send),
+                            size: ButtonSize.small,
+                            shape: ButtonShape.circle,
+                            onPressed: widget.sending ? null : widget.onSend,
+                          ),
+                      ],
                     ),
-                    Expanded(
-                      child: TextField(
-                        controller: widget.controller,
-                        placeholder: const Text('Message SparkCode...'),
-                        border: Border.all(color: Colors.transparent),
-                        borderRadius: BorderRadius.zero,
-                        maxLines: 5,
-                        minLines: 1,
-                        onSubmitted: (_) => widget.onSend(),
-                      ),
-                    ),
-                    const Gap(4),
-                    if (widget.working ||
-                        widget.aborting ||
-                        widget.error != null)
-                      IconButton.destructive(
-                        icon: const Icon(LucideIcons.square),
-                        size: ButtonSize.small,
-                        onPressed: widget.onAbort,
-                      )
-                    else
-                      IconButton.primary(
-                        icon: widget.sending
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(LucideIcons.send),
-                        size: ButtonSize.small,
-                        onPressed: widget.sending ? null : widget.onSend,
-                      ),
                   ],
                 ),
               ),

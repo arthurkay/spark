@@ -86,6 +86,7 @@ class ChatController extends ChangeNotifier {
   bool _optimisticBusy = false;
   bool _stuck = false;
   DateTime? _lastSseActivity;
+  DateTime? _abortGraceUntil;
 
   static const Duration _stuckThreshold = Duration(seconds: 60);
   static const Duration _stuckCheckInterval = Duration(seconds: 10);
@@ -153,6 +154,7 @@ class ChatController extends ChangeNotifier {
     if (!_stuck && state.error == null) return;
     _stuck = false;
     _lastSseActivity = DateTime.now();
+    _abortGraceUntil = null;
     state = state.copyWith(working: false, clearError: true);
   }
 
@@ -440,6 +442,10 @@ class ChatController extends ChangeNotifier {
 
   bool _deriveWorking(List<MessageWithParts> messages) {
     if (messages.isEmpty) return false;
+    if (_abortGraceUntil != null &&
+        DateTime.now().isBefore(_abortGraceUntil!)) {
+      return false;
+    }
     final last = messages.last;
     // Busy only while the model is actively generating at the tail of the
     // conversation. A stale, incomplete assistant message that another
@@ -572,6 +578,7 @@ class ChatController extends ChangeNotifier {
     _aborting = true;
     _optimisticBusy = false;
     _stuck = false;
+    _abortGraceUntil = DateTime.now().add(const Duration(seconds: 5));
     state = state.copyWith(working: false, aborting: true, clearError: true);
     try {
       await client.abort(sessionId);
@@ -583,7 +590,6 @@ class ChatController extends ChangeNotifier {
         state = state.copyWith(working: false, aborting: false);
       }
     });
-    _scheduleSettlingReloads();
   }
 
   @override

@@ -13,6 +13,7 @@ import '../../shared/widgets/path_utils.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 
 import '../connection/connection_screen.dart';
+
 import '../permissions/permission_banner.dart';
 import 'create_project_sheet.dart';
 import 'sessions_provider.dart';
@@ -30,6 +31,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   String _query = '';
   String _filter = 'all';
   final Set<String> _expanded = {};
+
+  final _scrollController = ScrollController();
+  final _titleKey = GlobalKey();
+  final _titleProgress = ValueNotifier<double>(0.0);
 
   Future<void> _createSession(
     BuildContext context,
@@ -108,6 +113,95 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       if (!context.mounted) return;
       showAppToast(context, title: 'Failed to delete', description: e.message);
     }
+  }
+
+  void _showProjectMenu(BuildContext context, WidgetRef ref, Project project) {
+    if (project.isGlobal) return;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Project actions').h4,
+              const Gap(16),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _renameProject(context, ref, project);
+                },
+                child: const Text('Rename'),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  context.push(
+                    '/workspace/${Uri.encodeComponent(project.worktree)}/files',
+                  );
+                },
+                child: const Text('Open files'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameProject(
+    BuildContext context,
+    WidgetRef ref,
+    Project project,
+  ) async {
+    final controller =
+        TextEditingController(text: project.worktree.split('/').last);
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Rename project').h4,
+              const Gap(12),
+              TextField(
+                controller: controller,
+                placeholder: const Text('Project name'),
+              ),
+              const Gap(16),
+              PrimaryButton(
+                onPressed: () async {
+                  final name = controller.text.trim();
+                  if (name.isEmpty) return;
+                  closeSheet(sheetContext);
+                  try {
+                    await ref
+                        .read(opencodeClientProvider)!
+                        .updateProject(project.id, name: name);
+                    ref.read(projectsRefreshProvider.notifier).state++;
+                  } on OpencodeApiException catch (e) {
+                    if (!context.mounted) return;
+                    showAppToast(context,
+                        title: 'Failed to rename', description: e.message);
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showCreateProject(BuildContext context, WidgetRef ref) {
@@ -193,9 +287,39 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_checkTitleVisibility);
+  }
+
+  @override
   void dispose() {
+    _scrollController.removeListener(_checkTitleVisibility);
+    _scrollController.dispose();
+    _titleProgress.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _checkTitleVisibility() {
+    final key = _titleKey;
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final pos = box.localToGlobal(Offset.zero);
+    final titleTop = pos.dy;
+    final titleHeight = box.size.height;
+    double progress;
+    if (titleTop >= 0) {
+      progress = 0.0;
+    } else if (titleTop <= -titleHeight) {
+      progress = 1.0;
+    } else {
+      progress = (-titleTop) / titleHeight;
+    }
+    progress = progress.clamp(0.0, 1.0);
+    _titleProgress.value = progress;
   }
 
   List<Session> _filterSessions(List<Session> sessions) {
@@ -229,288 +353,321 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         AppBar(
           leading: [
             IconButton.ghost(
-              icon: const Icon(LucideIcons.menu),
+              icon: const Icon(LucideIcons.zap),
               onPressed: () => context.push('/settings'),
             ),
           ],
-          trailing: [
-            IconButton.ghost(
-              icon: const Icon(LucideIcons.refreshCw),
-              onPressed: () {
-                ref.read(projectsRefreshProvider.notifier).state++;
-                ref.read(sessionsRefreshProvider.notifier).state++;
-              },
-            ),
-          ],
+          title: ValueListenableBuilder<double>(
+            valueListenable: _titleProgress,
+            builder: (context, progress, child) {
+              return Opacity(
+                opacity: progress,
+                child: child,
+              );
+            },
+            child: const Text('SparkCode'),
+          ),
+          alignment: Alignment.centerLeft,
+          trailing: [],
         ),
       ],
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('SparkCode').h1,
-                  const Gap(12),
-                  _ServerSwitcher(),
-                  const Gap(16),
-                  TextField(
-                    controller: _searchController,
-                    placeholder: const Text('Search projects and sessions'),
-                    border: Border.all(color: Colors.transparent),
-                    features: const [
-                      InputFeature.leading(Icon(LucideIcons.search, size: 16)),
-                    ],
-                    onChanged: (value) => setState(() => _query = value.trim()),
-                  ),
-                  const Gap(12),
-                  SizedBox(
-                    height: 34,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 3,
-                      separatorBuilder: (_, __) => const Gap(8),
-                      itemBuilder: (context, index) {
-                        final options = [
-                          ('all', 'All'),
-                          ('active', 'Active'),
-                          ('idle', 'Idle'),
-                        ];
-                        final opt = options[index];
-                        final selected = _filter == opt.$1;
-                        return GestureDetector(
-                          onTap: () => setState(() => _filter = opt.$1),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? Theme.of(context).colorScheme.foreground
-                                  : Theme.of(context).colorScheme.muted,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              opt.$2,
-                              style: TextStyle(
-                                color: selected
-                                    ? Theme.of(context).colorScheme.background
-                                    : Theme.of(context).colorScheme.foreground,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                          ),
+      child: RefreshTrigger(
+        onRefresh: () async {
+          ref.read(projectsRefreshProvider.notifier).state++;
+          ref.read(sessionsRefreshProvider.notifier).state++;
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ValueListenableBuilder<double>(
+                      valueListenable: _titleProgress,
+                      builder: (context, progress, child) {
+                        return Opacity(
+                          opacity: 1.0 - progress,
+                          child: child,
                         );
                       },
+                      child: Text('SparkCode', key: _titleKey).h1,
                     ),
-                  ),
-                  const Gap(16),
-                  Row(
-                    children: [
-                      const Text('Projects').small.semiBold.muted,
-                      const Spacer(),
-                      GhostButton(
-                        density: ButtonDensity.compact,
-                        size: ButtonSize.small,
-                        onPressed: () => _showCreateProject(context, ref),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
+                    const Gap(12),
+                    _ServerSwitcher(),
+                    const Gap(16),
+                    TextField(
+                      controller: _searchController,
+                      placeholder: const Text('Search projects and sessions'),
+                      border: Border.all(color: Colors.transparent),
+                      features: const [
+                        InputFeature.leading(
+                            Icon(LucideIcons.search, size: 16)),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim()),
+                    ),
+                    const Gap(12),
+                    SizedBox(
+                      height: 34,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 3,
+                        separatorBuilder: (_, __) => const Gap(8),
+                        itemBuilder: (context, index) {
+                          final options = [
+                            ('all', 'All'),
+                            ('active', 'Active'),
+                            ('idle', 'Idle'),
+                          ];
+                          final opt = options[index];
+                          final selected = _filter == opt.$1;
+                          return GestureDetector(
+                            onTap: () => setState(() => _filter = opt.$1),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? Theme.of(context).colorScheme.foreground
+                                    : Theme.of(context).colorScheme.muted,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                opt.$2,
+                                style: TextStyle(
+                                  color: selected
+                                      ? Theme.of(context).colorScheme.background
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .foreground,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const Gap(16),
+                    Row(
+                      children: [
+                        const Text('Projects').small.semiBold.muted,
+                        const Spacer(),
+                        GhostButton(
+                          density: ButtonDensity.compact,
+                          size: ButtonSize.small,
+                          onPressed: () => _showCreateProject(context, ref),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(LucideIcons.plus, size: 12),
+                              Gap(4),
+                              Text('Add project'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(16),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: const SliverToBoxAdapter(child: PermissionBanner()),
+            ),
+            const SliverToBoxAdapter(child: Gap(12)),
+            projectsAsync.when(
+              loading: () => SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList.builder(
+                  itemCount: 3,
+                  itemBuilder: (context, index) {
+                    return ShimmerLoading(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
                           children: [
-                            Icon(LucideIcons.plus, size: 12),
-                            Gap(4),
-                            Text('Add project'),
+                            const SkeletonBox(width: 20, height: 20),
+                            const Gap(12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SkeletonBox(
+                                    width: 120 + (index * 40).toDouble(),
+                                    height: 14,
+                                  ),
+                                  const Gap(6),
+                                  SkeletonBox(
+                                    width: 80 + (index * 20).toDouble(),
+                                    height: 10,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                  const Gap(16),
-                ],
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: const SliverToBoxAdapter(child: PermissionBanner()),
-          ),
-          const SliverToBoxAdapter(child: Gap(12)),
-          projectsAsync.when(
-            loading: () => SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList.builder(
-                itemCount: 3,
-                itemBuilder: (context, index) {
-                  return ShimmerLoading(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Row(
-                        children: [
-                          const SkeletonBox(width: 20, height: 20),
-                          const Gap(12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SkeletonBox(
-                                  width: 120 + (index * 40).toDouble(),
-                                  height: 14,
-                                ),
-                                const Gap(6),
-                                SkeletonBox(
-                                  width: 80 + (index * 20).toDouble(),
-                                  height: 10,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            error: (e, _) => SliverToBoxAdapter(
-              child: _ErrorState(
-                message: e is OpencodeApiException ? e.message : '$e',
-                onRetry: () =>
-                    ref.read(sessionsRefreshProvider.notifier).state++,
-              ),
-            ),
-            data: (projects) {
-              if (projects.isEmpty) {
-                return const SliverToBoxAdapter(
-                  child: _EmptyState(),
-                );
-              }
-              return sessionsAsync.when(
-                loading: () => SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList.builder(
-                    itemCount: projects.length,
-                    itemBuilder: (context, index) {
-                      final project = projects[index];
-                      return _WorkspaceTile(
-                        project: project,
-                        sessions: const [],
-                        onCreateSession: (ctx) => _createSession(
-                          ctx,
-                          ref,
-                          directory: project.isGlobal ? null : project.worktree,
-                        ),
-                      );
-                    },
-                  ),
+                    );
+                  },
                 ),
-                error: (_, __) => SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList.builder(
-                    itemCount: projects.length,
-                    itemBuilder: (context, index) {
-                      final project = projects[index];
-                      return _WorkspaceTile(
-                        project: project,
-                        sessions: const [],
-                        onCreateSession: (ctx) => _createSession(
-                          ctx,
-                          ref,
-                          directory: project.isGlobal ? null : project.worktree,
-                        ),
-                      );
-                    },
-                  ),
+              ),
+              error: (e, _) => SliverToBoxAdapter(
+                child: _ErrorState(
+                  message: e is OpencodeApiException ? e.message : '$e',
+                  onRetry: () =>
+                      ref.read(sessionsRefreshProvider.notifier).state++,
                 ),
-                data: (sessions) {
-                  final filtered = _filterSessions(sessions);
-                  final workspaces = _buildWorkspaces(filtered, projects);
-                  final hasQuery = _query.trim().isNotEmpty || _filter != 'all';
-                  final anyMatch = workspaces.any(
-                    (w) =>
-                        _projectMatchesQuery(w.project) ||
-                        w.sessions.isNotEmpty,
+              ),
+              data: (projects) {
+                if (projects.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: _EmptyState(),
                   );
-                  return SliverPadding(
+                }
+                return sessionsAsync.when(
+                  loading: () => SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     sliver: SliverList.builder(
-                      itemCount:
-                          workspaces.length + (hasQuery && !anyMatch ? 1 : 0),
+                      itemCount: projects.length,
                       itemBuilder: (context, index) {
-                        if (index < workspaces.length) {
-                          final group = workspaces[index];
-                          final visible = _projectMatchesQuery(group.project) ||
-                              group.sessions.isNotEmpty;
-                          if (!visible) {
-                            return const SizedBox.shrink();
-                          }
-                          final name = group.project.isGlobal
-                              ? 'Global'
-                              : (group.project.id == '__other__'
-                                  ? 'Other'
-                                  : compactPath(group.project.worktree));
-                          final displaySessions = group.sessions;
-                          return _WorkspaceTile(
-                            key: ValueKey(group.project.worktree),
-                            project: group.project,
-                            titleOverride: name,
-                            sessions: displaySessions,
-                            initiallyExpanded: _expanded.contains(
-                              group.project.worktree,
-                            ),
-                            onExpansionChanged: (v) {
-                              setState(() {
-                                final key = group.project.worktree;
-                                if (v) {
-                                  _expanded.add(key);
-                                } else {
-                                  _expanded.remove(key);
-                                }
-                              });
-                            },
-                            onCreateSession: (ctx) => _createSession(
-                              ctx,
-                              ref,
-                              directory: group.project.isGlobal
-                                  ? null
-                                  : group.project.worktree,
-                            ),
-                            onDeleteSession: (s) =>
-                                _confirmDelete(context, ref, s),
-                          );
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  LucideIcons.search,
-                                  size: 40,
-                                ).iconMutedForeground,
-                                const Gap(12),
-                                const Text('No matching results').h4,
-                                const Gap(4),
-                                const Text(
-                                  'Try a different search or filter.',
-                                ).muted,
-                              ],
-                            ),
+                        final project = projects[index];
+                        return _WorkspaceTile(
+                          project: project,
+                          sessions: const [],
+                          onCreateSession: (ctx) => _createSession(
+                            ctx,
+                            ref,
+                            directory:
+                                project.isGlobal ? null : project.worktree,
                           ),
+                          onShowProjectMenu: (ctx) =>
+                              _showProjectMenu(ctx, ref, project),
                         );
                       },
                     ),
-                  );
-                },
-              );
-            },
-          ),
-          const SliverToBoxAdapter(child: Gap(80)),
-        ],
+                  ),
+                  error: (_, __) => SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList.builder(
+                      itemCount: projects.length,
+                      itemBuilder: (context, index) {
+                        final project = projects[index];
+                        return _WorkspaceTile(
+                          project: project,
+                          sessions: const [],
+                          onCreateSession: (ctx) => _createSession(
+                            ctx,
+                            ref,
+                            directory:
+                                project.isGlobal ? null : project.worktree,
+                          ),
+                          onShowProjectMenu: (ctx) =>
+                              _showProjectMenu(ctx, ref, project),
+                        );
+                      },
+                    ),
+                  ),
+                  data: (sessions) {
+                    final filtered = _filterSessions(sessions);
+                    final workspaces = _buildWorkspaces(filtered, projects);
+                    final hasQuery =
+                        _query.trim().isNotEmpty || _filter != 'all';
+                    final anyMatch = workspaces.any(
+                      (w) =>
+                          _projectMatchesQuery(w.project) ||
+                          w.sessions.isNotEmpty,
+                    );
+                    return SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList.builder(
+                        itemCount:
+                            workspaces.length + (hasQuery && !anyMatch ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index < workspaces.length) {
+                            final group = workspaces[index];
+                            final visible =
+                                _projectMatchesQuery(group.project) ||
+                                    group.sessions.isNotEmpty;
+                            if (!visible) {
+                              return const SizedBox.shrink();
+                            }
+                            final name = group.project.isGlobal
+                                ? 'Global'
+                                : (group.project.id == '__other__'
+                                    ? 'Other'
+                                    : compactPath(group.project.worktree));
+                            final displaySessions = group.sessions;
+                            return _WorkspaceTile(
+                              key: ValueKey(group.project.worktree),
+                              project: group.project,
+                              titleOverride: name,
+                              sessions: displaySessions,
+                              initiallyExpanded: _expanded.contains(
+                                group.project.worktree,
+                              ),
+                              onExpansionChanged: (v) {
+                                setState(() {
+                                  final key = group.project.worktree;
+                                  if (v) {
+                                    _expanded.add(key);
+                                  } else {
+                                    _expanded.remove(key);
+                                  }
+                                });
+                              },
+                              onCreateSession: (ctx) => _createSession(
+                                ctx,
+                                ref,
+                                directory: group.project.isGlobal
+                                    ? null
+                                    : group.project.worktree,
+                              ),
+                              onDeleteSession: (s) =>
+                                  _confirmDelete(context, ref, s),
+                              onShowProjectMenu: (ctx) =>
+                                  _showProjectMenu(ctx, ref, group.project),
+                            );
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    LucideIcons.search,
+                                    size: 40,
+                                  ).iconMutedForeground,
+                                  const Gap(12),
+                                  const Text('No matching results').h4,
+                                  const Gap(4),
+                                  const Text(
+                                    'Try a different search or filter.',
+                                  ).muted,
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+            const SliverToBoxAdapter(child: Gap(80)),
+          ],
+        ),
       ),
     );
   }
@@ -730,6 +887,7 @@ class _WorkspaceTile extends StatefulWidget {
     required this.sessions,
     required void Function(BuildContext context) onCreateSession,
     this.onDeleteSession,
+    this.onShowProjectMenu,
     this.initiallyExpanded = false,
     this.onExpansionChanged,
     this.titleOverride,
@@ -740,6 +898,7 @@ class _WorkspaceTile extends StatefulWidget {
   final List<Session> sessions;
   final void Function(BuildContext context) _onCreateSession;
   final void Function(Session)? onDeleteSession;
+  final void Function(BuildContext context)? onShowProjectMenu;
   final bool initiallyExpanded;
   final void Function(bool)? onExpansionChanged;
 
@@ -828,6 +987,16 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
                           size: 14,
                           color: theme.colorScheme.mutedForeground,
                         ),
+                      ),
+                    ),
+                  const Gap(8),
+                  if (!widget.project.isGlobal)
+                    GestureDetector(
+                      onTap: () => widget.onShowProjectMenu?.call(context),
+                      child: Icon(
+                        LucideIcons.ellipsisVertical,
+                        size: 16,
+                        color: theme.colorScheme.mutedForeground,
                       ),
                     ),
                   const Gap(8),

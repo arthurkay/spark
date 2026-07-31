@@ -28,7 +28,8 @@ class ModelSelectorBar extends ConsumerWidget {
         Expanded(
           child: OutlineButton(
             size: ButtonSize.small,
-            onPressed: () => _openModelPicker(context, ref),
+            onPressed: () => openModelPicker(
+                context: context, ref: ref, sessionId: sessionId),
             child: Row(
               children: [
                 const Icon(LucideIcons.cpu, size: 14),
@@ -50,7 +51,7 @@ class ModelSelectorBar extends ConsumerWidget {
         Expanded(
           child: OutlineButton(
             size: ButtonSize.small,
-            onPressed: () => _openAgentPicker(context, ref),
+            onPressed: () => openAgentPicker(context: context, ref: ref),
             child: Row(
               children: [
                 const Icon(LucideIcons.bot, size: 14),
@@ -69,160 +70,163 @@ class ModelSelectorBar extends ConsumerWidget {
       ],
     );
   }
+}
 
-  void _openModelPicker(BuildContext context, WidgetRef ref) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    openSheetOverlay(
-      context: context,
-      position: OverlayPosition.bottom,
-      builder: (context) {
-        return SheetKeyboardPadding(
-          child: Consumer(
-            builder: (context, ref, _) {
-              final providersAsync = ref.watch(providersProvider);
-              final selectedModel = sessionId != null
-                  ? ref.watch(selectedModelProvider(sessionId!))
-                  : null;
-              final currentSelection = sessionId != null
-                  ? ref.watch(currentModelSelectionProvider(sessionId!))
-                  : null;
-              final effectiveSelected = selectedModel ?? currentSelection;
-              return SafeArea(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  constraints: const BoxConstraints(maxHeight: 540),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text('Select model').h4,
-                      const Gap(12),
-                      Flexible(
-                        child: providersAsync.when(
-                          loading: () =>
-                              const Center(child: CircularProgressIndicator()),
-                          error: (e, _) => Text('$e').muted,
-                          data: (providers) => _ModelPickerList(
-                            providers: providers,
-                            selectedModel: effectiveSelected,
-                            onSelect: (selection) {
-                              setSelectedModel(ref, selection);
-                              closeSheet(context);
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  void _openAgentPicker(BuildContext context, WidgetRef ref) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    openSheetOverlay(
-      context: context,
-      position: OverlayPosition.bottom,
-      builder: (context) {
-        return SheetKeyboardPadding(
-          child: Consumer(
-            builder: (context, ref, _) {
-              final selectedAgent = ref.watch(selectedAgentProvider);
-              final defaultAgent = ref.watch(defaultAgentProvider);
-              final agentsAsync = ref.watch(primaryAgentsProvider);
-              final effectiveAgent = selectedAgent ?? defaultAgent;
-              return SafeArea(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  constraints: const BoxConstraints(maxHeight: 480),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text('Select agent').h4,
-                      const Gap(12),
-                      Flexible(
-                        child: agentsAsync.when(
-                          loading: () =>
-                              const Center(child: CircularProgressIndicator()),
-                          error: (e, _) => Text('$e').muted,
-                          data: (agents) {
-                            if (agents.isEmpty) {
-                              return const Text('No agents available').muted;
-                            }
-                            return ListView(
-                              shrinkWrap: true,
-                              children: [
-                                if (selectedAgent != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: GhostButton(
-                                      alignment: Alignment.centerLeft,
-                                      onPressed: () {
-                                        ref
-                                            .read(
-                                                selectedAgentProvider.notifier)
-                                            .state = null;
-                                        closeSheet(context);
-                                      },
-                                      child: const Text('Reset to default'),
-                                    ),
-                                  ),
-                                for (final agent in agents)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: GhostButton(
-                                      alignment: Alignment.centerLeft,
-                                      onPressed: () {
-                                        ref
-                                            .read(
-                                                selectedAgentProvider.notifier)
-                                            .state = agent.name;
-                                        closeSheet(context);
-                                      },
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(agent.name),
-                                                if (agent.description != null &&
-                                                    agent.description!
-                                                        .isNotEmpty)
-                                                  Text(agent.description!)
-                                                      .muted,
-                                              ],
-                                            ),
-                                          ),
-                                          if (effectiveAgent == agent.name)
-                                            const Icon(LucideIcons.check,
-                                                size: 16),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            );
+void openModelPicker({
+  required BuildContext context,
+  required WidgetRef ref,
+  String? sessionId,
+}) {
+  FocusManager.instance.primaryFocus?.unfocus();
+  openSheetOverlay(
+    context: context,
+    position: OverlayPosition.bottom,
+    builder: (context) {
+      return SheetKeyboardPadding(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final providersAsync = ref.watch(providersProvider);
+            final selectedModel = sessionId != null
+                ? ref.watch(selectedModelProvider(sessionId))
+                : null;
+            final currentSelection = sessionId != null
+                ? ref.watch(currentModelSelectionProvider(sessionId))
+                : null;
+            final effectiveSelected = selectedModel ?? currentSelection;
+            return SafeArea(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                constraints: const BoxConstraints(maxHeight: 540),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Select model').h4,
+                    const Gap(12),
+                    Flexible(
+                      child: providersAsync.when(
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (e, _) => Text('$e').muted,
+                        data: (providers) => _ModelPickerList(
+                          providers: providers,
+                          selectedModel: effectiveSelected,
+                          onSelect: (selection) {
+                            setSelectedModel(ref, selection);
+                            closeSheet(context);
                           },
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
+void openAgentPicker({
+  required BuildContext context,
+  required WidgetRef ref,
+}) {
+  FocusManager.instance.primaryFocus?.unfocus();
+  openSheetOverlay(
+    context: context,
+    position: OverlayPosition.bottom,
+    builder: (context) {
+      return SheetKeyboardPadding(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final selectedAgent = ref.watch(selectedAgentProvider);
+            final defaultAgent = ref.watch(defaultAgentProvider);
+            final agentsAsync = ref.watch(primaryAgentsProvider);
+            final effectiveAgent = selectedAgent ?? defaultAgent;
+            return SafeArea(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                constraints: const BoxConstraints(maxHeight: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Select agent').h4,
+                    const Gap(12),
+                    Flexible(
+                      child: agentsAsync.when(
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (e, _) => Text('$e').muted,
+                        data: (agents) {
+                          if (agents.isEmpty) {
+                            return const Text('No agents available').muted;
+                          }
+                          return ListView(
+                            shrinkWrap: true,
+                            children: [
+                              if (selectedAgent != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: GhostButton(
+                                    alignment: Alignment.centerLeft,
+                                    onPressed: () {
+                                      ref
+                                          .read(selectedAgentProvider.notifier)
+                                          .state = null;
+                                      closeSheet(context);
+                                    },
+                                    child: const Text('Reset to default'),
+                                  ),
+                                ),
+                              for (final agent in agents)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: GhostButton(
+                                    alignment: Alignment.centerLeft,
+                                    onPressed: () {
+                                      ref
+                                          .read(selectedAgentProvider.notifier)
+                                          .state = agent.name;
+                                      closeSheet(context);
+                                    },
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(agent.name),
+                                              if (agent.description != null &&
+                                                  agent.description!.isNotEmpty)
+                                                Text(agent.description!).muted,
+                                            ],
+                                          ),
+                                        ),
+                                        if (effectiveAgent == agent.name)
+                                          const Icon(LucideIcons.check,
+                                              size: 16),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
 }
 
 class _ModelPickerList extends StatefulWidget {
