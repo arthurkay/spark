@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api/providers.dart';
 import '../../core/models/project.dart';
+import '../../core/models/vcs.dart';
 
 final projectsProvider = FutureProvider<List<Project>>((ref) async {
   ref.watch(projectsRefreshProvider);
@@ -56,3 +57,16 @@ class _SelectedWorkspace extends StateNotifier<Project?> {
 
   String? get directory => state?.worktree;
 }
+
+final vcsRefreshProvider = StateProvider<int>((ref) => 0);
+
+final vcsProvider = FutureProvider<VcsInfo?>((ref) async {
+  ref.watch(vcsRefreshProvider);
+  final client = ref.watch(opencodeClientProvider);
+  if (client == null) return null;
+  try {
+    return await client.getVcsInfo();
+  } catch (_) {
+    return null;
+  }
+});

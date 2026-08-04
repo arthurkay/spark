@@ -8,6 +8,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
 import '../permissions/permission_banner.dart';
+import '../sessions/workspace_provider.dart';
 import '../../core/api/connectivity_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
@@ -319,7 +320,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ref.watch(sessionActivityProvider).contains(widget.sessionId);
     final working = (state.working || globalBusy) && !state.aborting;
     final agentLabel = currentAgent;
+    final vcs = ref.watch(vcsProvider);
+    final branch = vcs.value?.branch;
     final subtitleParts = [
+      if (branch != null && branch.isNotEmpty) branch,
       if (working) 'working...',
       if (currentModel != null) currentModel,
       if (agentLabel != null) agentLabel,

@@ -205,19 +205,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   }
 
   void _showCreateProject(BuildContext context, WidgetRef ref) {
-    final recent = ref.read(projectsProvider).maybeWhen(
-          data: (projects) => projects
-              .where((p) => !p.isGlobal)
-              .map((p) => p.worktree)
-              .toList(),
-          orElse: () => const <String>[],
-        );
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
       builder: (sheetContext) => SafeArea(
-        child: CreateProjectSheet(recentDirectories: recent),
+        child: const CreateProjectSheet(),
       ),
     );
   }
@@ -343,8 +336,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final projectsAsync = ref.watch(projectsProvider);
     ref.listen<AsyncValue<OpencodeEvent>>(eventStreamProvider, (prev, next) {
       final event = next.value;
-      if (event != null && event.type == 'server.reconnected') {
+      if (event == null) return;
+      if (event.type == 'server.reconnected') {
         ref.read(sessionsRefreshProvider.notifier).state++;
+        ref.read(vcsRefreshProvider.notifier).state++;
+      } else if (event.type == 'vcs.branch.updated') {
+        ref.read(vcsRefreshProvider.notifier).state++;
       }
     });
 
@@ -708,22 +705,6 @@ class _SessionTile extends ConsumerWidget {
                 child: const Text('Rename'),
               ),
               const Gap(8),
-              OutlineButton(
-                onPressed: () {
-                  closeSheet(sheetContext);
-                  _forkSession(context, ref);
-                },
-                child: const Text('Fork session'),
-              ),
-              const Gap(8),
-              OutlineButton(
-                onPressed: () {
-                  closeSheet(sheetContext);
-                  _shareSession(context, ref);
-                },
-                child: const Text('Share'),
-              ),
-              const Gap(8),
               DestructiveButton(
                 onPressed: () {
                   closeSheet(sheetContext);
@@ -781,31 +762,6 @@ class _SessionTile extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _forkSession(BuildContext context, WidgetRef ref) async {
-    try {
-      final forked =
-          await ref.read(opencodeClientProvider)!.forkSession(session.id);
-      ref.read(sessionsRefreshProvider.notifier).state++;
-      if (!context.mounted) return;
-      context.push('/session/${forked.id}');
-    } on OpencodeApiException catch (e) {
-      if (!context.mounted) return;
-      showAppToast(context, title: 'Failed to fork', description: e.message);
-    }
-  }
-
-  Future<void> _shareSession(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(opencodeClientProvider)!.shareSession(session.id);
-      ref.read(sessionsRefreshProvider.notifier).state++;
-      if (!context.mounted) return;
-      showAppToast(context, title: 'Session shared');
-    } on OpencodeApiException catch (e) {
-      if (!context.mounted) return;
-      showAppToast(context, title: 'Failed to share', description: e.message);
-    }
   }
 
   @override
@@ -880,7 +836,7 @@ class _WorkspaceGroup {
   final List<Session> sessions;
 }
 
-class _WorkspaceTile extends StatefulWidget {
+class _WorkspaceTile extends ConsumerStatefulWidget {
   const _WorkspaceTile({
     super.key,
     required this.project,
@@ -903,10 +859,10 @@ class _WorkspaceTile extends StatefulWidget {
   final void Function(bool)? onExpansionChanged;
 
   @override
-  State<_WorkspaceTile> createState() => _WorkspaceTileState();
+  ConsumerState<_WorkspaceTile> createState() => _WorkspaceTileState();
 }
 
-class _WorkspaceTileState extends State<_WorkspaceTile> {
+class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   late bool _expanded;
 
   @override
@@ -935,6 +891,8 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
     final theme = Theme.of(context);
     final name = widget.titleOverride ?? compactPath(widget.project.worktree);
     final count = widget.sessions.length;
+    final vcs = ref.watch(vcsProvider);
+    final branch = vcs.value?.branch;
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
       child: Column(
@@ -961,14 +919,38 @@ class _WorkspaceTileState extends State<_WorkspaceTile> {
                   ),
                   const Gap(12),
                   Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                        fontSize: 15,
-                      ),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (branch != null && branch.isNotEmpty) ...[
+                          const Gap(6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.muted,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              branch,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: theme.colorScheme.mutedForeground,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   if (count > 0) Text('$count').small.muted,

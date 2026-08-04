@@ -12,6 +12,7 @@ class Endpoints {
   static const fileContent = '/file/content';
   static const project = '/project';
   static const projectCurrent = '/project/current';
+  static const vcs = '/vcs';
 
   static String sessionById(String id) => '/session/$id';
   static String messages(String id) => '/session/$id/message';
@@ -19,8 +20,6 @@ class Endpoints {
   static String prompt(String id) => '/session/$id/message';
   static String abort(String id) => '/session/$id/abort';
   static String diff(String id) => '/session/$id/diff';
-  static String sessionFork(String id) => '/session/$id/fork';
-  static String sessionShare(String id) => '/session/$id/share';
   static String sessionCompact(String id) => '/session/$id/compact';
   static String permissionReply(String sessionId, String permissionId) =>
       '/session/$sessionId/permissions/$permissionId';

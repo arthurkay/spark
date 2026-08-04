@@ -11,6 +11,7 @@ import '../models/provider.dart';
 import '../models/question.dart';
 import '../models/server_connection.dart';
 import '../models/session.dart';
+import '../models/vcs.dart';
 import 'endpoints.dart';
 
 class OpencodeApiException implements Exception {
@@ -135,40 +136,6 @@ class OpencodeClient {
       final res = await _dio.patch<Map<String, dynamic>>(
         Endpoints.sessionById(id),
         data: {'title': title},
-      );
-      return Session.fromJson(res.data!);
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<Session> forkSession(String id, {String? messageID}) async {
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.sessionFork(id),
-        data: {if (messageID != null) 'messageID': messageID},
-      );
-      return Session.fromJson(res.data!);
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<Session> shareSession(String id) async {
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.sessionShare(id),
-      );
-      return Session.fromJson(res.data!);
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<Session> unshareSession(String id) async {
-    try {
-      final res = await _dio.delete<Map<String, dynamic>>(
-        Endpoints.sessionShare(id),
       );
       return Session.fromJson(res.data!);
     } on DioException catch (e) {
@@ -388,6 +355,20 @@ class OpencodeClient {
       final data = res.data;
       if (data == null) return null;
       return Project.fromJson(data);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<VcsInfo?> getVcsInfo({String? directory}) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        Endpoints.vcs,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      final data = res.data;
+      if (data == null) return null;
+      return VcsInfo.fromJson(data);
     } on DioException catch (e) {
       _rethrow(e);
     }

@@ -326,15 +326,18 @@ class _MarkdownRenderer {
 
   Widget _table(md.Element element) {
     final rawRows = <({bool isHeader, List<String> textCells})>[];
-    for (final child in element.children ?? const <md.Node>[]) {
-      if (child is! md.Element) continue;
-      final cells = child.children ?? [];
-      final isHeader = child.tag == 'thead';
-      final textCells = cells.map((c) {
-        if (c is! md.Element) return '';
-        return c.textContent.trim();
-      }).toList();
-      rawRows.add((isHeader: isHeader, textCells: textCells));
+    for (final section in element.children ?? const <md.Node>[]) {
+      if (section is! md.Element) continue;
+      final isSectionHeader = section.tag == 'thead';
+      for (final tr in section.children ?? const <md.Node>[]) {
+        if (tr is! md.Element) continue;
+        final cells = tr.children ?? [];
+        final textCells = cells.map((c) {
+          if (c is! md.Element) return '';
+          return c.textContent.trim();
+        }).toList();
+        rawRows.add((isHeader: isSectionHeader, textCells: textCells));
+      }
     }
     if (rawRows.isEmpty) return const SizedBox.shrink();
 

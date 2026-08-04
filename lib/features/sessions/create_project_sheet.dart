@@ -5,15 +5,13 @@ import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/project.dart';
 import '../../shared/widgets/app_toast.dart';
-import '../../shared/widgets/directory_picker_sheet.dart';
+import '../../shared/widgets/server_directory_picker_sheet.dart';
 import 'workspace_provider.dart';
 
-enum _CreateMode { initGit, worktree, copy }
+enum _CreateMode { worktree, copy }
 
 class CreateProjectSheet extends ConsumerStatefulWidget {
-  const CreateProjectSheet({super.key, required this.recentDirectories});
-
-  final List<String> recentDirectories;
+  const CreateProjectSheet({super.key});
 
   @override
   ConsumerState<CreateProjectSheet> createState() => _CreateProjectSheetState();
@@ -45,11 +43,6 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
           Text(_modeSubtitle()).muted.small,
           const Gap(16),
           if (_mode == null) ..._buildModePicker(),
-          if (_mode == _CreateMode.initGit)
-            PrimaryButton(
-              onPressed: _busy ? null : _onPickForInitGit,
-              child: const Text('Choose folder'),
-            ),
           if (_mode == _CreateMode.worktree) ...[
             projectsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -61,18 +54,24 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
                     'No existing projects to create a worktree from.',
                   ).muted;
                 }
-                return Column(
-                  children: [
-                    for (final p in candidates)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: _ProjectChoiceTile(
+                return ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: candidates.length,
+                      separatorBuilder: (_, __) => const Gap(6),
+                      itemBuilder: (context, index) {
+                        final p = candidates[index];
+                        return _ProjectChoiceTile(
                           project: p,
                           selected: _sourceProject?.id == p.id,
                           onTap: () => setState(() => _sourceProject = p),
-                        ),
-                      ),
-                  ],
+                        );
+                      },
+                    ),
+                  ),
                 );
               },
             ),
@@ -92,18 +91,24 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
                 if (candidates.isEmpty) {
                   return Text('No projects available to copy.').muted;
                 }
-                return Column(
-                  children: [
-                    for (final p in candidates)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: _ProjectChoiceTile(
+                return ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: candidates.length,
+                      separatorBuilder: (_, __) => const Gap(6),
+                      itemBuilder: (context, index) {
+                        final p = candidates[index];
+                        return _ProjectChoiceTile(
                           project: p,
                           selected: _sourceProject?.id == p.id,
                           onTap: () => setState(() => _sourceProject = p),
-                        ),
-                      ),
-                  ],
+                        );
+                      },
+                    ),
+                  ),
                 );
               },
             ),
@@ -133,8 +138,6 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
 
   String _modeTitle() {
     switch (_mode) {
-      case _CreateMode.initGit:
-        return 'Init git repository';
       case _CreateMode.worktree:
         return 'Create worktree';
       case _CreateMode.copy:
@@ -146,8 +149,6 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
 
   String _modeSubtitle() {
     switch (_mode) {
-      case _CreateMode.initGit:
-        return 'Choose a folder. A git repository will be initialized and the folder will be registered as a project.';
       case _CreateMode.worktree:
         return 'Create a new worktree from an existing project. The worktree becomes a new project.';
       case _CreateMode.copy:
@@ -159,13 +160,6 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
 
   List<Widget> _buildModePicker() {
     return [
-      _ModeTile(
-        icon: LucideIcons.gitBranch,
-        title: 'Init git repository',
-        subtitle: 'Initialize git in a folder and register it as a project.',
-        onTap: () => setState(() => _mode = _CreateMode.initGit),
-      ),
-      const Gap(8),
       _ModeTile(
         icon: LucideIcons.gitFork,
         title: 'Create worktree',
@@ -182,41 +176,14 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
     ];
   }
 
-  void _onPickForInitGit() {
-    DirectoryPickerSheet.show(
-      context,
-      title: 'Choose folder for new project',
-      recentDirectories: widget.recentDirectories,
-      helperText:
-          'Enter an absolute path. The folder will be created if it does not exist.',
-      onPick: (path) async {
-        await _runBusy(() async {
-          final client = ref.read(opencodeClientProvider);
-          if (client == null) return;
-          try {
-            await client.initProjectGit(directory: path);
-            ref.read(projectsRefreshProvider.notifier).state++;
-            if (!mounted) return;
-            showAppToast(context, title: 'Project created', description: path);
-            closeSheet(context);
-          } on OpencodeApiException catch (e) {
-            if (!mounted) return;
-            showAppToast(context,
-                title: 'Failed to create project', description: e.message);
-          }
-        });
-      },
-    );
-  }
-
   void _onPickForWorktree() {
     final source = _sourceProject;
     if (source == null) return;
-    DirectoryPickerSheet.show(
+    final initial = _parentOf(source.worktree);
+    ServerDirectoryPickerSheet.show(
       context,
       title: 'Choose worktree path',
-      recentDirectories: widget.recentDirectories,
-      initialPath: _parentOf(source.worktree),
+      initialPath: initial.isNotEmpty ? initial : '/',
       helperText: 'The new worktree will be created in this folder.',
       onPick: (path) async {
         final branch = await _promptText(
@@ -250,10 +217,9 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
   void _onPickForCopy() {
     final source = _sourceProject;
     if (source == null) return;
-    DirectoryPickerSheet.show(
+    ServerDirectoryPickerSheet.show(
       context,
       title: 'Choose destination folder',
-      recentDirectories: widget.recentDirectories,
       helperText: 'The project copy will be placed in this folder.',
       onPick: (path) async {
         await _runBusy(() async {
