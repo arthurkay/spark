@@ -388,8 +388,10 @@ class ChatController extends ChangeNotifier {
             state = state.copyWith(working: false, aborting: false);
             if (forThisSession) load();
           } else if (isBusy) {
-            _optimisticBusy = true;
-            if (!_aborting) state = state.copyWith(working: true);
+            if (!_aborting) {
+              _optimisticBusy = true;
+              state = state.copyWith(working: true);
+            }
           }
         }
         break;
@@ -412,6 +414,7 @@ class ChatController extends ChangeNotifier {
       case 'idle':
         if (forThisSession || sid == null) {
           if (_aborting) {
+            _optimisticBusy = false;
             _clearAbort();
             state = state.copyWith(working: false, aborting: false);
           } else {

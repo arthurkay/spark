@@ -31,7 +31,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final _composerController = TextEditingController();
   final _scrollController = ScrollController();
   final List<Attachment> _attachments = [];
-  bool _showScrollToBottom = false;
+  final _showScrollToBottom = ValueNotifier<bool>(false);
   late final AnimationController _workingAnimController;
 
   @override
@@ -56,9 +56,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       controller.loadOlder();
     }
     final nearBottom = position.maxScrollExtent - position.pixels < 120;
-    if (nearBottom != _showScrollToBottom) {
-      setState(() => _showScrollToBottom = !nearBottom);
-    }
+    _showScrollToBottom.value = !nearBottom;
   }
 
   @override
@@ -68,6 +66,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _composerController.dispose();
     _scrollController.dispose();
     _workingAnimController.dispose();
+    _showScrollToBottom.dispose();
     super.dispose();
   }
 
@@ -288,12 +287,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return position.maxScrollExtent - position.pixels < 120;
   }
 
-  bool get _isScrollable {
-    if (!_scrollController.hasClients) return false;
-    final position = _scrollController.position;
-    return position.maxScrollExtent > 40;
-  }
-
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(chatControllerProvider(widget.sessionId));
@@ -308,10 +301,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       } else if (_isNearBottom) {
         _scrollToBottom();
       }
-    }
-    final shouldShow = _isScrollable && !_isNearBottom;
-    if (shouldShow != _showScrollToBottom) {
-      _showScrollToBottom = shouldShow;
     }
 
     final currentModel = ref.watch(currentModelProvider(widget.sessionId));
@@ -538,15 +527,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ),
           ),
         ),
-        if (_showScrollToBottom)
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: IconButton.primary(
-              icon: const Icon(LucideIcons.arrowDown, size: 18),
-              onPressed: () => _scrollToBottom(),
-            ),
-          ),
+        ValueListenableBuilder<bool>(
+          valueListenable: _showScrollToBottom,
+          builder: (context, show, _) {
+            if (!show) return const SizedBox.shrink();
+            return Positioned(
+              right: 16,
+              bottom: 16,
+              child: IconButton.primary(
+                icon: const Icon(LucideIcons.arrowDown, size: 18),
+                onPressed: () => _scrollToBottom(),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
