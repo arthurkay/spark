@@ -3,10 +3,17 @@
 **Spark** is a Flutter mobile app (Android/iOS) that acts as a remote client for a
 running [`opencode serve`](https://opencode.ai/docs/server/) HTTP server. From your
 phone you can browse sessions, chat with the AI (with live streaming), approve
-permission requests, switch models/agents, and browse project files and diffs.
+permission requests, switch models/agents, browse project files and diffs, and
+even access a full terminal.
 
 In the UI the backend is branded as **SparkCode**, but underneath it is still the
 standard opencode server API.
+
+## Screenshots
+
+| Home | Chat | Terminal |
+|------|------|----------|
+| ![Home](screenshots/home.jpeg) | ![Chat](screenshots/chat.jpeg) | ![Terminal](screenshots/terminal.jpeg) |
 
 ## Features
 
@@ -20,6 +27,7 @@ standard opencode server API.
 - Permission approval banner + sheet; optional auto-approve toggle.
 - Model and agent pickers sourced from the server config.
 - Project-scoped file browser and diff viewer.
+- Full terminal with PTY support, keyboard toolbar (arrows, Tab, Ctrl, Esc).
 - Local notifications for incoming permission requests.
 
 ## Getting Started
@@ -70,7 +78,7 @@ lib/
   main.dart              # ShadcnApp root, theme, router, lifecycle refresh
   app/                   # router, theme
   core/                  # api, models, notifications, storage
-  features/              # connection, sessions, chat, permissions, models, files
+  features/              # connection, sessions, chat, permissions, models, files, terminal
   shared/widgets/        # markdown, code highlight, sheet helpers
 ```
 

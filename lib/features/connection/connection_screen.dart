@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/opencode_client.dart';
@@ -16,7 +17,8 @@ class ConnectionScreen extends ConsumerStatefulWidget {
   ConsumerState<ConnectionScreen> createState() => _ConnectionScreenState();
 }
 
-class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
+class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
+    with SingleTickerProviderStateMixin {
   final _nameController = TextEditingController();
   final _hostController = TextEditingController(text: '127.0.0.1');
   final _portController = TextEditingController(text: '4096');
@@ -25,11 +27,21 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   bool _useHttps = false;
   bool _connecting = false;
 
+  late final _logoController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 400),
+  );
+  late final _logoAnimation = CurvedAnimation(
+    parent: _logoController,
+    curve: Curves.easeOut,
+  );
+
   bool get _isEditing => widget.serverId != null;
 
   @override
   void initState() {
     super.initState();
+    _logoController.forward();
     if (_isEditing) {
       final state = ref.read(serverManagerProvider);
       final config =
@@ -47,6 +59,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
 
   @override
   void dispose() {
+    _logoController.dispose();
     _nameController.dispose();
     _hostController.dispose();
     _portController.dispose();
@@ -147,17 +160,15 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      LucideIcons.server,
-                      color: Theme.of(context).colorScheme.primaryForeground,
-                      size: 28,
+                  child: FadeTransition(
+                    opacity: _logoAnimation,
+                    child: ScaleTransition(
+                      scale: _logoAnimation,
+                      child: SvgPicture.asset(
+                        'assets/logo/icon.svg',
+                        width: 64,
+                        height: 64,
+                      ),
                     ),
                   ),
                 ),

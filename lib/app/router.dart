@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api/providers.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/connection/settings_screen.dart';
+import '../features/connection/welcome_screen.dart';
 import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
 import '../features/sessions/sessions_screen.dart';
@@ -57,7 +58,7 @@ GoRouter createRouter(Ref ref) {
         path: '/',
         pageBuilder: (context, state) => CustomTransitionPage(
           key: state.pageKey,
-          child: const ProjectsScreen(),
+          child: const _HomeRouter(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -120,5 +121,15 @@ GoRouter createRouter(Ref ref) {
 class _ConnectionListenable extends ChangeNotifier {
   _ConnectionListenable(Ref ref) {
     ref.listen(serverManagerProvider, (prev, next) => notifyListeners());
+  }
+}
+
+class _HomeRouter extends ConsumerWidget {
+  const _HomeRouter();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final configs = ref.watch(serverManagerProvider).configs;
+    if (configs.isEmpty) return const WelcomeScreen();
+    return const ProjectsScreen();
   }
 }

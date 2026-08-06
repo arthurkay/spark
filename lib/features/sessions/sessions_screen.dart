@@ -11,6 +11,7 @@ import '../../core/models/session.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
 import '../../shared/widgets/shimmer_loading.dart';
+import '../../shared/widgets/workspace_utils.dart';
 
 import '../connection/connection_screen.dart';
 
@@ -206,63 +207,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
-  List<_WorkspaceGroup> _buildWorkspaces(
-    List<Session> sessions,
-    List<Project> projects,
-  ) {
-    final sortedProjects = [...projects]..sort((a, b) {
-        if (a.isGlobal != b.isGlobal) return a.isGlobal ? 1 : -1;
-        return a.worktree.compareTo(b.worktree);
-      });
-
-    String workspaceKeyFor(String? dir) {
-      if (dir == null || dir.isEmpty) return '__ungrouped__';
-      String? best;
-      for (final p in sortedProjects) {
-        final ws = p.worktree;
-        if (ws.isEmpty) continue;
-        if (dir == ws || dir.startsWith('$ws/')) {
-          if (best == null || ws.length > best.length) best = ws;
-        }
-      }
-      return best ?? '__ungrouped__';
-    }
-
-    final buckets = <String, List<Session>>{};
-    for (final session in sessions) {
-      final key = workspaceKeyFor(session.directory);
-      buckets.putIfAbsent(key, () => []).add(session);
-    }
-
-    final global = sortedProjects.where((p) => p.isGlobal).firstOrNull;
-    if (global != null && buckets['__ungrouped__'] != null) {
-      buckets
-          .putIfAbsent(global.worktree, () => [])
-          .addAll(buckets.remove('__ungrouped__')!);
-    }
-
-    final groups = <_WorkspaceGroup>[];
-    for (final project in sortedProjects) {
-      final key = project.isGlobal ? project.worktree : project.worktree;
-      groups.add(
-        _WorkspaceGroup(
-          project: project,
-          sessions: buckets.remove(key) ?? const [],
-        ),
-      );
-    }
-    final remaining = buckets.values.expand((e) => e).toList();
-    if (remaining.isNotEmpty) {
-      groups.add(
-        _WorkspaceGroup(
-          project: Project(id: '__other__', worktree: '__other__'),
-          sessions: remaining,
-        ),
-      );
-    }
-    return groups;
-  }
-
   bool _projectMatchesQuery(Project project) {
     final q = _query.toLowerCase();
     if (q.isEmpty) return true;
@@ -306,9 +250,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     _titleProgress.value = progress;
   }
 
-  List<Session> _filterSessions(List<Session> sessions) {
+  List<Session> _filterSessions(List<Session> sessions, Set<String> active) {
     final q = _query.toLowerCase();
-    final active = ref.watch(sessionActivityProvider);
     return sessions.where((s) {
       final matchesQuery = q.isEmpty ||
           (s.title?.toLowerCase().contains(q) ?? false) ||
@@ -320,11 +263,34 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     }).toList();
   }
 
+  Widget _buildProjectTiles(List<Project> projects, WidgetRef ref) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverList.builder(
+        itemCount: projects.length,
+        itemBuilder: (context, index) {
+          final project = projects[index];
+          return _WorkspaceTile(
+            project: project,
+            sessions: const [],
+            onCreateSession: (ctx) => _createSession(
+              ctx,
+              ref,
+              directory: project.isGlobal ? null : project.worktree,
+            ),
+            onShowProjectMenu: (ctx) => _showProjectMenu(ctx, ref, project),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ref = this.ref;
     final sessionsAsync = ref.watch(allSessionsProvider);
     final projectsAsync = ref.watch(projectsProvider);
+    final activeSessions = ref.watch(sessionActivityProvider);
     ref.listen<AsyncValue<OpencodeEvent>>(eventStreamProvider, (prev, next) {
       final event = next.value;
       if (event == null) return;
@@ -411,44 +377,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                             ('idle', 'Idle'),
                           ];
                           final opt = options[index];
-                          final selected = _filter == opt.$1;
-                          return GestureDetector(
+                          return _FilterChip(
+                            label: opt.$2,
+                            selected: _filter == opt.$1,
                             onTap: () => setState(() => _filter = opt.$1),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? Theme.of(context).colorScheme.foreground
-                                    : Theme.of(context).colorScheme.muted,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                opt.$2,
-                                style: TextStyle(
-                                  color: selected
-                                      ? Theme.of(context).colorScheme.background
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .foreground,
-                                  fontWeight: selected
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                            ),
                           );
                         },
                       ),
-                    ),
-                    const Gap(16),
-                    Row(
-                      children: [
-                        const Text('Projects').small.semiBold.muted,
-                        const Spacer(),
-                      ],
                     ),
                     const Gap(16),
                   ],
@@ -510,51 +445,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                   );
                 }
                 return sessionsAsync.when(
-                  loading: () => SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList.builder(
-                      itemCount: projects.length,
-                      itemBuilder: (context, index) {
-                        final project = projects[index];
-                        return _WorkspaceTile(
-                          project: project,
-                          sessions: const [],
-                          onCreateSession: (ctx) => _createSession(
-                            ctx,
-                            ref,
-                            directory:
-                                project.isGlobal ? null : project.worktree,
-                          ),
-                          onShowProjectMenu: (ctx) =>
-                              _showProjectMenu(ctx, ref, project),
-                        );
-                      },
-                    ),
-                  ),
-                  error: (_, __) => SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList.builder(
-                      itemCount: projects.length,
-                      itemBuilder: (context, index) {
-                        final project = projects[index];
-                        return _WorkspaceTile(
-                          project: project,
-                          sessions: const [],
-                          onCreateSession: (ctx) => _createSession(
-                            ctx,
-                            ref,
-                            directory:
-                                project.isGlobal ? null : project.worktree,
-                          ),
-                          onShowProjectMenu: (ctx) =>
-                              _showProjectMenu(ctx, ref, project),
-                        );
-                      },
-                    ),
-                  ),
+                  loading: () => _buildProjectTiles(projects, ref),
+                  error: (_, __) => _buildProjectTiles(projects, ref),
                   data: (sessions) {
-                    final filtered = _filterSessions(sessions);
-                    final workspaces = _buildWorkspaces(filtered, projects);
+                    final filtered = _filterSessions(sessions, activeSessions);
+                    final workspaces = buildWorkspaceGroups(filtered, projects);
                     final hasQuery =
                         _query.trim().isNotEmpty || _filter != 'all';
                     final anyMatch = workspaces.any(
@@ -808,13 +703,6 @@ class _SessionTile extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _WorkspaceGroup {
-  const _WorkspaceGroup({required this.project, required this.sessions});
-
-  final Project project;
-  final List<Session> sessions;
 }
 
 class _WorkspaceTile extends ConsumerStatefulWidget {
@@ -1180,6 +1068,43 @@ class _ServerSwitcher extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? Theme.of(context).colorScheme.foreground
+              : Theme.of(context).colorScheme.muted,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected
+                ? Theme.of(context).colorScheme.background
+                : Theme.of(context).colorScheme.foreground,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
       ),
