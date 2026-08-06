@@ -17,7 +17,6 @@ class Endpoints {
   static String sessionById(String id) => '/session/$id';
   static String messages(String id) => '/session/$id/message';
   static String promptAsync(String id) => '/session/$id/prompt_async';
-  static String prompt(String id) => '/session/$id/message';
   static String abort(String id) => '/session/$id/abort';
   static String diff(String id) => '/session/$id/diff';
   static String sessionCompact(String id) => '/session/$id/compact';
@@ -28,18 +27,16 @@ class Endpoints {
   static String questionReject(String requestId) =>
       '/question/$requestId/reject';
 
-  static const projectGitInit = '/project/git/init';
   static String projectById(String id) => '/project/$id';
-  static String projectDirectories(String id) => '/project/$id/directories';
-
-  static const workspaces = '/experimental/workspace';
-  static const workspaceSync = '/experimental/workspace/sync-list';
 
   static const worktrees = '/experimental/worktree';
 
   static String projectCopy(String id) => '/experimental/project/$id/copy';
   static String projectCopyGenerateName(String id) =>
       '/experimental/project/$id/copy/generate-name';
-  static String projectCopyRefresh(String id) =>
-      '/experimental/project/$id/copy/refresh';
+
+  static const pty = '/pty';
+  static String ptyById(String id) => '/pty/$id';
+  static String ptyConnect(String id) => '/pty/$id/connect';
+  static String ptyConnectToken(String id) => '/pty/$id/connect-token';
 }

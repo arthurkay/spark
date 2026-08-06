@@ -5,8 +5,7 @@ import '../../core/models/permission.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
-
-const _filePermissionTypes = {'glob', 'read', 'edit', 'write'};
+import 'permission_utils.dart';
 
 typedef PermissionResponder = void Function(String response);
 
@@ -50,7 +49,7 @@ class _PermissionSheetContentState
   void initState() {
     super.initState();
     final collapsed = ref.read(collapseFilePermissionsProvider);
-    final isFile = _filePermissionTypes.contains(widget.permission.type);
+    final isFile = filePermissionTypes.contains(widget.permission.type);
     _expanded = isFile ? !collapsed : true;
   }
 
@@ -106,7 +105,7 @@ class _PermissionSheetContentState
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (final e in permission.metadata.entries) ...[
-                          if (_isCommandEntry(e.key, e.value)) ...[
+                          if (isCommandEntry(e.key, e.value)) ...[
                             CodeHighlightView(
                               code: e.value.toString(),
                               language: 'bash',
@@ -164,32 +163,4 @@ class _PermissionSheetContentState
       ),
     );
   }
-}
-
-bool _isCommandEntry(String key, dynamic value) {
-  if (value is! String || value.isEmpty) return false;
-  final lowerKey = key.toLowerCase();
-  if (lowerKey.contains('command') || lowerKey == 'cmd') return true;
-  const commands = {
-    'bash',
-    'sh',
-    'git',
-    'npm',
-    'yarn',
-    'pnpm',
-    'deno',
-    'bun',
-    'cargo',
-    'go',
-    'python',
-    'python3',
-    'node',
-    'npx',
-    'docker',
-    'kubectl',
-    'make',
-    'sudo',
-  };
-  final firstWord = value.trim().split(RegExp(r'\s+')).first;
-  return commands.contains(firstWord);
 }

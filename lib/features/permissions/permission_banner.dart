@@ -9,8 +9,7 @@ import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import 'permission_sheet.dart';
-
-const _filePermissionTypes = {'glob', 'read', 'edit', 'write'};
+import 'permission_utils.dart';
 
 class PermissionBanner extends ConsumerWidget {
   const PermissionBanner({super.key, this.onOpenSession});
@@ -67,7 +66,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
   void initState() {
     super.initState();
     final collapsed = ref.read(collapseFilePermissionsProvider);
-    final isFile = _filePermissionTypes.contains(widget.permission.type);
+    final isFile = filePermissionTypes.contains(widget.permission.type);
     _expanded = isFile ? !collapsed : true;
   }
 
@@ -114,7 +113,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
                   if (hasMetadata && _expanded) ...[
                     const Gap(8),
                     ...permission.metadata.entries.map((e) {
-                      final isCommand = _isCommandEntry(e.key, e.value);
+                      final isCommand = isCommandEntry(e.key, e.value);
                       if (isCommand) {
                         final cmd = e.value.toString();
                         return Padding(
@@ -219,33 +218,5 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
           )
           .catchError((_) {});
     }
-  }
-
-  bool _isCommandEntry(String key, dynamic value) {
-    if (value is! String || value.isEmpty) return false;
-    final lowerKey = key.toLowerCase();
-    if (lowerKey.contains('command') || lowerKey == 'cmd') return true;
-    const commands = {
-      'bash',
-      'sh',
-      'git',
-      'npm',
-      'yarn',
-      'pnpm',
-      'deno',
-      'bun',
-      'cargo',
-      'go',
-      'python',
-      'python3',
-      'node',
-      'npx',
-      'docker',
-      'kubectl',
-      'make',
-      'sudo',
-    };
-    final firstWord = value.trim().split(RegExp(r'\s+')).first;
-    return commands.contains(firstWord);
   }
 }

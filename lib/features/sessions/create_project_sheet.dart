@@ -5,6 +5,7 @@ import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/project.dart';
 import '../../shared/widgets/app_toast.dart';
+import '../../shared/widgets/path_utils.dart';
 import '../../shared/widgets/server_directory_picker_sheet.dart';
 import 'workspace_provider.dart';
 
@@ -179,7 +180,7 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
   void _onPickForWorktree() {
     final source = _sourceProject;
     if (source == null) return;
-    final initial = _parentOf(source.worktree);
+    final initial = parentOf(source.worktree);
     ServerDirectoryPickerSheet.show(
       context,
       title: 'Choose worktree path',
@@ -292,13 +293,6 @@ class _CreateProjectSheetState extends ConsumerState<CreateProjectSheet> {
     final result = await completer.future;
     controller.dispose();
     return (result ?? '').isEmpty ? null : result;
-  }
-
-  String _parentOf(String path) {
-    final parts = path.split('/');
-    if (parts.length <= 1) return path;
-    parts.removeLast();
-    return parts.join('/');
   }
 
   Future<void> _runBusy(Future<void> Function() action) async {

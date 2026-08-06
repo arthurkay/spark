@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
@@ -13,7 +14,7 @@ import '../../core/api/connectivity_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
-import '../../shared/widgets/path_utils.dart';
+import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
 
@@ -43,7 +44,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _workingAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
   }
 
   void _onScroll() {
@@ -271,6 +272,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   ],
                 ),
               ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  openTerminalSheet(
+                    context,
+                    sessionId: widget.sessionId,
+                  );
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.terminal, size: 16),
+                    Gap(10),
+                    Text('Terminal'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -280,6 +298,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   int _lastMessageCount = 0;
   bool _initialScrollDone = false;
+  int _lastStreamContentLength = 0;
 
   bool get _isNearBottom {
     if (!_scrollController.hasClients) return true;
@@ -308,6 +327,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final globalBusy =
         ref.watch(sessionActivityProvider).contains(widget.sessionId);
     final working = (state.working || globalBusy) && !state.aborting;
+    if (working && !_workingAnimController.isAnimating) {
+      _workingAnimController.repeat();
+    } else if (!working && _workingAnimController.isAnimating) {
+      _workingAnimController.stop();
+    }
+
+    if (working && count > 0) {
+      final lastMsg = state.messages.last;
+      final tailTextLen = lastMsg.parts
+          .where((p) => p.type == 'text' && p.text != null)
+          .fold(0, (int sum, p) => sum + p.text!.length);
+      if (tailTextLen != _lastStreamContentLength && _isNearBottom) {
+        _lastStreamContentLength = tailTextLen;
+        _scrollToBottom();
+      }
+    } else if (!working) {
+      _lastStreamContentLength = 0;
+    }
     final agentLabel = currentAgent;
     final vcs = ref.watch(vcsProvider);
     final branch = vcs.value?.branch;
@@ -337,7 +374,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               );
               return workspaceName != null && workspaceName.isNotEmpty
                   ? Text(
-                      compactPath(workspaceName),
+                      workspaceName.split('/').last,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     )
@@ -383,6 +420,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             working: working,
             aborting: state.aborting,
             error: state.error,
+            retryMessage: state.retryMessage,
+            retryAction: state.retryAction,
+            retryNext: state.retryNext,
             attachments: _attachments,
             onPickFiles: _pickFiles,
             onRemoveAttachment: _removeAttachment,
@@ -554,6 +594,9 @@ class _Composer extends ConsumerStatefulWidget {
     required this.working,
     required this.aborting,
     required this.error,
+    required this.retryMessage,
+    required this.retryAction,
+    required this.retryNext,
     required this.attachments,
     required this.onPickFiles,
     required this.onRemoveAttachment,
@@ -568,6 +611,9 @@ class _Composer extends ConsumerStatefulWidget {
   final bool working;
   final bool aborting;
   final String? error;
+  final String? retryMessage;
+  final RetryAction? retryAction;
+  final int? retryNext;
   final List<Attachment> attachments;
   final VoidCallback onPickFiles;
   final void Function(int index) onRemoveAttachment;
@@ -679,6 +725,56 @@ class _ComposerState extends ConsumerState<_Composer> {
                           size: 12, color: Colors.orange),
                       const Gap(4),
                       Text('Offline — messages will be queued').xSmall,
+                    ],
+                  ),
+                ),
+              ],
+              if (widget.retryMessage != null) ...[
+                const Gap(8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(LucideIcons.rotateCcw,
+                              size: 14, color: Colors.orange),
+                          const Gap(6),
+                          Expanded(
+                            child: Text(widget.retryMessage!).xSmall,
+                          ),
+                        ],
+                      ),
+                      if (widget.retryAction != null) ...[
+                        const Gap(6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.retryAction!.message,
+                                style: const TextStyle(fontSize: 11),
+                              ).muted,
+                            ),
+                            if (widget.retryAction!.link != null)
+                              TextButton(
+                                onPressed: () {
+                                  final url = widget.retryAction!.link;
+                                  if (url != null) {
+                                    launchUrl(Uri.parse(url));
+                                  }
+                                },
+                                child: Text(widget.retryAction!.label).xSmall,
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

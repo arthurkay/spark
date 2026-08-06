@@ -121,10 +121,7 @@ final currentModelProvider = Provider.family<String?, String>((ref, sessionId) {
   for (final message in messages.reversed) {
     final modelID = message.info.modelID;
     if (modelID != null && modelID.isNotEmpty) {
-      final provider = message.info.providerID;
-      return provider != null && provider.isNotEmpty
-          ? '$provider/$modelID'
-          : modelID;
+      return modelID;
     }
   }
   return null;

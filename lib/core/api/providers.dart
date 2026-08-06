@@ -157,10 +157,6 @@ final eventStreamProvider = StreamProvider<OpencodeEvent>((ref) {
   return sse.connect();
 });
 
-final sessionBusyProvider = StateProvider<Set<String>>(
-  (ref) => const <String>{},
-);
-
 final appPausedProvider = StateProvider<bool>((ref) => false);
 
 class SessionActivityController extends Notifier<Set<String>> {

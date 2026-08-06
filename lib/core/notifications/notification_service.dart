@@ -168,5 +168,4 @@ class NotificationService {
     if (!_available) return;
     await _plugin.cancel(_questionNotificationId);
   }
-
 }

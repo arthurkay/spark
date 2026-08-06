@@ -8,6 +8,14 @@ import '../../core/models/session.dart';
 import '../../core/storage/cache_service.dart';
 import 'workspace_provider.dart';
 
+void _sortSessions(List<Session> sessions) {
+  sessions.sort((a, b) {
+    final at = a.time?.updated ?? a.time?.created ?? 0;
+    final bt = b.time?.updated ?? b.time?.created ?? 0;
+    return bt.compareTo(at);
+  });
+}
+
 final sessionsProvider = FutureProvider<List<Session>>((ref) async {
   ref.watch(sessionsRefreshProvider);
   final client = ref.watch(opencodeClientProvider);
@@ -17,11 +25,7 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
       'sessions/${directory != null ? Uri.encodeComponent(directory) : 'all'}.json';
   try {
     final sessions = await client.listSessions(directory: directory);
-    sessions.sort((a, b) {
-      final at = a.time?.updated ?? a.time?.created ?? 0;
-      final bt = b.time?.updated ?? b.time?.created ?? 0;
-      return bt.compareTo(at);
-    });
+    _sortSessions(sessions);
     await CacheService.instance.write(cacheKey, {
       'items': sessions.map((s) => s.toJson()).toList(),
     });
@@ -34,11 +38,7 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
           .whereType<Map<String, dynamic>>()
           .map(Session.fromJson)
           .toList();
-      sessions.sort((a, b) {
-        final at = a.time?.updated ?? a.time?.created ?? 0;
-        final bt = b.time?.updated ?? b.time?.created ?? 0;
-        return bt.compareTo(at);
-      });
+      _sortSessions(sessions);
       return sessions;
     }
     return [];
@@ -52,22 +52,20 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
   const cacheKey = 'sessions/all.json';
   try {
     final projects = await ref.watch(projectsProvider.future);
+    final directories =
+        projects.where((p) => !p.isGlobal).map((p) => p.worktree).toList();
+    final results = await Future.wait([
+      client.listSessions(),
+      for (final dir in directories) client.listSessions(directory: dir),
+    ]);
     final seen = <String>{};
     final all = <Session>[];
-    for (final s in await client.listSessions()) {
-      if (seen.add(s.id)) all.add(s);
-    }
-    for (final p in projects) {
-      if (p.isGlobal) continue;
-      for (final s in await client.listSessions(directory: p.worktree)) {
+    for (final sessions in results) {
+      for (final s in sessions) {
         if (seen.add(s.id)) all.add(s);
       }
     }
-    all.sort((a, b) {
-      final at = a.time?.updated ?? a.time?.created ?? 0;
-      final bt = b.time?.updated ?? b.time?.created ?? 0;
-      return bt.compareTo(at);
-    });
+    _sortSessions(all);
     await CacheService.instance.write(cacheKey, {
       'items': all.map((s) => s.toJson()).toList(),
     });
@@ -80,11 +78,7 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
           .whereType<Map<String, dynamic>>()
           .map(Session.fromJson)
           .toList();
-      sessions.sort((a, b) {
-        final at = a.time?.updated ?? a.time?.created ?? 0;
-        final bt = b.time?.updated ?? b.time?.created ?? 0;
-        return bt.compareTo(at);
-      });
+      _sortSessions(sessions);
       return sessions;
     }
     return [];

@@ -6,3 +6,10 @@ String compactPath(String path, {int tailSegments = 2}) {
   final tail = segments.skip(segments.length - tailSegments).join('/');
   return '…/$tail';
 }
+
+String parentOf(String path) {
+  final parts = path.split('/');
+  if (parts.length <= 1) return path;
+  parts.removeLast();
+  return parts.join('/');
+}

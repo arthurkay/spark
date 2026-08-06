@@ -8,6 +8,7 @@ class MessageInfo {
     this.agent,
     this.mode,
     this.time,
+    this.error,
   });
 
   final String id;
@@ -18,6 +19,7 @@ class MessageInfo {
   final String? agent;
   final String? mode;
   final Map<String, dynamic>? time;
+  final Map<String, dynamic>? error;
 
   int? get timeCreated {
     final t = time?['created'];
@@ -29,6 +31,20 @@ class MessageInfo {
     return t is int ? t : null;
   }
 
+  String? get errorMessage {
+    if (error == null) return null;
+    final data = error!['data'];
+    if (data is Map<String, dynamic>) {
+      return data['message'] as String?;
+    }
+    return error!['name']?.toString();
+  }
+
+  bool get hasRetryableError {
+    if (error == null) return false;
+    return error!['name']?.toString() == 'APIError';
+  }
+
   factory MessageInfo.fromJson(Map<String, dynamic> json) {
     String? modelID = json['modelID'] as String?;
     String? providerID = json['providerID'] as String?;
@@ -38,6 +54,7 @@ class MessageInfo {
       providerID ??= modelObj['providerID'] as String?;
     }
     final time = json['time'];
+    final error = json['error'];
     return MessageInfo(
       id: (json['id'] ?? '').toString(),
       role: (json['role'] ?? 'assistant').toString(),
@@ -47,6 +64,7 @@ class MessageInfo {
       agent: json['agent'] as String?,
       mode: json['mode'] as String?,
       time: time is Map<String, dynamic> ? time : null,
+      error: error is Map<String, dynamic> ? error : null,
     );
   }
 
@@ -59,6 +77,7 @@ class MessageInfo {
         if (agent != null) 'agent': agent,
         if (mode != null) 'mode': mode,
         if (time != null) 'time': time,
+        if (error != null) 'error': error,
       };
 }
 

@@ -23,6 +23,35 @@ final sessionDirectoryProvider =
   return session?.directory;
 });
 
+class RetryAction {
+  const RetryAction({
+    required this.reason,
+    required this.provider,
+    required this.title,
+    required this.message,
+    required this.label,
+    this.link,
+  });
+
+  final String reason;
+  final String provider;
+  final String title;
+  final String message;
+  final String label;
+  final String? link;
+
+  factory RetryAction.fromJson(Map<String, dynamic> json) {
+    return RetryAction(
+      reason: (json['reason'] ?? '').toString(),
+      provider: (json['provider'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      message: (json['message'] ?? '').toString(),
+      label: (json['label'] ?? '').toString(),
+      link: json['link'] as String?,
+    );
+  }
+}
+
 class ChatState {
   const ChatState({
     this.messages = const [],
@@ -33,6 +62,9 @@ class ChatState {
     this.working = false,
     this.aborting = false,
     this.error,
+    this.retryMessage,
+    this.retryAction,
+    this.retryNext,
   });
 
   final List<MessageWithParts> messages;
@@ -43,6 +75,9 @@ class ChatState {
   final bool working;
   final bool aborting;
   final String? error;
+  final String? retryMessage;
+  final RetryAction? retryAction;
+  final int? retryNext;
 
   ChatState copyWith({
     List<MessageWithParts>? messages,
@@ -54,6 +89,10 @@ class ChatState {
     bool? aborting,
     String? error,
     bool clearError = false,
+    String? retryMessage,
+    bool clearRetry = false,
+    RetryAction? retryAction,
+    int? retryNext,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -64,6 +103,9 @@ class ChatState {
       working: working ?? this.working,
       aborting: aborting ?? this.aborting,
       error: clearError ? null : (error ?? this.error),
+      retryMessage: clearRetry ? null : (retryMessage ?? this.retryMessage),
+      retryAction: clearRetry ? null : (retryAction ?? this.retryAction),
+      retryNext: clearRetry ? null : (retryNext ?? this.retryNext),
     );
   }
 }
@@ -80,6 +122,7 @@ class ChatController extends ChangeNotifier {
   Timer? _deltaThrottleTimer;
   Timer? _stuckTimer;
   Timer? _abortTimer;
+  final List<Timer> _settlingTimers = [];
   Map<String, dynamic>? _pendingPartJson;
   bool _paused = false;
   bool _aborting = false;
@@ -155,7 +198,11 @@ class ChatController extends ChangeNotifier {
     _stuck = false;
     _lastSseActivity = DateTime.now();
     _abortGraceUntil = null;
-    state = state.copyWith(working: false, clearError: true);
+    state = state.copyWith(
+      working: false,
+      clearError: true,
+      clearRetry: true,
+    );
   }
 
   Future<void> load() async {
@@ -374,23 +421,43 @@ class ChatController extends ChangeNotifier {
         break;
       case 'session.status':
         final status = props['status'];
-        final statusType =
-            status is Map ? status['type']?.toString() : status?.toString();
+        final statusMap = status is Map<String, dynamic> ? status : null;
+        final statusType = statusMap?['type']?.toString() ?? status?.toString();
         final isBusy = statusType == 'busy';
         final isIdle = statusType == 'idle';
+        final isRetry = statusType == 'retry';
         if (sid != null) {
-          activity.setBusy(sid, isBusy && !isIdle && !_aborting);
+          activity.setBusy(sid, (isBusy || isRetry) && !isIdle && !_aborting);
         }
         if (forThisSession || sid == null) {
           if (isIdle) {
             _clearAbort();
             _optimisticBusy = false;
-            state = state.copyWith(working: false, aborting: false);
+            state = state.copyWith(
+              working: false,
+              aborting: false,
+              clearRetry: true,
+            );
             if (forThisSession) load();
+          } else if (isRetry) {
+            if (!_aborting) {
+              _optimisticBusy = true;
+              final retryMsg = statusMap?['message'] as String?;
+              final retryActionJson = statusMap?['action'];
+              final retryNextVal = statusMap?['next'];
+              state = state.copyWith(
+                working: true,
+                retryMessage: retryMsg,
+                retryAction: retryActionJson is Map<String, dynamic>
+                    ? RetryAction.fromJson(retryActionJson)
+                    : null,
+                retryNext: retryNextVal is int ? retryNextVal : null,
+              );
+            }
           } else if (isBusy) {
             if (!_aborting) {
               _optimisticBusy = true;
-              state = state.copyWith(working: true);
+              state = state.copyWith(working: true, clearRetry: true);
             }
           }
         }
@@ -431,7 +498,21 @@ class ChatController extends ChangeNotifier {
         if (forThisSession || sid == null) {
           _clearAbort();
           _optimisticBusy = false;
-          state = state.copyWith(working: false, aborting: false);
+          final errorObj = props['error'];
+          String? errorMessage;
+          if (errorObj is Map<String, dynamic>) {
+            final data = errorObj['data'];
+            if (data is Map<String, dynamic>) {
+              errorMessage = data['message'] as String?;
+            }
+            errorMessage ??= errorObj['name']?.toString();
+          }
+          state = state.copyWith(
+            working: false,
+            aborting: false,
+            clearRetry: true,
+            error: errorMessage,
+          );
         }
         break;
       case 'session.compacted':
@@ -541,6 +622,7 @@ class ChatController extends ChangeNotifier {
       working: true,
       aborting: false,
       clearError: true,
+      clearRetry: true,
     );
     try {
       await client.sendPromptAsync(
@@ -563,9 +645,9 @@ class ChatController extends ChangeNotifier {
 
   void _scheduleSettlingReloads() {
     for (final delay in const [400, 1200, 2500, 4500]) {
-      Timer(Duration(milliseconds: delay), () {
+      _settlingTimers.add(Timer(Duration(milliseconds: delay), () {
         if (!_aborting) load();
-      });
+      }));
     }
   }
 
@@ -602,11 +684,15 @@ class ChatController extends ChangeNotifier {
     _pollTimer?.cancel();
     _stuckTimer?.cancel();
     _abortTimer?.cancel();
+    for (final t in _settlingTimers) {
+      t.cancel();
+    }
+    _settlingTimers.clear();
     super.dispose();
   }
 }
 
-final chatControllerProvider =
-    ChangeNotifierProvider.family<ChatController, String>((ref, sessionId) {
+final chatControllerProvider = ChangeNotifierProvider.family
+    .autoDispose<ChatController, String>((ref, sessionId) {
   return ChatController(ref, sessionId);
 });

@@ -11,6 +11,7 @@ import '../models/provider.dart';
 import '../models/question.dart';
 import '../models/server_connection.dart';
 import '../models/session.dart';
+import '../models/terminal.dart';
 import '../models/vcs.dart';
 import 'endpoints.dart';
 
@@ -71,6 +72,8 @@ class OpencodeClient {
       403 => 'Forbidden',
       404 => 'Not found',
       409 => 'Conflict',
+      429 => 'Rate limit exceeded',
+      402 => 'Quota exceeded',
       500 => 'Server error',
       _ => 'Request failed',
     };
@@ -374,18 +377,6 @@ class OpencodeClient {
     }
   }
 
-  Future<Project> initProjectGit({String? directory}) async {
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.projectGitInit,
-        queryParameters: {if (directory != null) 'directory': directory},
-      );
-      return Project.fromJson(res.data!);
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
   Future<Project> updateProject(
     String id, {
     String? name,
@@ -407,21 +398,6 @@ class OpencodeClient {
     }
   }
 
-  Future<List<String>> listProjectDirectories(String id) async {
-    try {
-      final res = await _dio.get<Map<String, dynamic>>(
-        Endpoints.projectDirectories(id),
-      );
-      final dirs = res.data?['directories'];
-      if (dirs is List) {
-        return dirs.whereType<String>().toList();
-      }
-      return const [];
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
   Future<Map<String, dynamic>> createWorktree(Map<String, dynamic> input,
       {String? directory}) async {
     try {
@@ -431,18 +407,6 @@ class OpencodeClient {
         queryParameters: {if (directory != null) 'directory': directory},
       );
       return res.data ?? const <String, dynamic>{};
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<List<String>> listWorktrees({String? directory}) async {
-    try {
-      final res = await _dio.get<List<dynamic>>(
-        Endpoints.worktrees,
-        queryParameters: {if (directory != null) 'directory': directory},
-      );
-      return (res.data ?? []).whereType<String>().toList();
     } on DioException catch (e) {
       _rethrow(e);
     }
@@ -484,17 +448,6 @@ class OpencodeClient {
         queryParameters: {if (directory != null) 'directory': directory},
       );
       return (res.data?['name'] as String?) ?? '';
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<void> refreshProjectCopy(String id, {String? directory}) async {
-    try {
-      await _dio.post<dynamic>(
-        Endpoints.projectCopyRefresh(id),
-        queryParameters: {if (directory != null) 'directory': directory},
-      );
     } on DioException catch (e) {
       _rethrow(e);
     }
@@ -575,6 +528,101 @@ class OpencodeClient {
           if (directory != null) 'directory': directory,
         },
       );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<List<PtySession>> listPtySessions({String? directory}) async {
+    try {
+      final res = await _dio.get<List<dynamic>>(
+        Endpoints.pty,
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return (res.data ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PtySession.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<PtySession> createPty({
+    String? command,
+    List<String>? args,
+    String? cwd,
+    String? title,
+    String? directory,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.pty,
+        queryParameters: {if (directory != null) 'directory': directory},
+        data: {
+          if (command != null) 'command': command,
+          if (args != null) 'args': args,
+          if (cwd != null) 'cwd': cwd,
+          if (title != null) 'title': title,
+        },
+      );
+      return PtySession.fromJson(res.data ?? {});
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<PtySession?> getPtySession(String id, {String? directory}) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        Endpoints.ptyById(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      final data = res.data;
+      if (data == null) return null;
+      return PtySession.fromJson(data);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> removePty(String id, {String? directory}) async {
+    try {
+      await _dio.delete<dynamic>(
+        Endpoints.ptyById(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<void> resizePty(
+    String id, {
+    required int cols,
+    required int rows,
+    String? directory,
+  }) async {
+    try {
+      await _dio.put<dynamic>(
+        Endpoints.ptyById(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+        data: {
+          'size': {'cols': cols, 'rows': rows}
+        },
+      );
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
+  Future<String?> getPtyConnectToken(String id, {String? directory}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.ptyConnectToken(id),
+        queryParameters: {if (directory != null) 'directory': directory},
+      );
+      return res.data?['ticket'] as String?;
     } on DioException catch (e) {
       _rethrow(e);
     }

@@ -10,7 +10,6 @@ import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../connection/connection_screen.dart';
 
-
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -267,7 +266,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-
         ],
       ),
     );
