@@ -475,7 +475,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                                 ? 'Global'
                                 : (group.project.id == '__other__'
                                     ? 'Other'
-                                    : compactPath(group.project.worktree));
+                                    : group.project.worktree
+                                        .split('/')
+                                        .where((s) => s.isNotEmpty)
+                                        .last);
                             final displaySessions = group.sessions;
                             return _WorkspaceTile(
                               key: ValueKey(group.project.worktree),
@@ -758,7 +761,9 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final name = widget.titleOverride ?? compactPath(widget.project.worktree);
+    final name = widget.titleOverride ??
+        widget.project.worktree.split('/').where((s) => s.isNotEmpty).last;
+    final subtitle = widget.project.worktree;
     final count = widget.sessions.length;
     final vcs = ref.watch(vcsProvider);
     final branch = vcs.value?.branch;
@@ -788,34 +793,51 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
                   ),
                   const Gap(12),
                   Expanded(
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Flexible(
-                          child: Text(
-                            name,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            if (branch != null && branch.isNotEmpty) ...[
+                              const Gap(6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.muted,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  branch,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: theme.colorScheme.mutedForeground,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (subtitle.isNotEmpty) ...[
+                          const Gap(2),
+                          Text(
+                            subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                        if (branch != null && branch.isNotEmpty) ...[
-                          const Gap(6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.muted,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              branch,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: theme.colorScheme.mutedForeground,
-                              ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.mutedForeground,
                             ),
                           ),
                         ],

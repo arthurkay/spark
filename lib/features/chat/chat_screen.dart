@@ -236,6 +236,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               OutlineButton(
                 onPressed: () {
                   closeSheet(sheetContext);
+                  openTerminalSheet(
+                    context,
+                    sessionId: widget.sessionId,
+                  );
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.terminal, size: 16),
+                    Gap(10),
+                    Text('Terminal'),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
                   openModelPicker(
                     context: context,
                     ref: ref,
@@ -269,23 +286,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                       const Spacer(),
                       Text(agentLabel).muted.xSmall,
                     ],
-                  ],
-                ),
-              ),
-              const Gap(8),
-              OutlineButton(
-                onPressed: () {
-                  closeSheet(sheetContext);
-                  openTerminalSheet(
-                    context,
-                    sessionId: widget.sessionId,
-                  );
-                },
-                child: const Row(
-                  children: [
-                    Icon(LucideIcons.terminal, size: 16),
-                    Gap(10),
-                    Text('Terminal'),
                   ],
                 ),
               ),
