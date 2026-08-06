@@ -482,9 +482,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                                 : (group.project.id == '__other__'
                                     ? 'Other'
                                     : group.project.worktree
-                                        .split('/')
-                                        .where((s) => s.isNotEmpty)
-                                        .last);
+                                            .split('/')
+                                            .where((s) => s.isNotEmpty)
+                                            .lastOrNull ??
+                                        group.project.worktree);
                             final displaySessions = group.sessions;
                             return _WorkspaceTile(
                               key: ValueKey(group.project.worktree),
@@ -768,7 +769,11 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final name = widget.titleOverride ??
-        widget.project.worktree.split('/').where((s) => s.isNotEmpty).last;
+        widget.project.worktree
+            .split('/')
+            .where((s) => s.isNotEmpty)
+            .lastOrNull ??
+        widget.project.worktree;
     final subtitle = widget.project.worktree;
     final count = widget.sessions.length;
     final vcs = ref.watch(vcsProvider);
