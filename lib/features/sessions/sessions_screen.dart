@@ -15,7 +15,6 @@ import '../../shared/widgets/shimmer_loading.dart';
 import '../connection/connection_screen.dart';
 
 import '../permissions/permission_banner.dart';
-import 'create_project_sheet.dart';
 import 'sessions_provider.dart';
 import 'workspace_provider.dart';
 
@@ -165,53 +164,45 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Rename project').h4,
-              const Gap(12),
-              TextField(
-                controller: controller,
-                placeholder: const Text('Project name'),
-              ),
-              const Gap(16),
-              PrimaryButton(
-                onPressed: () async {
-                  final name = controller.text.trim();
-                  if (name.isEmpty) return;
-                  closeSheet(sheetContext);
-                  try {
-                    await ref
-                        .read(opencodeClientProvider)!
-                        .updateProject(project.id, name: name);
-                    ref.read(projectsRefreshProvider.notifier).state++;
-                  } on OpencodeApiException catch (e) {
-                    if (!context.mounted) return;
-                    showAppToast(context,
-                        title: 'Failed to rename', description: e.message);
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Rename project').h4,
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  placeholder: const Text('Project name'),
+                ),
+                const Gap(16),
+                PrimaryButton(
+                  onPressed: () async {
+                    final name = controller.text.trim();
+                    if (name.isEmpty) return;
+                    closeSheet(sheetContext);
+                    try {
+                      await ref
+                          .read(opencodeClientProvider)!
+                          .updateProject(project.id, name: name);
+                      ref.read(projectsRefreshProvider.notifier).state++;
+                    } on OpencodeApiException catch (e) {
+                      if (!context.mounted) return;
+                      showAppToast(context,
+                          title: 'Failed to rename', description: e.message);
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
-    );
-  }
-
-  void _showCreateProject(BuildContext context, WidgetRef ref) {
-    openSheetOverlay(
-      context: context,
-      position: OverlayPosition.bottom,
-      barrierDismissible: true,
-      builder: (sheetContext) => SafeArea(
-        child: const CreateProjectSheet(),
-      ),
+        );
+      },
     );
   }
 
@@ -457,19 +448,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       children: [
                         const Text('Projects').small.semiBold.muted,
                         const Spacer(),
-                        GhostButton(
-                          density: ButtonDensity.compact,
-                          size: ButtonSize.small,
-                          onPressed: () => _showCreateProject(context, ref),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(LucideIcons.plus, size: 12),
-                              Gap(4),
-                              Text('Add project'),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
                     const Gap(16),
@@ -725,42 +703,45 @@ class _SessionTile extends ConsumerWidget {
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Rename session').h4,
-              const Gap(12),
-              TextField(
-                controller: controller,
-                placeholder: const Text('Session title'),
-              ),
-              const Gap(16),
-              PrimaryButton(
-                onPressed: () async {
-                  final title = controller.text.trim();
-                  if (title.isEmpty) return;
-                  closeSheet(sheetContext);
-                  try {
-                    await ref
-                        .read(opencodeClientProvider)!
-                        .renameSession(session.id, title);
-                    ref.read(sessionsRefreshProvider.notifier).state++;
-                  } on OpencodeApiException catch (e) {
-                    if (!context.mounted) return;
-                    showAppToast(context,
-                        title: 'Failed to rename', description: e.message);
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Rename session').h4,
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  placeholder: const Text('Session title'),
+                ),
+                const Gap(16),
+                PrimaryButton(
+                  onPressed: () async {
+                    final title = controller.text.trim();
+                    if (title.isEmpty) return;
+                    closeSheet(sheetContext);
+                    try {
+                      await ref
+                          .read(opencodeClientProvider)!
+                          .renameSession(session.id, title);
+                      ref.read(sessionsRefreshProvider.notifier).state++;
+                    } on OpencodeApiException catch (e) {
+                      if (!context.mounted) return;
+                      showAppToast(context,
+                          title: 'Failed to rename', description: e.message);
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

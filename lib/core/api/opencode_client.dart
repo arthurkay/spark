@@ -398,61 +398,6 @@ class OpencodeClient {
     }
   }
 
-  Future<Map<String, dynamic>> createWorktree(Map<String, dynamic> input,
-      {String? directory}) async {
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.worktrees,
-        data: input,
-        queryParameters: {if (directory != null) 'directory': directory},
-      );
-      return res.data ?? const <String, dynamic>{};
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<Map<String, dynamic>> createProjectCopy(
-    String id, {
-    required String directory,
-    String? name,
-    String? strategy,
-    String? sourceDirectory,
-  }) async {
-    try {
-      final body = <String, dynamic>{
-        'directory': directory,
-        if (name != null) 'name': name,
-        if (strategy != null) 'strategy': strategy,
-      };
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.projectCopy(id),
-        data: body,
-        queryParameters: {
-          if (sourceDirectory != null) 'directory': sourceDirectory
-        },
-      );
-      return res.data ?? const <String, dynamic>{};
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
-  Future<String> generateProjectCopyName(
-    String id, {
-    String? directory,
-  }) async {
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        Endpoints.projectCopyGenerateName(id),
-        queryParameters: {if (directory != null) 'directory': directory},
-      );
-      return (res.data?['name'] as String?) ?? '';
-    } on DioException catch (e) {
-      _rethrow(e);
-    }
-  }
-
   Future<Session?> getSession(String id) async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(

@@ -29,12 +29,6 @@ class Endpoints {
 
   static String projectById(String id) => '/project/$id';
 
-  static const worktrees = '/experimental/worktree';
-
-  static String projectCopy(String id) => '/experimental/project/$id/copy';
-  static String projectCopyGenerateName(String id) =>
-      '/experimental/project/$id/copy/generate-name';
-
   static const pty = '/pty';
   static String ptyById(String id) => '/pty/$id';
   static String ptyConnect(String id) => '/pty/$id/connect';
