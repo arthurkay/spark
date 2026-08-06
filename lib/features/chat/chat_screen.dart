@@ -574,9 +574,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             return Positioned(
               right: 16,
               bottom: 16,
-              child: IconButton.primary(
-                icon: const Icon(LucideIcons.arrowDown, size: 18),
-                onPressed: () => _scrollToBottom(),
+              child: GestureDetector(
+                onTap: () => _scrollToBottom(),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.muted,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    LucideIcons.arrowDown,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.foreground,
+                  ),
+                ),
               ),
             );
           },

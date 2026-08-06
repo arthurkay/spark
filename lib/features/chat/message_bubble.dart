@@ -182,16 +182,13 @@ class MessageBubble extends StatelessWidget {
             height: 28,
             margin: const EdgeInsets.only(top: 2),
             decoration: BoxDecoration(
-              color:
-                  _isUser ? theme.colorScheme.primary : theme.colorScheme.muted,
+              color: theme.colorScheme.muted,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               _isUser ? LucideIcons.user : LucideIcons.sparkles,
               size: 15,
-              color: _isUser
-                  ? theme.colorScheme.primaryForeground
-                  : theme.colorScheme.foreground,
+              color: theme.colorScheme.foreground,
             ),
           ),
           const Gap(12),

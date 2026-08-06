@@ -395,6 +395,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               sliver: const SliverToBoxAdapter(child: PermissionBanner()),
             ),
             const SliverToBoxAdapter(child: Gap(12)),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              sliver: SliverToBoxAdapter(
+                child: const Text('Projects').h4,
+              ),
+            ),
             projectsAsync.when(
               loading: () => SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
