@@ -9,26 +9,62 @@ even access a full terminal.
 In the UI the backend is branded as **SparkCode**, but underneath it is still the
 standard opencode server API.
 
-## Screenshots
+---
 
-| Home | Chat | Terminal |
-|------|------|----------|
-| ![Home](screenshots/home.jpeg) | ![Chat](screenshots/chat.jpeg) | ![Terminal](screenshots/terminal.jpeg) |
+## Showcase
+
+<div align="center">
+
+### Chat with your AI, from anywhere
+
+Live streaming responses, inline tool calls, diffs, and reasoning — all in a clean,
+native mobile interface.
+
+![Chat](screenshots/chat.jpeg)
+
+</div>
+
+---
+
+<div align="center">
+
+### Your projects, organized
+
+Browse workspaces grouped by project, search across sessions, and filter by activity.
+Jump into any session with a single tap.
+
+![Home](screenshots/home.jpeg)
+
+</div>
+
+---
+
+<div align="center">
+
+### Terminal at your fingertips
+
+Full PTY support with a custom keyboard toolbar — arrow keys, Tab, Ctrl, Esc.
+Run commands on your server from your phone.
+
+![Terminal](screenshots/terminal.jpeg)
+
+</div>
+
+---
 
 ## Features
 
-- Connect to one or more opencode servers (host/port, optional HTTP Basic auth).
-- Session list grouped by project/worktree, with search and active/idle filters.
-- Chat thread with live streaming of text, reasoning, and tool calls.
-- Tool-call chips that expand inline to show structured content:
-  - `todowrite` → rendered as a checklist with status icons and priority badges.
-  - `bash` → command + output; `grep` → pattern/path/results.
-  - `read` / `edit` / `write` / `glob` → file paths and diffs.
-- Permission approval banner + sheet; optional auto-approve toggle.
-- Model and agent pickers sourced from the server config.
-- Project-scoped file browser and diff viewer.
-- Full terminal with PTY support, keyboard toolbar (arrows, Tab, Ctrl, Esc).
-- Local notifications for incoming permission requests.
+| Capability | Details |
+|------------|---------|
+| **Multi-server** | Connect to one or more opencode servers with optional HTTP Basic auth |
+| **Session management** | Grouped by project/worktree, with search and active/idle filters |
+| **Live chat** | Streaming text, reasoning, and tool calls in real time |
+| **Tool chips** | Expand inline to show `todowrite` checklists, `bash` output, `grep` results, `edit` diffs |
+| **Permissions** | Approve or reject server requests via banner + sheet |
+| **Models & agents** | Pick from server-configured models and agents |
+| **File browser** | Project-scoped file tree and diff viewer |
+| **Terminal** | Full PTY with keyboard toolbar (arrows, Tab, Ctrl, Esc) |
+| **Notifications** | Local alerts for incoming permission requests |
 
 ## Getting Started
 

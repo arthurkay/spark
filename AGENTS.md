@@ -169,6 +169,9 @@ on the `requestID` captured when the sheet was built (it may be empty).
 ## Conventions
 
 - Do NOT add code comments unless explicitly requested.
+- **Do NOT commit or push code unless explicitly asked to.** The user must
+  explicitly request a commit (e.g. "commit this", "push", "commit and push").
+  Never auto-commit after making changes — always wait for the user's go-ahead.
 - Prefer shadcn_flutter widgets (`ShadcnApp`, `Button`, `Card`, `Input`,
   `TextArea`, `Select`, `Sheet`, `Badge`, etc.). Do not import `package:flutter/material.dart`
   for UI unless a specific primitive is unavailable.
