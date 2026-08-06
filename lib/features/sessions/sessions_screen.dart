@@ -165,7 +165,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       position: OverlayPosition.bottom,
       barrierDismissible: true,
       builder: (sheetContext) {
-        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
         return SafeArea(
           child: Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
@@ -704,7 +704,7 @@ class _SessionTile extends ConsumerWidget {
       position: OverlayPosition.bottom,
       barrierDismissible: true,
       builder: (sheetContext) {
-        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
         return SafeArea(
           child: Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
