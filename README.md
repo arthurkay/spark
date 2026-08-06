@@ -13,44 +13,27 @@ standard opencode server API.
 
 ## Showcase
 
-<div align="center">
-
-### Chat with your AI, from anywhere
-
-Live streaming responses, inline tool calls, diffs, and reasoning — all in a clean,
-native mobile interface.
-
-![Chat](screenshots/chat.jpeg)
-
-</div>
-
----
-
-<div align="center">
-
-### Your projects, organized
-
-Browse workspaces grouped by project, search across sessions, and filter by activity.
-Jump into any session with a single tap.
-
-![Home](screenshots/home.jpeg)
-
-</div>
-
----
-
-<div align="center">
-
-### Terminal at your fingertips
-
-Full PTY support with a custom keyboard toolbar — arrow keys, Tab, Ctrl, Esc.
-Run commands on your server from your phone.
-
-![Terminal](screenshots/terminal.jpeg)
-
-</div>
-
----
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <h3>Chat with your AI, from anywhere</h3>
+      <p>Live streaming responses, inline tool calls, diffs, and reasoning — all in a clean, native mobile interface.</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>Your projects, organized</h3>
+      <p>Browse workspaces grouped by project, search across sessions, and filter by activity.</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>Terminal at your fingertips</h3>
+      <p>Full PTY support with a custom keyboard toolbar — arrow keys, Tab, Ctrl, Esc.</p>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/chat.jpeg" width="260" alt="Chat"></td>
+    <td align="center"><img src="screenshots/home.jpeg" width="260" alt="Home"></td>
+    <td align="center"><img src="screenshots/terminal.jpeg" width="260" alt="Terminal"></td>
+  </tr>
+</table>
 
 ## Features
 
