@@ -1,4 +1,4 @@
-package ai.opencode.spark
+package zm.co.cloud.spark
 
 import io.flutter.embedding.android.FlutterActivity
 
