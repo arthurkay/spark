@@ -9,45 +9,26 @@ even access a full terminal.
 In the UI the backend is branded as **SparkCode**, but underneath it is still the
 standard opencode server API.
 
----
+## Screenshots
 
-## Showcase
-
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <h3>Chat with your AI, from anywhere</h3>
-      <p>Live streaming responses, inline tool calls, diffs, and reasoning — all in a clean, native mobile interface.</p>
-    </td>
-    <td align="center" width="33%">
-      <h3>Your projects, organized</h3>
-      <p>Browse workspaces grouped by project, search across sessions, and filter by activity.</p>
-    </td>
-    <td align="center" width="33%">
-      <h3>Terminal at your fingertips</h3>
-      <p>Full PTY support with a custom keyboard toolbar — arrow keys, Tab, Ctrl, Esc.</p>
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><img src="screenshots/chat.jpeg" width="260" alt="Chat"></td>
-    <td align="center"><img src="screenshots/home.jpeg" width="260" alt="Home"></td>
-    <td align="center"><img src="screenshots/terminal.jpeg" width="260" alt="Terminal"></td>
-  </tr>
-</table>
+| Home | Chat | Terminal |
+|------|------|----------|
+| ![Home](screenshots/home.jpeg) | ![Chat](screenshots/chat.jpeg) | ![Terminal](screenshots/terminal.jpeg) |
 
 ## Features
 
-| Capability | Details |
-|------------|---------|
-| **Multi-server** | Connect to one or more opencode servers with optional HTTP Basic auth |
-| **Session management** | Grouped by project/worktree, with search and active/idle filters |
-| **Live chat** | Streaming text, reasoning, and tool calls in real time |
-| **Tool chips** | Expand inline to show `todowrite` checklists, `bash` output, `grep` results, `edit` diffs |
-| **Permissions** | Approve or reject server requests via banner + sheet |
-| **Models & agents** | Pick from server-configured models and agents |
-| **File browser** | Project-scoped file tree and diff viewer |
-| **Terminal** | Full PTY with keyboard toolbar (arrows, Tab, Ctrl, Esc) |
-| **Notifications** | Local alerts for incoming permission requests |
+- Connect to one or more opencode servers (host/port, optional HTTP Basic auth).
+- Session list grouped by project/worktree, with search and active/idle filters.
+- Chat thread with live streaming of text, reasoning, and tool calls.
+- Tool-call chips that expand inline to show structured content:
+  - `todowrite` → rendered as a checklist with status icons and priority badges.
+  - `bash` → command + output; `grep` → pattern/path/results.
+  - `read` / `edit` / `write` / `glob` → file paths and diffs.
+- Permission approval banner + sheet; optional auto-approve toggle.
+- Model and agent pickers sourced from the server config.
+- Project-scoped file browser and diff viewer.
+- Full terminal with PTY support, keyboard toolbar (arrows, Tab, Ctrl, Esc).
+- Local notifications for incoming permission requests.
 
 ## Getting Started
 

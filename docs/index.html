@@ -6,68 +6,152 @@
   <title>Spark — AI Coding Companion for Your Phone</title>
   <meta name="description" content="Spark is a mobile client for opencode. Chat with AI, review code, approve permissions, and access a full terminal — all from your phone.">
   <link rel="icon" href="icon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <section class="hero">
-    <div class="hero-icon">
-      <img src="icon.png" alt="Spark">
-    </div>
-    <h1>Spark</h1>
-    <p class="tagline">Your AI coding companion, from anywhere.</p>
-    <div class="hero-actions">
-      <a href="https://github.com/arthurkay/spark" class="btn btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-        GitHub
+  <!-- Glow background -->
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="icon.png" alt="" width="20" height="20">
+        <span>Spark</span>
       </a>
-      <a href="#quickstart" class="btn">Get started</a>
+      <div class="nav-links">
+        <a href="#showcase">Showcase</a>
+        <a href="#features">Features</a>
+        <a href="#quickstart">Get started</a>
+        <a href="https://github.com/arthurkay/spark" class="btn btn-sm">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">Mobile client for opencode</div>
+    <h1 class="hero-title">
+      Your AI coding<br>
+      <span class="gradient">companion, anywhere.</span>
+    </h1>
+    <p class="hero-desc">
+      Chat with your AI, review diffs, approve permissions,<br class="hide-mobile">
+      and access a full terminal — all from your phone.
+    </p>
+    <div class="hero-actions">
+      <a href="#quickstart" class="btn btn-primary btn-lg">
+        Get started
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+      <a href="https://github.com/arthurkay/spark" class="btn btn-lg">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Star on GitHub
+      </a>
     </div>
   </section>
 
-  <section class="screenshots">
+  <!-- Showcase: Phone mockups -->
+  <section class="showcase" id="showcase">
     <div class="container">
-      <div class="screenshots-row">
-        <div class="screenshot">
-          <img src="screenshots/home.jpeg" alt="Projects" loading="lazy">
-          <div class="screenshot-caption">Projects</div>
+      <div class="phone-grid">
+        <div class="phone-card phone-card--featured" data-reveal>
+          <div class="phone-frame phone-frame--large">
+            <div class="phone-notch"></div>
+            <img src="screenshots/chat.jpeg" alt="Live AI Chat" loading="lazy">
+          </div>
+          <div class="phone-info">
+            <div class="phone-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            </div>
+            <h3>Live AI Chat</h3>
+            <p>Stream responses, diffs, tool calls, and reasoning — all in real time.</p>
+          </div>
         </div>
-        <div class="screenshot">
-          <img src="screenshots/chat.jpeg" alt="Chat" loading="lazy">
-          <div class="screenshot-caption">Chat</div>
-        </div>
-        <div class="screenshot">
-          <img src="screenshots/terminal.jpeg" alt="Terminal" loading="lazy">
-          <div class="screenshot-caption">Terminal</div>
+
+        <div class="phone-side">
+          <div class="phone-card" data-reveal data-delay="100">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <img src="screenshots/home.jpeg" alt="Projects" loading="lazy">
+            </div>
+            <div class="phone-info">
+              <div class="phone-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              </div>
+              <h3>Projects</h3>
+              <p>Workspaces organized by project, with search and filters.</p>
+            </div>
+          </div>
+
+          <div class="phone-card" data-reveal data-delay="200">
+            <div class="phone-frame">
+              <div class="phone-notch"></div>
+              <img src="screenshots/terminal.jpeg" alt="Terminal" loading="lazy">
+            </div>
+            <div class="phone-info">
+              <div class="phone-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+              </div>
+              <h3>Terminal</h3>
+              <p>Full PTY with arrow keys, Tab, Ctrl — from your phone.</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="features">
+  <!-- Features -->
+  <section class="features" id="features">
     <div class="container">
+      <div class="features-header">
+        <div class="section-label">Features</div>
+        <h2>Everything you need,<br><span class="gradient">nothing you don't.</span></h2>
+      </div>
       <div class="features-grid">
-        <div class="feature">
+        <div class="feature" data-reveal>
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+          </div>
           <h3>Live AI Chat</h3>
           <p>Stream responses in real-time. See text, reasoning, and tool calls as they happen.</p>
         </div>
-        <div class="feature">
+        <div class="feature" data-reveal data-delay="50">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
+          </div>
           <h3>Tool Call Chips</h3>
           <p>Bash, read, edit, grep, and more — expand inline to see structured output and diffs.</p>
         </div>
-        <div class="feature">
+        <div class="feature" data-reveal data-delay="100">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+          </div>
           <h3>Permission Approval</h3>
           <p>Approve or reject file edits and shell commands with a single tap, from anywhere.</p>
         </div>
-        <div class="feature">
+        <div class="feature" data-reveal data-delay="150">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+          </div>
           <h3>Full Terminal</h3>
           <p>PTY-backed terminal with arrow keys, Tab, Ctrl, and Esc — right on your phone.</p>
         </div>
-        <div class="feature">
+        <div class="feature" data-reveal data-delay="200">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          </div>
           <h3>Multi-Project</h3>
           <p>Sessions grouped by project. Search, filter by active or idle, switch between worktrees.</p>
         </div>
-        <div class="feature">
+        <div class="feature" data-reveal data-delay="250">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          </div>
           <h3>Model & Agent Picker</h3>
           <p>Switch between models and agents on the fly. Server defaults auto-detected.</p>
         </div>
@@ -75,33 +159,49 @@
     </div>
   </section>
 
+  <!-- Quick Start -->
   <section class="quickstart" id="quickstart">
     <div class="container">
-      <div class="section-label">Quick start</div>
+      <div class="quickstart-header">
+        <div class="section-label">Quick start</div>
+        <h2>Up and running<br><span class="gradient">in two steps.</span></h2>
+      </div>
       <div class="steps">
-        <div class="step">
-          <div class="step-head">
-            <span class="step-num">1.</span>
-            <h3>Start the server</h3>
-          </div>
+        <div class="step" data-reveal>
+          <div class="step-num">01</div>
+          <h3>Start the server</h3>
           <p>Run opencode on your machine.</p>
           <div class="code">
-            <span class="c"># without auth</span><br>
-            <span class="k">opencode serve</span> --port 4096<br><br>
-            <span class="c"># with auth</span><br>
-            <span class="k">OPENCODE_SERVER_PASSWORD</span>=secret opencode serve --port 4096
+            <div class="code-header">
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+              <span class="code-title">Terminal</span>
+            </div>
+            <code>
+              <span class="c"># without auth</span><br>
+              <span class="k">opencode serve</span> --port 4096<br><br>
+              <span class="c"># with auth</span><br>
+              <span class="k">OPENCODE_SERVER_PASSWORD</span>=secret opencode serve --port 4096
+            </code>
           </div>
         </div>
-        <div class="step">
-          <div class="step-head">
-            <span class="step-num">2.</span>
-            <h3>Connect from Spark</h3>
-          </div>
+        <div class="step" data-reveal data-delay="100">
+          <div class="step-num">02</div>
+          <h3>Connect from Spark</h3>
           <p>Open the app, go to settings, and enter your server details.</p>
           <div class="code">
-            Host <span class="k">192.168.1.100</span><br>
-            Port <span class="k">4096</span><br>
-            Password <span class="k">your-password</span>
+            <div class="code-header">
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+              <span class="code-title">Connection</span>
+            </div>
+            <code>
+              Host <span class="k">192.168.1.100</span><br>
+              Port <span class="k">4096</span><br>
+              Password <span class="k">your-password</span>
+            </code>
           </div>
         </div>
       </div>
@@ -109,9 +209,26 @@
     </div>
   </section>
 
-  <footer class="footer">
+  <!-- CTA -->
+  <section class="cta">
     <div class="container">
-      <span>Spark</span>
+      <h2>Ready to code from<br><span class="gradient">wherever you are?</span></h2>
+      <p>Connect Spark to your opencode server and start building.</p>
+      <div class="hero-actions">
+        <a href="#quickstart" class="btn btn-primary btn-lg">
+          Get started
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="icon.png" alt="" width="16" height="16">
+        <span>Spark</span>
+      </div>
       <div class="footer-links">
         <a href="https://github.com/arthurkay/spark">GitHub</a>
         <a href="https://opencode.ai/docs/server/">opencode</a>
@@ -119,6 +236,27 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    // Scroll reveal with IntersectionObserver
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const delay = entry.target.dataset.delay || 0;
+          setTimeout(() => entry.target.classList.add('revealed'), delay);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+
+    // Nav background on scroll
+    const nav = document.querySelector('.nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+  </script>
 
 </body>
 </html>

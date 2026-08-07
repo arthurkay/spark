@@ -1,18 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <g transform="translate(512,512)">
-    <!-- Rays -->
-    <line x1="0" y1="-180" x2="0" y2="-280" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
-    <line x1="0" y1="180" x2="0" y2="280" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
-    <line x1="-180" y1="0" x2="-280" y2="0" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
-    <line x1="180" y1="0" x2="280" y2="0" stroke="#38bdf8" stroke-width="28" stroke-linecap="round"/>
-    <!-- Diagonal rays -->
-    <line x1="-127" y1="-127" x2="-198" y2="-198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
-    <line x1="127" y1="-127" x2="198" y2="-198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
-    <line x1="-127" y1="127" x2="-198" y2="198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
-    <line x1="127" y1="127" x2="198" y2="198" stroke="#38bdf8" stroke-width="22" stroke-linecap="round"/>
-    <!-- Center glow -->
-    <circle cx="0" cy="0" r="90" fill="#38bdf8"/>
-    <circle cx="0" cy="0" r="60" fill="#18181b" opacity="0.25"/>
-    <circle cx="0" cy="0" r="36" fill="#fff" opacity="0.6"/>
+  <!-- Large sparkle (upper-left) -->
+  <g transform="translate(380,360)">
+    <path d="M 0 -210 L 52 -52 L 210 0 L 52 52 L 0 210 L -52 52 L -210 0 L -52 -52 Z" fill="#38bdf8"/>
+  </g>
+  <!-- Small sparkle (lower-right) -->
+  <g transform="translate(660,640)">
+    <path d="M 0 -110 L 28 -28 L 110 0 L 28 28 L 0 110 L -28 28 L -110 0 L -28 -28 Z" fill="#38bdf8"/>
   </g>
 </svg>
