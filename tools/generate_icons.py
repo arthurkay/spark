@@ -113,7 +113,10 @@ def main():
         icon = _render(size, BG, ACCENT)
         out_dir = os.path.join(root, folder)
         os.makedirs(out_dir, exist_ok=True)
-        icon.save(os.path.join(out_dir, "ic_launcher.png"))
+        # Composite onto opaque background to remove alpha channel (Play Store requirement)
+        bg = Image.new("RGB", icon.size, BG)
+        bg.paste(icon, mask=icon.split()[3])
+        bg.save(os.path.join(out_dir, "ic_launcher.png"))
         print(f"wrote {folder}/ic_launcher.png ({size}px)")
     # monochrome white small icon for notifications
     for folder, size in NOTIF_DENSITIES.items():
