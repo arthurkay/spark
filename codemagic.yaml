@@ -1,0 +1,76 @@
+workflows:
+  pr-checks:
+    name: PR Checks
+    max_build_duration: 30
+    instance_type: linux
+    environment:
+      flutter: stable
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze
+      - name: Run tests
+        script: flutter test
+    triggering:
+      events:
+        - pull_request
+
+  ios-release:
+    name: iOS Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: App Store Connect API key
+    environment:
+      flutter: stable
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: zm.co.cloud.spark
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Build iOS
+        script: flutter build ipa --release --export-options-plist=/path/to/ExportOptions.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_app_store: false
+    triggering:
+      events:
+        - tag
+      branch_patterns:
+        - pattern: "v*"
+          include: true
+
+  android-release:
+    name: Android Release
+    max_build_duration: 60
+    instance_type: linux
+    environment:
+      flutter: stable
+      android_signing:
+        - spark
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Decode keystore
+        script: |
+          echo "$KEYSTORE_BASE64" | base64 -d > $CM_BUILD_DIR/spark-release.jks
+          echo "KEYSTORE_PATH=$CM_BUILD_DIR/spark-release.jks" >> $CM_ENVVariables
+      - name: Build Android
+        script: flutter build appbundle --release
+    artifacts:
+      - build/**/outputs/**/*.aab
+    publishing:
+      google_play:
+        credentials: $PLAY_SERVICE_ACCOUNT_JSON
+        track: internal
+    triggering:
+      events:
+        - tag
+      branch_patterns:
+        - pattern: "v*"
+          include: true

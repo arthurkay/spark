@@ -28,6 +28,7 @@ class Endpoints {
       '/question/$requestId/reject';
 
   static String projectById(String id) => '/project/$id';
+  static const projectGitInit = '/project/git/init';
 
   static const pty = '/pty';
   static String ptyById(String id) => '/pty/$id';

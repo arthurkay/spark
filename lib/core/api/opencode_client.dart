@@ -398,6 +398,20 @@ class OpencodeClient {
     }
   }
 
+  Future<Project> initGitProject({String? directory}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.projectGitInit,
+        options: Options(
+          headers: {if (directory != null) 'x-opencode-directory': directory},
+        ),
+      );
+      return Project.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
   Future<Session?> getSession(String id) async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(

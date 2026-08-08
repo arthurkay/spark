@@ -22,6 +22,7 @@
       <div class="nav-links">
         <a href="#how-it-works">How it works</a>
         <a href="#showcase">Showcase</a>
+        <a href="#themes">Themes</a>
         <a href="#features">Features</a>
         <a href="https://github.com/arthurkay/spark" class="btn btn-ghost">GitHub</a>
         <a href="#get-started" class="btn btn-primary">Get started</a>
@@ -29,31 +30,58 @@
     </div>
   </nav>
 
+  <!-- Hero -->
   <section class="hero">
     <div class="container">
-      <div class="hero-badge">Mobile client for opencode</div>
-      <h1 class="hero-title">
-        The better way to<br>
-        <span class="gradient">code on the go.</span>
-      </h1>
-      <p class="hero-desc">
-        Chat with your AI, review diffs, approve permissions,<br>
-        and access a full terminal — all from your phone.
-      </p>
-      <div class="hero-actions">
-        <a href="#get-started" class="btn btn-primary btn-lg">
-          Get started
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </a>
-        <a href="https://github.com/arthurkay/spark" class="btn btn-secondary btn-lg">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-          Star on GitHub
-        </a>
+      <div class="hero-content">
+        <div class="hero-text">
+          <div class="hero-badge">Mobile client for opencode</div>
+          <h1 class="hero-title">
+            The better way to<br>
+            <span class="gradient">code on the go.</span>
+          </h1>
+          <p class="hero-desc">
+            Chat with your AI, review diffs, approve permissions,<br>
+            and access a full terminal — all from your phone.
+          </p>
+          <div class="hero-actions">
+            <a href="#get-started" class="btn btn-primary btn-lg">
+              Get started
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+            <a href="https://github.com/arthurkay/spark" class="btn btn-secondary btn-lg">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              Star on GitHub
+            </a>
+          </div>
+          <p class="hero-note">No credit card required. Open source.</p>
+        </div>
+        <div class="hero-phone">
+          <div class="phone-mockup phone-mockup--hero">
+            <div class="phone-screen">
+              <img src="screenshots/chat.jpeg" alt="Spark AI Chat" loading="lazy">
+            </div>
+            <div class="phone-shadow"></div>
+          </div>
+          <!-- Floating elements -->
+          <div class="floating-card floating-card--diff" data-float>
+            <div class="floating-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+            </div>
+            <span>Review diffs</span>
+          </div>
+          <div class="floating-card floating-card--terminal" data-float>
+            <div class="floating-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            </div>
+            <span>Full terminal</span>
+          </div>
+        </div>
       </div>
-      <p class="hero-note">No credit card required. Open source.</p>
     </div>
   </section>
 
+  <!-- Logos -->
   <section class="logos">
     <div class="container">
       <p class="logos-label">Trusted by developers using</p>
@@ -71,6 +99,7 @@
     </div>
   </section>
 
+  <!-- How It Works -->
   <section class="how-it-works" id="how-it-works">
     <div class="container">
       <div class="section-header">
@@ -130,6 +159,7 @@
     </div>
   </section>
 
+  <!-- Showcase -->
   <section class="showcase" id="showcase">
     <div class="container">
       <div class="section-header">
@@ -137,42 +167,148 @@
         <h2>Designed for developers.</h2>
         <p>Every feature built for the way you work.</p>
       </div>
-      <div class="phone-grid">
-        <div class="phone-card phone-card--featured" data-reveal>
-          <div class="phone-frame phone-frame--large">
-            <img src="screenshots/chat.jpeg" alt="Live AI Chat" loading="lazy">
-          </div>
-          <div class="phone-info">
-            <div class="phone-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+
+      <!-- Feature 1: Chat -->
+      <div class="feature-row" data-reveal>
+        <div class="feature-text">
+          <div class="feature-label">AI Chat</div>
+          <h3>See your AI think in real time</h3>
+          <p>Watch as your AI streams responses, shows reasoning, and executes tools — all visible as they happen.</p>
+          <ul class="feature-list">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Real-time streaming responses
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Inline tool call previews
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Markdown with syntax highlighting
+            </li>
+          </ul>
+        </div>
+        <div class="feature-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
+              <img src="screenshots/chat.jpeg" alt="AI Chat" loading="lazy">
             </div>
-            <h3>Live AI Chat</h3>
-            <p>Stream responses, diffs, tool calls, and reasoning — all in real time.</p>
+          </div>
+          <div class="visual-accent visual-accent--chat">
+            <div class="accent-card">
+              <div class="accent-dot"></div>
+              <span>todowrite</span>
+              <span class="accent-badge">done</span>
+            </div>
           </div>
         </div>
-        <div class="phone-side">
-          <div class="phone-card" data-reveal data-delay="100">
-            <div class="phone-frame">
+      </div>
+
+      <!-- Feature 2: Projects -->
+      <div class="feature-row feature-row--reverse" data-reveal>
+        <div class="feature-text">
+          <div class="feature-label">Projects</div>
+          <h3>All your projects, one tap away</h3>
+          <p>Organized by project with smart filters. Jump between workspaces instantly.</p>
+          <ul class="feature-list">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Multi-project workspace support
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Filter by Active or Idle sessions
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Instant search across everything
+            </li>
+          </ul>
+        </div>
+        <div class="feature-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
               <img src="screenshots/home.jpeg" alt="Projects" loading="lazy">
             </div>
-            <div class="phone-info">
-              <div class="phone-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-              </div>
-              <h3>Projects</h3>
-              <p>Workspaces organized by project, with search and filters.</p>
+          </div>
+          <div class="visual-accent visual-accent--projects">
+            <div class="accent-card">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              <span>opencode-mobile</span>
+              <span class="accent-count">5</span>
             </div>
           </div>
-          <div class="phone-card" data-reveal data-delay="200">
-            <div class="phone-frame">
+        </div>
+      </div>
+
+      <!-- Feature 3: Terminal -->
+      <div class="feature-row" data-reveal>
+        <div class="feature-text">
+          <div class="feature-label">Terminal</div>
+          <h3>Everything in one place</h3>
+          <p>Access files, terminal, models, and agents from a single session menu.</p>
+          <ul class="feature-list">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Quick access session menu
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Switch models on the fly
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Full PTY terminal with shortcuts
+            </li>
+          </ul>
+        </div>
+        <div class="feature-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
               <img src="screenshots/terminal.jpeg" alt="Terminal" loading="lazy">
             </div>
-            <div class="phone-info">
-              <div class="phone-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
-              </div>
-              <h3>Terminal</h3>
-              <p>Full PTY with arrow keys, Tab, Ctrl — from your phone.</p>
+          </div>
+          <div class="visual-accent visual-accent--terminal">
+            <div class="accent-card">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+              <span>Terminal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 4: Files -->
+      <div class="feature-row feature-row--reverse" data-reveal>
+        <div class="feature-text">
+          <div class="feature-label">Files</div>
+          <h3>Browse your project structure</h3>
+          <p>Navigate files and folders with a clean, familiar interface. View code with syntax highlighting.</p>
+          <ul class="feature-list">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Full project file browser
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Syntax-highlighted code viewer
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              Create new projects from the app
+            </li>
+          </ul>
+        </div>
+        <div class="feature-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
+              <img src="screenshots/files.jpeg" alt="Files" loading="lazy">
+            </div>
+          </div>
+          <div class="visual-accent visual-accent--files">
+            <div class="accent-card">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+              <span>main.dart</span>
             </div>
           </div>
         </div>
@@ -180,6 +316,33 @@
     </div>
   </section>
 
+  <!-- Theme Showcase -->
+  <section class="theme-showcase" id="themes">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-label">Themes</div>
+        <h2>Light or dark. Your call.</h2>
+        <p>Switch between themes to match your preference.</p>
+      </div>
+      <div class="theme-toggle-wrapper" data-reveal>
+        <div class="theme-toggle" id="themeToggle">
+          <button class="theme-btn active" data-theme="light">Light</button>
+          <button class="theme-btn" data-theme="dark">Dark</button>
+          <div class="theme-slider"></div>
+        </div>
+        <div class="theme-phones">
+          <div class="phone-mockup phone-mockup--theme">
+            <div class="phone-screen">
+              <img src="screenshots/home.jpeg" alt="Light theme" class="theme-img theme-img--light" id="themeLight">
+              <img src="screenshots/home-dark.jpeg" alt="Dark theme" class="theme-img theme-img--dark hidden" id="themeDark">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Grid -->
   <section class="features" id="features">
     <div class="container">
       <div class="section-header">
@@ -233,6 +396,7 @@
     </div>
   </section>
 
+  <!-- FAQ -->
   <section class="faq" id="faq">
     <div class="container">
       <div class="section-header">
@@ -264,6 +428,7 @@
     </div>
   </section>
 
+  <!-- CTA -->
   <section class="cta" id="get-started">
     <div class="container">
       <h2>Ready to code from<br><span class="gradient">wherever you are?</span></h2>
@@ -277,6 +442,7 @@
     </div>
   </section>
 
+  <!-- Footer -->
   <footer class="footer">
     <div class="container footer-inner">
       <div class="footer-brand">
@@ -310,6 +476,40 @@
     const nav = document.querySelector('.nav');
     window.addEventListener('scroll', () => {
       nav.classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+
+    // Floating animation
+    const floatObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('floating');
+        }
+      });
+    }, { threshold: 0.5 });
+
+    document.querySelectorAll('[data-float]').forEach(el => floatObserver.observe(el));
+
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const themeLight = document.getElementById('themeLight');
+    const themeDark = document.getElementById('themeDark');
+    const themeBtns = themeToggle.querySelectorAll('.theme-btn');
+
+    themeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const theme = btn.dataset.theme;
+        themeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        themeToggle.dataset.active = theme;
+
+        if (theme === 'light') {
+          themeLight.classList.remove('hidden');
+          themeDark.classList.add('hidden');
+        } else {
+          themeLight.classList.add('hidden');
+          themeDark.classList.remove('hidden');
+        }
+      });
     });
   </script>
 

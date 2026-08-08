@@ -5,8 +5,11 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/file_node.dart';
+import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/path_utils.dart';
+import '../sessions/sessions_provider.dart';
+import '../sessions/workspace_provider.dart';
 
 final _sessionDirectoryProvider = FutureProvider.family<String?, String>((
   ref,
@@ -64,6 +67,36 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
 
   String? get _directory => widget.directory;
 
+  String get _currentBrowseDirectory {
+    if (_path.isNotEmpty) return _path;
+    return _directory ?? '';
+  }
+
+  Future<void> _createProject() async {
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+    var dir = _currentBrowseDirectory;
+    if (dir.isEmpty && widget.sessionId != null) {
+      final session = await ref.read(_sessionDirectoryProvider(widget.sessionId!).future);
+      dir = session ?? '';
+    }
+    if (dir.isEmpty) return;
+    try {
+      await client.initGitProject(directory: dir);
+      ref.read(projectsRefreshProvider.notifier).state++;
+      final newSession = await client.createSession(directory: dir);
+      ref.read(sessionsRefreshProvider.notifier).state++;
+      if (!mounted) return;
+      context.push('/session/${newSession.id}');
+    } on OpencodeApiException catch (e) {
+      if (!mounted) return;
+      showAppToast(context, title: 'Failed to create project', description: e.message);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, title: 'Failed to create project', description: e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionId = widget.sessionId;
@@ -104,6 +137,51 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
           subtitle: directory != null && directory.isNotEmpty
               ? Text(compactPath(directory)).muted.small
               : const Text('Project root').muted.small,
+          trailing: [
+            IconButton.ghost(
+              icon: const Icon(LucideIcons.folderPlus),
+              onPressed: () => openSheetOverlay(
+                context: context,
+                position: OverlayPosition.bottom,
+                barrierDismissible: true,
+                builder: (sheetContext) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(LucideIcons.folderPlus),
+                            const Gap(8),
+                            const Text('Create Project').h4,
+                          ],
+                        ),
+                        const Gap(12),
+                        Text(
+                          'Initialize git in ${_currentBrowseDirectory.split('/').last} and create a new session?',
+                        ).muted,
+                        const Gap(20),
+                        PrimaryButton(
+                          onPressed: () {
+                            closeSheet(sheetContext);
+                            _createProject();
+                          },
+                          child: const Text('Create'),
+                        ),
+                        const Gap(8),
+                        OutlineButton(
+                          onPressed: () => closeSheet(sheetContext),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
       child: filesAsync.when(
