@@ -16,3 +16,8 @@
 
 # Keep models for JSON serialization
 -keep class zm.co.cloud.spark.core.models.** { *; }
+
+# Play Store split APK classes (referenced but not always available)
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
