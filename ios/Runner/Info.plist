@@ -45,5 +45,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SparkCode needs access to your photo library to allow you to share images and screenshots with the AI assistant.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SparkCode needs microphone access for voice input and speech-to-text functionality.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SparkCode needs camera access to allow you to capture images and screenshots for the AI assistant.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>SparkCode uses speech recognition to convert your voice input into text for chatting with the AI assistant.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SparkCode uses your location to provide context-aware assistance when you're working on location-specific projects.</string>
 </dict>
 </plist>
