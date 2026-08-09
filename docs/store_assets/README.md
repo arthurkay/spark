@@ -34,6 +34,16 @@ All assets are in `docs/store_assets/`.
 
 **Dimensions:** 1242 x 2208 px
 
+### iPad 13" (12.9" iPad Pro)
+| File | Description |
+|------|-------------|
+| `ios_ipad_home.png` | Your AI Workspace |
+| `ios_ipad_chat.png` | Intelligent Chat |
+| `ios_ipad_files.png` | Browse & Edit Files |
+| `ios_ipad_terminal.png` | Powerful Tools |
+
+**Dimensions:** 2048 x 2732 px
+
 ## Google Play Store
 
 ### Feature Graphic
@@ -47,7 +57,7 @@ All assets are in `docs/store_assets/`.
 ## Usage
 
 1. **iOS App Store Connect:**
-   - Upload all 12 images (4 per device size)
+   - Upload all 16 images (4 per device size)
    - Apple will automatically select the correct size for each device
 
 2. **Google Play Console:**
