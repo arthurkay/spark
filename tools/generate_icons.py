@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Spark app + notification icons for Android (PNG, Pillow only).
+"""Generate Spark app + notification icons for Android and iOS (PNG, Pillow only).
 
 Produces:
-  - Color launcher icons (rounded zinc square + cyan terminal prompt glyph)
+  - Android color launcher icons (rounded zinc square + cyan sparkle glyph)
     at the standard mipmap densities.
-  - A monochrome white notification small icon (same glyph) for the
+  - Android monochrome white notification small icon (same glyph) for the
     status bar (Android renders it as a white silhouette via alpha).
+  - iOS App Store icons at all required sizes (RGB, no alpha).
 
 No external fonts/SVG libs required: the glyph is drawn with vector math
 and anti-aliased via supersampling.
 """
 
+import json
 import math
 import os
 
@@ -39,6 +41,32 @@ NOTIF_DENSITIES = {
     "mipmap-xxhdpi": 72,
     "mipmap-xxxhdpi": 96,
 }
+
+# iOS App Icon sizes: (filename, size in px)
+# Based on Contents.json in AppIcon.appiconset
+IOS_ICONS = [
+    ("Icon-App-20x20@1x.png", 20),
+    ("Icon-App-20x20@2x.png", 40),
+    ("Icon-App-20x20@3x.png", 60),
+    ("Icon-App-29x29@1x.png", 29),
+    ("Icon-App-29x29@2x.png", 58),
+    ("Icon-App-29x29@3x.png", 87),
+    ("Icon-App-40x40@1x.png", 40),
+    ("Icon-App-40x40@2x.png", 80),
+    ("Icon-App-40x40@3x.png", 120),
+    ("Icon-App-50x50@1x.png", 50),
+    ("Icon-App-50x50@2x.png", 100),
+    ("Icon-App-57x57@1x.png", 57),
+    ("Icon-App-57x57@2x.png", 114),
+    ("Icon-App-60x60@2x.png", 120),
+    ("Icon-App-60x60@3x.png", 180),
+    ("Icon-App-72x72@1x.png", 72),
+    ("Icon-App-72x72@2x.png", 144),
+    ("Icon-App-76x76@1x.png", 76),
+    ("Icon-App-76x76@2x.png", 152),
+    ("Icon-App-83.5x83.5@2x.png", 167),
+    ("Icon-App-1024x1024@1x.png", 1024),
+]
 
 SUPER = 4  # supersampling factor
 
@@ -102,7 +130,16 @@ def _render(size, bg, glyph_color, radius_frac=0.22):
     return out
 
 
-def main():
+def _render_opaque(size, bg, glyph_color, radius_frac=0.22):
+    """Render an RGB icon (no alpha) composited onto opaque background."""
+    icon = _render(size, bg, glyph_color, radius_frac)
+    rgb = Image.new("RGB", icon.size, bg)
+    rgb.paste(icon, mask=icon.split()[3])
+    return rgb
+
+
+def generate_android():
+    """Generate Android launcher and notification icons."""
     root = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__), "..", "android", "app",
@@ -110,21 +147,38 @@ def main():
         )
     )
     for folder, size in DENSITIES.items():
-        icon = _render(size, BG, ACCENT)
+        icon = _render_opaque(size, BG, ACCENT)
         out_dir = os.path.join(root, folder)
         os.makedirs(out_dir, exist_ok=True)
-        # Composite onto opaque background to remove alpha channel (Play Store requirement)
-        bg = Image.new("RGB", icon.size, BG)
-        bg.paste(icon, mask=icon.split()[3])
-        bg.save(os.path.join(out_dir, "ic_launcher.png"))
-        print(f"wrote {folder}/ic_launcher.png ({size}px)")
-    # monochrome white small icon for notifications
+        icon.save(os.path.join(out_dir, "ic_launcher.png"))
+        print(f"android: {folder}/ic_launcher.png ({size}px)")
+    # monochrome white small icon for notifications (keep alpha for silhouettes)
     for folder, size in NOTIF_DENSITIES.items():
         icon = _render(size, (0, 0, 0, 0), WHITE, radius_frac=0.0)
         out_dir = os.path.join(root, folder)
         os.makedirs(out_dir, exist_ok=True)
         icon.save(os.path.join(out_dir, "ic_notification.png"))
-        print(f"wrote {folder}/ic_notification.png ({size}px)")
+        print(f"android: {folder}/ic_notification.png ({size}px)")
+
+
+def generate_ios():
+    """Generate iOS App Store icons (RGB, no alpha channel)."""
+    ios_root = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "ios", "Runner",
+            "Assets.xcassets", "AppIcon.appiconset",
+        )
+    )
+    os.makedirs(ios_root, exist_ok=True)
+    for filename, size in IOS_ICONS:
+        icon = _render_opaque(size, BG, ACCENT)
+        icon.save(os.path.join(ios_root, filename))
+        print(f"ios: {filename} ({size}px)")
+
+
+def main():
+    generate_android()
+    generate_ios()
 
 
 if __name__ == "__main__":
