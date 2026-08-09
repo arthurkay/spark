@@ -10,6 +10,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    (function() {
+      var saved = localStorage.getItem('spark-theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
 </head>
 <body>
 
@@ -504,22 +511,47 @@
     const themeLight = document.getElementById('themeLight');
     const themeDark = document.getElementById('themeDark');
     const themeBtns = themeToggle.querySelectorAll('.theme-btn');
+    const STORAGE_KEY = 'spark-theme';
+
+    function getSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+
+      themeBtns.forEach(b => b.classList.remove('active'));
+      const activeBtn = themeToggle.querySelector(`[data-theme="${theme}"]`);
+      if (activeBtn) activeBtn.classList.add('active');
+      themeToggle.dataset.active = theme;
+
+      if (theme === 'light') {
+        themeLight.classList.remove('hidden');
+        themeDark.classList.add('hidden');
+      } else {
+        themeLight.classList.add('hidden');
+        themeDark.classList.remove('hidden');
+      }
+    }
+
+    // Init: localStorage > system preference
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const initial = saved || getSystemTheme();
+    applyTheme(initial);
 
     themeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const theme = btn.dataset.theme;
-        themeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        themeToggle.dataset.active = theme;
-
-        if (theme === 'light') {
-          themeLight.classList.remove('hidden');
-          themeDark.classList.add('hidden');
-        } else {
-          themeLight.classList.add('hidden');
-          themeDark.classList.remove('hidden');
-        }
+        localStorage.setItem(STORAGE_KEY, theme);
+        applyTheme(theme);
       });
+    });
+
+    // Follow system when no manual override
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
     });
   </script>
 

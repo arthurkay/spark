@@ -28,6 +28,48 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/* Dark theme via attribute */
+[data-theme="dark"] {
+  --bg: #18181b;
+  --bg-secondary: #27272a;
+  --bg-tertiary: #3f3f46;
+  --text: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --border: #3f3f46;
+  --border-hover: #52525b;
+  --cyan: #38bdf8;
+  --cyan-dark: #7dd3fc;
+  --cyan-light: rgba(56, 189, 248, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.3);
+  --shadow-xl: 0 20px 40px rgba(0,0,0,0.5), 0 8px 16px rgba(0,0,0,0.35);
+}
+
+/* Fallback: system preference when no manual choice saved */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #18181b;
+    --bg-secondary: #27272a;
+    --bg-tertiary: #3f3f46;
+    --text: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #71717a;
+    --border: #3f3f46;
+    --border-hover: #52525b;
+    --cyan: #38bdf8;
+    --cyan-dark: #7dd3fc;
+    --cyan-light: rgba(56, 189, 248, 0.15);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.3);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.3);
+    --shadow-xl: 0 20px 40px rgba(0,0,0,0.5), 0 8px 16px rgba(0,0,0,0.35);
+  }
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
@@ -1018,6 +1060,114 @@ img { display: block; max-width: 100%; }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ========================================
+   Dark Theme — Hardcoded Color Overrides
+   ======================================== */
+[data-theme="dark"] .nav,
+[data-theme="dark"] .nav--scrolled {
+  background: rgba(24, 24, 27, 0.8);
+}
+
+[data-theme="dark"] .nav--scrolled {
+  background: rgba(24, 24, 27, 0.95);
+}
+
+[data-theme="dark"] .phone-screen {
+  background: #27272a;
+}
+
+[data-theme="dark"] .floating-card {
+  background: #27272a;
+  color: var(--text);
+}
+
+[data-theme="dark"] .accent-card {
+  background: #27272a;
+}
+
+[data-theme="dark"] .accent-badge {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.15);
+}
+
+[data-theme="dark"] .btn-primary {
+  background: #fafafa;
+  color: #18181b;
+  border-color: #fafafa;
+}
+
+[data-theme="dark"] .btn-primary:hover {
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+[data-theme="dark"] .accent-keys {
+  background: #18181b;
+}
+
+[data-theme="dark"] .accent-key {
+  background: #27272a;
+  color: #a1a1aa;
+}
+
+[data-theme="dark"] .accent-key svg {
+  color: #a1a1aa;
+}
+
+/* System preference overrides */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .nav,
+  :root:not([data-theme="light"]) .nav--scrolled {
+    background: rgba(24, 24, 27, 0.8);
+  }
+
+  :root:not([data-theme="light"]) .nav--scrolled {
+    background: rgba(24, 24, 27, 0.95);
+  }
+
+  :root:not([data-theme="light"]) .phone-screen {
+    background: #27272a;
+  }
+
+  :root:not([data-theme="light"]) .floating-card {
+    background: #27272a;
+    color: var(--text);
+  }
+
+  :root:not([data-theme="light"]) .accent-card {
+    background: #27272a;
+  }
+
+  :root:not([data-theme="light"]) .accent-badge {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.15);
+  }
+
+  :root:not([data-theme="light"]) .btn-primary {
+    background: #fafafa;
+    color: #18181b;
+    border-color: #fafafa;
+  }
+
+  :root:not([data-theme="light"]) .btn-primary:hover {
+    background: #e4e4e7;
+    border-color: #e4e4e7;
+  }
+
+  :root:not([data-theme="light"]) .accent-keys {
+    background: #18181b;
+  }
+
+  :root:not([data-theme="light"]) .accent-key {
+    background: #27272a;
+    color: #a1a1aa;
+  }
+
+  :root:not([data-theme="light"]) .accent-key svg {
+    color: #a1a1aa;
   }
 }
 
