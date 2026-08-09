@@ -121,8 +121,8 @@ By using the App, you consent to our Privacy Policy and agree to its terms.
 
 If you have any questions about this Privacy Policy, please contact us:
 
-- **Email**: privacy@sparkcode.app
-- **Website**: https://sparkcode.app
+- **Email**: arthur@kalikiti.net
+- **Website**: https://spark.cloud.co.zm
 
 ## Apple App Store Compliance
 
