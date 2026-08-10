@@ -1,11 +1,16 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../shared/haptics.dart';
+import '../../shared/file_type_utils.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/file_node.dart';
+import '../../shared/data_uri_cache.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/path_utils.dart';
@@ -231,6 +236,10 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                 );
               }
               final node = nodes[hasUp ? index - 1 : index];
+              final ext =
+                  node.isDirectory ? null : extensionFromPath(node.path);
+              final isImage =
+                  ext != null && isSupportedImageExtension(node.path);
               return GhostButton(
                 alignment: Alignment.centerLeft,
                 onPressed: () {
@@ -244,7 +253,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      node.isDirectory ? LucideIcons.folder : LucideIcons.file,
+                      node.isDirectory
+                          ? LucideIcons.folder
+                          : isImage
+                              ? LucideIcons.image
+                              : LucideIcons.file,
                     ),
                     const Gap(8),
                     Expanded(
@@ -254,6 +267,21 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if (!node.isDirectory && ext != null) ...[
+                      const Gap(8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).colorScheme.muted.withAlpha(40),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text('.$ext').xSmall.muted,
+                      ),
+                    ],
                   ],
                 ),
               );
@@ -338,27 +366,26 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
       showAppToast(context, title: 'File saved');
       setState(() {
         _editing = false;
-        _saving = false;
         _contentFuture = _fetch();
         _editController?.dispose();
         _editController = null;
       });
-    } on OpencodeApiException catch (e) {
-      if (!mounted) return;
-      showAppToast(context,
-          title: 'Failed to save file', description: e.message);
-      setState(() => _saving = false);
-    } on FileWriteException catch (e) {
-      if (!mounted) return;
-      showAppToast(context,
-          title: 'Failed to save file', description: e.message);
-      setState(() => _saving = false);
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context, title: 'Failed to save file', description: '$e');
-      setState(() => _saving = false);
+      showAppToast(
+        context,
+        title: 'Failed to save file',
+        description: switch (e) {
+          OpencodeApiException(:final message) => message,
+          FileWriteException(:final message) => message,
+          _ => '$e',
+        },
+      );
     } finally {
       _writer = null;
+      // Always clear the spinner here: any future that resolves — or throws —
+      // must leave the button usable again.
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -380,9 +407,13 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
           builder: (context, snapshot) {
             final loaded = snapshot.connectionState == ConnectionState.done &&
                 !snapshot.hasError;
-            final content = snapshot.data?.content ?? '';
-            final isBinary = snapshot.data?.isBinary ?? false;
-            final canEdit = loaded && !isBinary;
+            final fileContent = snapshot.data;
+            final content = fileContent?.content ?? '';
+            final isBinary = fileContent?.isBinary ?? false;
+            final mimeType = fileContent?.mimeType;
+            final isBase64 = fileContent?.isBase64Encoded ?? false;
+            final isImage = isBinary && isImageMime(mimeType) && isBase64;
+            final canEdit = loaded && !isBinary && !isImage;
 
             return Column(
               mainAxisSize: MainAxisSize.min,
@@ -399,11 +430,15 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                     ),
                     if (_editing) ...[
                       OutlineButton(
+                        size: ButtonSize.small,
+                        density: ButtonDensity.compact,
                         onPressed: _saving ? null : _cancelEdit,
-                        child: const Text('Cancel'),
+                        child: const Text('Cancel').small,
                       ),
                       const Gap(8),
                       PrimaryButton(
+                        size: ButtonSize.small,
+                        density: ButtonDensity.compact,
                         onPressed: _saving ? null : _save,
                         leading: _saving
                             ? const SizedBox(
@@ -412,17 +447,21 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Icon(LucideIcons.check),
-                        child: Text(_saving ? 'Saving...' : 'Save'),
+                            : const Icon(LucideIcons.check, size: 16),
+                        child: const Text('Save').small,
                       ),
                     ] else ...[
                       if (canEdit)
                         IconButton.ghost(
-                          icon: const Icon(LucideIcons.pencil),
+                          icon: const Icon(LucideIcons.pencil, size: 16),
+                          size: ButtonSize.small,
+                          density: ButtonDensity.compact,
                           onPressed: () => _startEdit(content),
                         ),
                       IconButton.ghost(
-                        icon: const Icon(LucideIcons.x),
+                        icon: const Icon(LucideIcons.x, size: 16),
+                        size: ButtonSize.small,
+                        density: ButtonDensity.compact,
                         onPressed: () => closeSheet(context),
                       ),
                     ],
@@ -439,38 +478,106 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                                   : '${snapshot.error}',
                             ).muted
                           : const Center(child: CircularProgressIndicator()))
-                      : isBinary
-                          ? Center(child: const Text('Binary file').muted)
-                          : _editing
-                              ? TextArea(
-                                  controller: _editController,
-                                  enabled: !_saving,
-                                  expandableHeight: true,
-                                  initialHeight: 420,
-                                  minHeight: 200,
-                                  maxHeight: 520,
-                                  style: TextStyle(
-                                    fontFamily:
-                                        CodeHighlightView.monoFamilies.first,
-                                    fontFamilyFallback: CodeHighlightView
-                                        .monoFamilies
-                                        .skip(1)
-                                        .toList(),
-                                    fontSize: 13,
-                                  ),
-                                )
-                              : CodeHighlightView(
-                                  code: content,
-                                  path: widget.path,
-                                  lineNumbers: true,
-                                  constraints:
-                                      const BoxConstraints(maxHeight: 460),
-                                ),
+                      : isImage
+                          ? _buildImageView(content, mimeType)
+                          : isBinary
+                              ? _buildBinaryPlaceholder(mimeType)
+                              : _editing
+                                  ? TextArea(
+                                      controller: _editController,
+                                      enabled: !_saving,
+                                      expandableHeight: true,
+                                      initialHeight: 420,
+                                      minHeight: 200,
+                                      maxHeight: 520,
+                                      style: TextStyle(
+                                        fontFamily: CodeHighlightView
+                                            .monoFamilies.first,
+                                        fontFamilyFallback: CodeHighlightView
+                                            .monoFamilies
+                                            .skip(1)
+                                            .toList(),
+                                        fontSize: 13,
+                                      ),
+                                    )
+                                  : CodeHighlightView(
+                                      code: content,
+                                      path: widget.path,
+                                      lineNumbers: true,
+                                      constraints:
+                                          const BoxConstraints(maxHeight: 460),
+                                    ),
                 ),
               ],
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildImageView(String base64Content, String? mimeType) {
+    Uint8List? bytes;
+    try {
+      bytes = base64Decode(base64Content);
+    } catch (_) {}
+    if (bytes == null) {
+      return _buildBinaryPlaceholder(mimeType);
+    }
+    final cacheWidth = decodeWidthFor(
+      400,
+      MediaQuery.devicePixelRatioOf(context),
+    );
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                cacheWidth: cacheWidth,
+                errorBuilder: (_, _, _) => _buildBinaryPlaceholder(
+                  mimeType ?? 'image/*',
+                ),
+              ),
+            ),
+            if (mimeType != null) ...[
+              const Gap(8),
+              Text(mimeType).muted.xSmall,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBinaryPlaceholder(String? mimeType) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.fileX, size: 48).muted,
+          const Gap(12),
+          const Text('Binary file').muted,
+          const Gap(4),
+          Text(
+            'This file type cannot be displayed',
+          ).muted.xSmall,
+          if (mimeType != null) ...[
+            const Gap(8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.muted.withAlpha(40),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(mimeType).muted.xSmall,
+            ),
+          ],
+        ],
       ),
     );
   }

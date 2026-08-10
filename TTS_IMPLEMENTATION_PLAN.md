@@ -1,4 +1,4 @@
-# TTS (Text-to-Speech) Implementation Proposed Plan
+# TTS (Text-to-Speech) Implementation  Plan Proposed
 
 ## Overview
 Add text-to-speech capability to Spark, mirroring the existing STT (speech-to-text) integration. Users can tap a speaker icon on assistant message bubbles to have the response read aloud.

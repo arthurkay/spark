@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -25,23 +26,50 @@ class FileWriteException implements Exception {
 ///
 /// The `opencode serve` API has no endpoint to write file content directly
 /// (only `GET /file` and `GET /file/content`). This writer spawns a PTY the
-/// user never sees, sends a base64-armored `base64 -d > path` heredoc, waits
-/// for a completion marker carrying the shell exit code, then tears the PTY
-/// down. Base64-armoring avoids two real bugs with sending raw file bytes
-/// through a PTY: canonical-mode TTY line-length truncation (~4096 bytes) and
-/// control bytes (Ctrl-C/D/Z) being interpreted as signals instead of data.
+/// user never sees and drives it in three steps:
+///
+/// 1. Send a single short command line — `sh -c '…'`, so the script is POSIX
+///    regardless of which login shell the server picked — that turns off TTY
+///    echo, prints a ready marker, and then runs `base64 -d > path`.
+/// 2. Once the ready marker arrives, stream the base64-armored content as
+///    **stdin of that already-running `base64`**, then a single `0x04` (EOF).
+/// 3. Wait for a completion marker carrying the shell exit code and the
+///    resulting file size, then tear the PTY down in the background.
+///
+/// Three properties of the payload path matter, and each of them was a real
+/// bug before:
+///
+/// * The content must never be typed *at the shell prompt*. An interactive
+///   line editor (zsh's ZLE) echoes and re-renders pasted input continuously,
+///   so a 20 KB heredoc produced megabytes of output and quadratic work here.
+///   Feeding stdin of a running command bypasses the line editor entirely.
+/// * Base64 lines are wrapped at [_base64LineWidth]. A TTY in canonical mode
+///   silently discards input past ~4096 bytes on a single line, which used to
+///   truncate the payload (and lose the heredoc terminator) for any file over
+///   ~3 KB.
+/// * Base64-armoring keeps control bytes (Ctrl-C/D/Z) out of the payload, so
+///   the TTY can't interpret file content as signals.
 class PtyFileWriter {
   PtyFileWriter({required this.client});
 
   final OpencodeClient client;
 
-  static const _timeout = Duration(seconds: 15);
+  /// Marker prefix. The script assembles this at runtime from `$p` so that the
+  /// shell's *echo of the command line* can never itself match a marker.
+  static const _markerPrefix = 'SPARK_FW';
+  static const _base64LineWidth = 76;
+  static const _payloadChunkBytes = 2048;
+
+  static const _connectTimeout = Duration(seconds: 15);
+  static const _readyTimeout = Duration(seconds: 12);
+  static const _teardownTimeout = Duration(seconds: 5);
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   String? _ptyId;
   String? _directory;
-  Completer<int>? _completer;
+  Completer<void>? _readyCompleter;
+  Completer<_WriteResult>? _doneCompleter;
   bool _cancelled = false;
 
   Future<void> write({
@@ -51,6 +79,9 @@ class PtyFileWriter {
   }) async {
     _directory = directory;
     final target = _resolveTargetPath(path, directory);
+    final expectedBytes = utf8.encode(content).length;
+    final payload = wrapBase64Lines(base64Encode(utf8.encode(content)),
+        width: _base64LineWidth);
 
     final session = await client.createPty(
       title: 'file-write',
@@ -63,19 +94,25 @@ class PtyFileWriter {
     }
     _ptyId = session.id;
 
-    final completer = Completer<int>();
-    _completer = completer;
-    final buffer = StringBuffer();
+    final nonce = const Uuid().v4();
+    final readyRe = RegExp('${_markerPrefix}_RDY:$nonce');
+    final doneRe = RegExp('${_markerPrefix}_DONE:$nonce:(-?\\d+):(\\d+)');
 
-    final delimiter = 'SPARK_EOF_${const Uuid().v4()}';
-    final marker = 'SPARK_WRITE_DONE_${const Uuid().v4()}';
-    final markerRe = RegExp('$marker:(-?\\d+)');
+    final ready = Completer<void>();
+    final done = Completer<_WriteResult>();
+    _readyCompleter = ready;
+    _doneCompleter = done;
+    // Both futures are awaited conditionally (a failure while waiting on
+    // `ready` means `done` is never awaited), so keep a no-op listener on each
+    // to stop an unawaited rejection becoming an unhandled async error.
+    unawaited(ready.future.catchError((_) {}));
+    unawaited(done.future.catchError((_) => const _WriteResult(-1, -1)));
 
-    final encoded = base64Encode(utf8.encode(content));
-    final command = "base64 -d << '$delimiter' > ${_shellQuote(target)}\n"
-        '$encoded\n'
-        '$delimiter\n'
-        "printf '\\n$marker:%d\\n' \$?\n";
+    final tail = MarkerTail();
+    void fail(String message) {
+      if (!ready.isCompleted) ready.completeError(FileWriteException(message));
+      if (!done.isCompleted) done.completeError(FileWriteException(message));
+    }
 
     final uri = buildPtyWebSocketUri(
       client: client,
@@ -89,45 +126,81 @@ class PtyFileWriter {
 
       _subscription = channel.stream.listen(
         (data) {
-          if (completer.isCompleted) return;
+          if (done.isCompleted) return;
+          final String text;
           if (data is List<int>) {
+            // The server's first binary frame is a `\x00{"cursor":n}` control
+            // message, not terminal output.
             if (data.isNotEmpty && data[0] == 0x00) return;
-            buffer.write(utf8.decode(data, allowMalformed: true));
+            text = utf8.decode(data, allowMalformed: true);
           } else if (data is String) {
-            buffer.write(data);
+            text = data;
+          } else {
+            return;
           }
-          final match = markerRe.firstMatch(buffer.toString());
-          if (match != null && !completer.isCompleted) {
-            completer.complete(int.parse(match.group(1)!));
+          tail.append(text);
+          if (!ready.isCompleted && tail.match(readyRe) != null) {
+            ready.complete();
           }
-        },
-        onError: (Object e) {
-          if (!completer.isCompleted) {
-            completer.completeError(FileWriteException('WebSocket error: $e'));
-          }
-        },
-        onDone: () {
-          if (!completer.isCompleted) {
-            completer.completeError(
-              FileWriteException('Connection closed before write confirmed'),
-            );
+          final match = tail.match(doneRe);
+          if (match != null) {
+            done.complete(_WriteResult(
+              int.parse(match.group(1)!),
+              int.parse(match.group(2)!),
+            ));
           }
         },
+        onError: (Object e) => fail('WebSocket error: $e'),
+        onDone: () => fail('Connection closed before write confirmed'),
       );
 
-      channel.sink.add(utf8.encode(command));
+      await channel.ready.timeout(
+        _connectTimeout,
+        onTimeout: () =>
+            throw FileWriteException('Timed out connecting to the server'),
+      );
 
-      final exitCode = await completer.future.timeout(
-        _timeout,
+      channel.sink.add(utf8.encode('${_buildCommand(target, nonce)}\n'));
+
+      await ready.future.timeout(
+        _readyTimeout,
         onTimeout: () => throw FileWriteException(
-            'Timed out waiting for write confirmation'),
+          'Timed out waiting for the shell to accept the write'
+              '${_diagnostics(tail)}',
+        ),
       );
-      if (exitCode != 0) {
-        throw FileWriteException('Save failed (exit code $exitCode)',
-            exitCode: exitCode);
+
+      for (final chunk in chunkPayload(payload, maxBytes: _payloadChunkBytes)) {
+        if (_cancelled || done.isCompleted) break;
+        channel.sink.add(utf8.encode(chunk));
+        // Let `base64` drain: a TTY in canonical mode buffers only ~4 KB of
+        // unread input, and throttles the writer beyond that.
+        await Future<void>.delayed(const Duration(milliseconds: 4));
+      }
+      if (_cancelled) throw FileWriteException('Cancelled');
+      if (!done.isCompleted) channel.sink.add(const <int>[0x04]);
+
+      final result = await done.future.timeout(
+        _writeTimeoutFor(payload.length),
+        onTimeout: () => throw FileWriteException(
+          'Timed out waiting for write confirmation${_diagnostics(tail)}',
+        ),
+      );
+      if (result.exitCode != 0) {
+        throw FileWriteException(
+          'Save failed (exit code ${result.exitCode})${_diagnostics(tail)}',
+          exitCode: result.exitCode,
+        );
+      }
+      if (result.size != expectedBytes) {
+        throw FileWriteException(
+          'Save incomplete: wrote ${result.size} of $expectedBytes bytes',
+        );
       }
     } finally {
-      await _teardown();
+      // Cleanup — closing the socket and deleting the PTY — must never gate
+      // the result: the file is already written by the time the marker lands.
+      _scheduleTeardown();
     }
   }
 
@@ -136,11 +209,46 @@ class PtyFileWriter {
   void cancel() {
     if (_cancelled) return;
     _cancelled = true;
-    final completer = _completer;
-    if (completer != null && !completer.isCompleted) {
-      completer.completeError(FileWriteException('Cancelled'));
+    final ready = _readyCompleter;
+    final done = _doneCompleter;
+    if (ready != null && !ready.isCompleted) {
+      ready.completeError(FileWriteException('Cancelled'));
     }
-    unawaited(_teardown());
+    if (done != null && !done.isCompleted) {
+      done.completeError(FileWriteException('Cancelled'));
+    }
+    _scheduleTeardown();
+  }
+
+  /// One short line, well under the TTY's canonical-mode line limit.
+  ///
+  /// `$p` exists so the marker text only ever appears in the *output* of
+  /// `printf`, never in the shell's echo of this line — otherwise the echo
+  /// would be mistaken for the ready marker and the payload would be sent
+  /// before `base64` was reading.
+  String _buildCommand(String target, String nonce) {
+    final quotedTarget = _shellQuote(target);
+    final script = 'p=$_markerPrefix; stty -echo 2>/dev/null; '
+        "printf '\\n%s_RDY:$nonce\\n' \"\$p\"; "
+        'base64 -d > $quotedTarget; rc=\$?; '
+        "sz=\$(wc -c < $quotedTarget 2>/dev/null | tr -d ' \\n'); "
+        "printf '\\n%s_DONE:$nonce:%s:%s\\n' \"\$p\" \"\$rc\" \"\${sz:-0}\"";
+    return 'sh -c ${_shellQuote(script)}';
+  }
+
+  static Duration _writeTimeoutFor(int payloadBytes) => Duration(
+        seconds: math.min(60, math.max(20, payloadBytes ~/ 8192)),
+      );
+
+  String _diagnostics(MarkerTail tail) {
+    final snippet = tail.snippet().trim();
+    return snippet.isEmpty ? '' : ': $snippet';
+  }
+
+  void _scheduleTeardown() {
+    unawaited(
+      _teardown().timeout(_teardownTimeout, onTimeout: () {}).catchError((_) {}),
+    );
   }
 
   Future<void> _teardown() async {
@@ -162,6 +270,79 @@ class PtyFileWriter {
   }
 }
 
+class _WriteResult {
+  const _WriteResult(this.exitCode, this.size);
+
+  final int exitCode;
+  final int size;
+}
+
+/// A bounded, rolling view of the most recent PTY output.
+///
+/// Marker detection used to concatenate every frame into a `StringBuffer` and
+/// re-scan the whole transcript on each frame — quadratic, and slow enough on
+/// a noisy PTY to starve the timers and `setState` calls waiting on the write.
+/// Only the tail can contain a marker, so only the tail is kept.
+class MarkerTail {
+  MarkerTail({this.capacity = 4096});
+
+  /// Must comfortably exceed the longest marker so one can never be split
+  /// across two appends.
+  final int capacity;
+
+  String _tail = '';
+
+  void append(String chunk) {
+    if (chunk.isEmpty) return;
+    _tail = _tail.isEmpty ? chunk : '$_tail$chunk';
+    if (_tail.length > capacity) {
+      _tail = _tail.substring(_tail.length - capacity);
+    }
+  }
+
+  Match? match(RegExp pattern) => pattern.firstMatch(_tail);
+
+  /// The trailing [max] characters, for error messages.
+  String snippet([int max = 512]) =>
+      _tail.length <= max ? _tail : _tail.substring(_tail.length - max);
+}
+
+/// Splits [encoded] into newline-terminated lines of at most [width] chars.
+///
+/// Returns the empty string for empty input; every other result ends in a
+/// newline, which matters because a TTY only honours the EOF character at the
+/// start of a line.
+String wrapBase64Lines(String encoded, {int width = 76}) {
+  if (encoded.isEmpty) return '';
+  final out = StringBuffer();
+  for (var i = 0; i < encoded.length; i += width) {
+    out.write(encoded.substring(i, math.min(i + width, encoded.length)));
+    out.write('\n');
+  }
+  return out.toString();
+}
+
+/// Groups the wrapped [payload] into whole-line chunks of at most [maxBytes].
+///
+/// Chunks end on line boundaries so the TTY always has complete lines to hand
+/// to the reader. A single line longer than [maxBytes] is emitted on its own.
+List<String> chunkPayload(String payload, {int maxBytes = 2048}) {
+  if (payload.isEmpty) return const [];
+  final chunks = <String>[];
+  final current = StringBuffer();
+  for (final line in payload.split('\n')) {
+    if (line.isEmpty) continue;
+    if (current.length > 0 && current.length + line.length + 1 > maxBytes) {
+      chunks.add(current.toString());
+      current.clear();
+    }
+    current.write(line);
+    current.write('\n');
+  }
+  if (current.length > 0) chunks.add(current.toString());
+  return chunks;
+}
+
 String _resolveTargetPath(String path, String? directory) {
   if (path.startsWith('/')) return path;
   if (directory == null || directory.isEmpty) return path;
@@ -172,3 +353,9 @@ String _resolveTargetPath(String path, String? directory) {
 }
 
 String _shellQuote(String s) => "'${s.replaceAll("'", "'\\''")}'";
+
+/// Test hooks for the pure helpers above.
+String debugResolveTargetPath(String path, String? directory) =>
+    _resolveTargetPath(path, directory);
+
+String debugShellQuote(String s) => _shellQuote(s);

@@ -21,17 +21,30 @@ class FileNode {
 }
 
 class FileContent {
-  const FileContent({required this.content, this.type, this.isBinary = false});
+  const FileContent({
+    required this.content,
+    this.type,
+    this.isBinary = false,
+    this.encoding,
+    this.mimeType,
+  });
 
   final String content;
   final String? type;
   final bool isBinary;
+  final String? encoding;
+  final String? mimeType;
+
+  bool get isBase64Encoded => encoding == 'base64';
 
   factory FileContent.fromJson(Map<String, dynamic> json) {
+    final type = json['type'] as String?;
     return FileContent(
       content: (json['content'] ?? '').toString(),
-      type: json['type'] as String?,
-      isBinary: json['isBinary'] as bool? ?? false,
+      type: type,
+      isBinary: type == 'binary' || (json['isBinary'] as bool? ?? false),
+      encoding: json['encoding'] as String?,
+      mimeType: json['mimeType'] as String?,
     );
   }
 }
