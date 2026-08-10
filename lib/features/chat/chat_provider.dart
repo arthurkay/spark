@@ -14,6 +14,7 @@ import '../../core/models/message.dart';
 import '../../core/models/provider.dart';
 import '../../core/storage/cache_service.dart';
 import '../../core/storage/message_queue.dart';
+import 'tts_provider.dart';
 
 final sessionDirectoryProvider =
     FutureProvider.family<String?, String>((ref, sessionId) async {
@@ -602,6 +603,7 @@ class ChatController extends ChangeNotifier {
   }) async {
     final client = _client;
     if (client == null || text.trim().isEmpty) return;
+    ref.read(ttsStateProvider.notifier).stop();
     final connected = ref.read(connectivityProvider);
     if (!connected) {
       final attachmentData = attachments
@@ -763,8 +765,8 @@ final visibleMessageIdsProvider =
 /// controller preserves the identity of every message it did not touch when
 /// applying a delta. That makes this provider notify exactly one bubble: the
 /// one whose content actually changed.
-final chatMessageProvider = Provider.family
-    .autoDispose<MessageWithParts?, ChatMessageRef>((ref, key) {
+final chatMessageProvider =
+    Provider.family.autoDispose<MessageWithParts?, ChatMessageRef>((ref, key) {
   final controller = ref.watch(chatControllerProvider(key.sessionId));
   for (final m in controller.state.messages) {
     if (m.info.id == key.messageId) return m;

@@ -19,6 +19,8 @@ import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
+import 'tts_provider.dart';
+import 'tts_equalizer.dart';
 
 /// Cache entry keyed by a cheap hash. The inputs are kept so a hash collision
 /// is detected rather than silently rendering the wrong diff.
@@ -332,6 +334,41 @@ class MessageBubble extends StatelessWidget {
                     Text('Copy text'),
                   ],
                 ),
+              ),
+              const Gap(8),
+              Consumer(
+                builder: (context, ref, _) {
+                  final tts = ref.watch(ttsStateProvider);
+                  final isSpeaking =
+                      tts.status != TtsStatus.idle &&
+                      tts.messageId == message.info.id;
+                  final isPaused = tts.status == TtsStatus.paused && isSpeaking;
+                  return GhostButton(
+                    alignment: Alignment.centerLeft,
+                    onPressed: () {
+                      closeSheet(sheetContext);
+                      ref.read(ttsStateProvider.notifier).toggle(message);
+                    },
+                    child: Row(
+                      children: [
+                        if (isSpeaking) ...[
+                          TtsEqualizer(
+                            isPlaying: !isPaused,
+                            isPaused: isPaused,
+                            height: 14,
+                          ),
+                          const Gap(8),
+                        ] else ...[
+                          Icon(LucideIcons.volume2, size: 16),
+                          const Gap(10),
+                        ],
+                        Text(
+                          isSpeaking ? 'Stop speaking' : 'Read aloud',
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           ),

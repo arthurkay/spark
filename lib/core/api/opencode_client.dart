@@ -217,6 +217,31 @@ class OpencodeClient {
     }
   }
 
+  Future<MessageWithParts> sendMessage({
+    required String sessionId,
+    required String text,
+    ModelSelection? model,
+    String? agent,
+    String? system,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        Endpoints.messages(sessionId),
+        data: {
+          if (model != null) 'model': model.toJson(),
+          if (agent != null) 'agent': agent,
+          if (system != null) 'system': system,
+          'parts': [
+            {'type': 'text', 'text': text},
+          ],
+        },
+      );
+      return MessageWithParts.fromJson(res.data!);
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
+
   Future<bool> abort(String sessionId) async {
     try {
       final res = await _dio.post<dynamic>(Endpoints.abort(sessionId));

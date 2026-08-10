@@ -14,6 +14,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
 import 'features/sessions/sessions_provider.dart';
+import 'features/chat/tts_provider.dart';
 
 final _routerProvider = Provider<GoRouter>((ref) => createRouter(ref));
 
@@ -75,6 +76,7 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         ref.read(appPausedProvider.notifier).state = true;
+        ref.read(ttsStateProvider.notifier).stop();
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         break;
