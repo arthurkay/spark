@@ -1249,15 +1249,15 @@ img { display: block; max-width: 100%; }
 /* ========================================
    Theme-aware screenshots
    ======================================== */
-.theme-img--dark {
+.phone-screen .theme-img--dark {
   display: none;
 }
 
-body.dark .theme-img--dark {
+body.dark .phone-screen .theme-img--dark {
   display: block;
 }
 
-body.dark .theme-img--light {
+body.dark .phone-screen .theme-img--light {
   display: none;
 }
 
