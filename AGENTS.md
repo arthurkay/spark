@@ -289,6 +289,20 @@ not hand-roll `Navigator.push(MaterialPageRoute(...))`, it won't match.
   `_verifySessionStatus()` auto-aborts if the conversation tail is a stale
   incomplete assistant message.
 
+## Releases
+
+Releases are triggered by git tags. The CI/CD pipeline (Codemagic) picks up
+tags matching `v*` and builds + publishes the release automatically. The
+workflow is:
+
+1. Bump `version:` in `pubspec.yaml` (format: `X.Y.Z+N`).
+2. Commit the version bump along with all other changes.
+3. Tag the commit: `git tag vX.Y.Z`
+4. Push the commit and tag: `git push origin main --tags`
+
+That's it — no manual GitHub release creation needed. Codemagic handles the
+build, signing, and store submission.
+
 ## Layout
 
 ```
