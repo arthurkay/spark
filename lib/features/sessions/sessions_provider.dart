@@ -25,6 +25,8 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
       'sessions/${directory != null ? Uri.encodeComponent(directory) : 'all'}.json';
   try {
     final sessions = await client.listSessions(directory: directory);
+    sessions
+        .removeWhere((s) => s.title?.startsWith('[TTS Preprocessing]') == true);
     _sortSessions(sessions);
     await CacheService.instance.write(cacheKey, {
       'items': sessions.map((s) => s.toJson()).toList(),
@@ -62,6 +64,7 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
     final all = <Session>[];
     for (final sessions in results) {
       for (final s in sessions) {
+        if (s.title?.startsWith('[TTS Preprocessing]') == true) continue;
         if (seen.add(s.id)) all.add(s);
       }
     }

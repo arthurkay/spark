@@ -8,7 +8,7 @@ import '../../core/models/message.dart';
 const _ttsSessionTitle = '[TTS Preprocessing]';
 const _minTextForLlm = 20;
 
-enum TtsStatus { idle, playing, paused }
+enum TtsStatus { idle, processing, playing, paused }
 
 class TtsProgress {
   const TtsProgress(
@@ -66,17 +66,13 @@ class TtsController {
       _updateState(_current.copyWith(status: TtsStatus.playing));
     });
     _tts.setCompletionHandler(() {
-      _updateState(
-        const TtsState(status: TtsStatus.idle),
-      );
+      _updateState(const TtsState(status: TtsStatus.idle));
     });
     _tts.setPauseHandler(() {
       _updateState(_current.copyWith(status: TtsStatus.paused));
     });
     _tts.setCancelHandler(() {
-      _updateState(
-        const TtsState(status: TtsStatus.idle),
-      );
+      _updateState(const TtsState(status: TtsStatus.idle));
     });
     _tts.setProgressHandler((text, start, end, word) {
       _updateState(
@@ -96,19 +92,27 @@ class TtsController {
   Future<void> speak(String text,
       {OpencodeClient? client, String? messageId}) async {
     await init();
+    final preview = text.length > 120 ? '${text.substring(0, 120)}...' : text;
+
     var processed = _preprocessForSpeech(text);
-    if (client != null && processed.length >= _minTextForLlm) {
+    final needsLlm = client != null && processed.length >= _minTextForLlm;
+
+    if (needsLlm) {
+      _updateState(TtsState(
+        status: TtsStatus.processing,
+        messageId: messageId,
+        text: preview,
+      ));
       processed = await _llmRewrite(client, processed) ?? processed;
     }
-    _updateState(
-      TtsState(
-        status: TtsStatus.playing,
-        messageId: messageId,
-        text: processed.length > 120
-            ? '${processed.substring(0, 120)}...'
-            : processed,
-      ),
-    );
+
+    _updateState(TtsState(
+      status: TtsStatus.playing,
+      messageId: messageId,
+      text: processed.length > 120
+          ? '${processed.substring(0, 120)}...'
+          : processed,
+    ));
     await _tts.speak(processed);
   }
 
@@ -157,11 +161,33 @@ class TtsController {
     try {
       final response = await client.sendMessage(
         sessionId: sessionId,
-        text: 'Rewrite the following text for natural text-to-speech. '
-            'Remove all markdown, code artifacts, and technical formatting. '
-            'Add natural pauses with commas where appropriate. '
-            'Convert jargon to conversational language. '
-            'Output ONLY the rewritten text, nothing else.\n\n$text',
+        text:
+            'Rewrite the following text for natural text-to-speech narration. '
+            'Your goal is to produce text that sounds like a warm, articulate '
+            'human speaking naturally.\n\n'
+            'Rules:\n'
+            '- Write in flowing prose, never bullet points or lists\n'
+            '- Use commas for brief pauses, em-dashes for dramatic pauses, '
+            'ellipses for trailing off\n'
+            '- Add natural emphasis: slightly rephrase key points so they '
+            'land with weight\n'
+            '- Vary sentence length — mix short punchy sentences with longer '
+            'flowing ones\n'
+            '- Use contractions (don\'t, it\'s, we\'ll) and conversational '
+            'connectors (so, now, here\'s the thing, what\'s interesting is)\n'
+            '- For code or technical content, describe it conceptually, never '
+            'read syntax (say "a function that sorts a list" not "open brace, '
+            'def sort, open paren")\n'
+            '- Convert markdown formatting to spoken equivalents:\n'
+            '  - "heading:" → say it like a title, add a pause after\n'
+            '  - "bold text" → rephrase to emphasize naturally\n'
+            '  - "code block" → summarize what the code does\n'
+            '  - "link" → say "linked at..." or omit\n'
+            '- If the text is a list, convert to flowing narrative ("First we '
+            'do X, then Y, and finally Z")\n'
+            '- End with a natural cadence — don\'t trail off mid-thought\n\n'
+            'Output ONLY the rewritten text. No quotes, no labels, no explanation.\n\n'
+            '$text',
       );
       final rewritten = response.parts
           .where(

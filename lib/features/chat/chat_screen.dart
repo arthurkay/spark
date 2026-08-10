@@ -20,6 +20,7 @@ import '../../shared/haptics.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
+import 'tts_loading_overlay.dart';
 import 'tts_mini_player.dart';
 
 /// How close to the bottom counts as "following the conversation".
@@ -54,6 +55,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _showScrollToBottom.value = !_isNearBottom;
+      }
+    });
   }
 
   void _onScroll() {
@@ -337,6 +343,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         if (!_initialScrollDone) {
           _initialScrollDone = true;
           _pinToBottom(animate: false);
+          _showScrollToBottom.value = !_isNearBottom;
         } else if ((prev?.length ?? 0) != next.length && _isNearBottom) {
           // A genuinely new message — worth animating to.
           _pinToBottom(animate: true);
@@ -466,34 +473,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
       ],
       resizeToAvoidBottomInset: true,
-      child: Column(
+      child: Stack(
         children: [
-          Expanded(
-            child: _buildBody(
-              chrome,
-              visibleIds: visibleIds,
-              working: working,
-            ),
+          Column(
+            children: [
+              Expanded(
+                child: _buildBody(
+                  chrome,
+                  visibleIds: visibleIds,
+                  working: working,
+                ),
+              ),
+              const PermissionBanner(),
+              const TtsMiniPlayer(),
+              _Composer(
+                sessionId: widget.sessionId,
+                controller: _composerController,
+                sending: chrome.sending,
+                working: working,
+                aborting: chrome.aborting,
+                error: chrome.error,
+                retryMessage: chrome.retryMessage,
+                retryAction: chrome.retryAction,
+                retryNext: chrome.retryNext,
+                attachments: _attachments,
+                onPickFiles: _pickFiles,
+                onRemoveAttachment: _removeAttachment,
+                onSend: _send,
+                onAbort: controller.abort,
+                onDismiss: controller.dismissStuck,
+              ),
+            ],
           ),
-          const PermissionBanner(),
-          const TtsMiniPlayer(),
-          _Composer(
-            sessionId: widget.sessionId,
-            controller: _composerController,
-            sending: chrome.sending,
-            working: working,
-            aborting: chrome.aborting,
-            error: chrome.error,
-            retryMessage: chrome.retryMessage,
-            retryAction: chrome.retryAction,
-            retryNext: chrome.retryNext,
-            attachments: _attachments,
-            onPickFiles: _pickFiles,
-            onRemoveAttachment: _removeAttachment,
-            onSend: _send,
-            onAbort: controller.abort,
-            onDismiss: controller.dismissStuck,
-          ),
+          const TtsLoadingOverlay(),
         ],
       ),
     );
