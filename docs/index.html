@@ -63,7 +63,8 @@
         <div class="hero-phone">
           <div class="phone-mockup phone-mockup--hero">
             <div class="phone-screen">
-              <img src="screenshots/chat.jpeg" alt="Spark AI Chat" loading="lazy">
+              <img src="screenshots/chat.jpeg" alt="Spark AI Chat" class="theme-img--light" loading="lazy">
+              <img src="screenshots/chat-dark.jpeg" alt="Spark AI Chat" class="theme-img--dark" loading="lazy">
             </div>
             <div class="phone-shadow"></div>
           </div>
@@ -196,7 +197,8 @@
         <div class="feature-visual">
           <div class="phone-mockup">
             <div class="phone-screen">
-              <img src="screenshots/chat.jpeg" alt="AI Chat" loading="lazy">
+              <img src="screenshots/chat.jpeg" alt="AI Chat" class="theme-img--light" loading="lazy">
+              <img src="screenshots/chat-dark.jpeg" alt="AI Chat" class="theme-img--dark" loading="lazy">
             </div>
           </div>
           <div class="visual-accent visual-accent--chat">
@@ -233,7 +235,8 @@
         <div class="feature-visual">
           <div class="phone-mockup">
             <div class="phone-screen">
-              <img src="screenshots/home.jpeg" alt="Projects" loading="lazy">
+              <img src="screenshots/home.jpeg" alt="Projects" class="theme-img--light" loading="lazy">
+              <img src="screenshots/home-dark.jpeg" alt="Projects" class="theme-img--dark" loading="lazy">
             </div>
           </div>
           <div class="visual-accent visual-accent--projects">
@@ -270,7 +273,8 @@
         <div class="feature-visual">
           <div class="phone-mockup">
             <div class="phone-screen">
-              <img src="screenshots/terminal.jpeg" alt="Terminal" loading="lazy">
+              <img src="screenshots/terminal.jpeg" alt="Terminal" class="theme-img--light" loading="lazy">
+              <img src="screenshots/terminal-dark.jpeg" alt="Terminal" class="theme-img--dark" loading="lazy">
             </div>
           </div>
           <div class="visual-accent visual-accent--terminal">
@@ -306,7 +310,8 @@
         <div class="feature-visual">
           <div class="phone-mockup">
             <div class="phone-screen">
-              <img src="screenshots/files.jpeg" alt="Files" loading="lazy">
+              <img src="screenshots/files.jpeg" alt="Files" class="theme-img--light" loading="lazy">
+              <img src="screenshots/files-dark.jpeg" alt="Files" class="theme-img--dark" loading="lazy">
             </div>
           </div>
           <div class="visual-accent visual-accent--files">
@@ -337,8 +342,8 @@
         <div class="theme-phones">
           <div class="phone-mockup phone-mockup--theme">
             <div class="phone-screen">
-              <img src="screenshots/home.jpeg" alt="Light theme" class="theme-img theme-img--light" id="themeLight">
-              <img src="screenshots/home-dark.jpeg" alt="Dark theme" class="theme-img theme-img--dark hidden" id="themeDark">
+              <img src="screenshots/home.jpeg" alt="Light theme" class="theme-img--light" id="themeLight">
+              <img src="screenshots/home-dark.jpeg" alt="Dark theme" class="theme-img--dark" id="themeDark">
             </div>
           </div>
         </div>
@@ -501,25 +506,21 @@
 
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
-    const themeLight = document.getElementById('themeLight');
-    const themeDark = document.getElementById('themeDark');
     const themeBtns = themeToggle.querySelectorAll('.theme-btn');
 
-    themeBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const theme = btn.dataset.theme;
-        themeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        themeToggle.dataset.active = theme;
+    function setTheme(theme) {
+      document.body.classList.toggle('dark', theme === 'dark');
+      themeBtns.forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+      themeToggle.dataset.active = theme;
+      localStorage.setItem('spark-theme', theme);
+    }
 
-        if (theme === 'light') {
-          themeLight.classList.remove('hidden');
-          themeDark.classList.add('hidden');
-        } else {
-          themeLight.classList.add('hidden');
-          themeDark.classList.remove('hidden');
-        }
-      });
+    // Load saved theme or default to light
+    const savedTheme = localStorage.getItem('spark-theme') || 'light';
+    setTheme(savedTheme);
+
+    themeBtns.forEach(btn => {
+      btn.addEventListener('click', () => setTheme(btn.dataset.theme));
     });
   </script>
 

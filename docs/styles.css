@@ -1095,3 +1095,47 @@ img { display: block; max-width: 100%; }
     text-align: center;
   }
 }
+
+/* ========================================
+   Theme-aware screenshots
+   ======================================== */
+.theme-img--dark {
+  display: none;
+}
+
+body.dark .theme-img--dark {
+  display: block;
+}
+
+body.dark .theme-img--light {
+  display: none;
+}
+
+body.dark {
+  --bg: #0a0a0b;
+  --bg-secondary: #111113;
+  --bg-tertiary: #18181b;
+  --text: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --border: #27272a;
+  --border-hover: #3f3f46;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.5), 0 4px 6px rgba(0,0,0,0.3);
+  --shadow-xl: 0 20px 40px rgba(0,0,0,0.6), 0 8px 16px rgba(0,0,0,0.4);
+}
+
+body.dark .nav {
+  background: rgba(10,10,11,0.8);
+}
+
+body.dark .nav--scrolled {
+  background: rgba(10,10,11,0.95);
+}
+
+body.dark .code-block {
+  background: #18181b;
+  border-color: #27272a;
+}
