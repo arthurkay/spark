@@ -10,27 +10,37 @@ const _spanCacheMax = 300;
 final _spanCache = <String, TextSpan>{};
 final _spanCacheOrder = <String>[];
 
+/// Returns a highlighted, font-applied span for [code].
+///
+/// The font is folded in here rather than applied at build time: rebuilding the
+/// whole span tree with a `copyWith` per node used to happen on every build even
+/// when the highlight itself was a cache hit, which for a few hundred lines
+/// meant thousands of allocations per frame.
 TextSpan _cachedHighlight({
   required String code,
   required String? language,
   required String? path,
   required bool followTheme,
   required Brightness brightness,
+  required double fontSize,
 }) {
-  final key =
-      '$brightness|${followTheme ? 1 : 0}|${language ?? ''}|${path ?? ''}|$code';
+  final key = '$brightness|${followTheme ? 1 : 0}|$fontSize|'
+      '${language ?? ''}|${path ?? ''}|$code';
   final cached = _spanCache[key];
   if (cached != null) {
     _spanCacheOrder.remove(key);
     _spanCacheOrder.add(key);
     return cached;
   }
-  final span = _computeHighlight(
-    code: code,
-    language: language,
-    path: path,
-    followTheme: followTheme,
-    brightness: brightness,
+  final span = _applyFont(
+    _computeHighlight(
+      code: code,
+      language: language,
+      path: path,
+      followTheme: followTheme,
+      brightness: brightness,
+    ),
+    CodeHighlightView._monoStyle(fontSize),
   );
   _spanCache[key] = span;
   _spanCacheOrder.add(key);
@@ -39,6 +49,20 @@ TextSpan _cachedHighlight({
     _spanCache.remove(evicted);
   }
   return span;
+}
+
+TextSpan _applyFont(TextSpan span, TextStyle style) {
+  return TextSpan(
+    text: span.text,
+    children: span.children
+        ?.map((e) => e is TextSpan ? _applyFont(e, style) : e)
+        .toList(),
+    style: (span.style ?? style).copyWith(
+      fontFamily: style.fontFamily,
+      fontFamilyFallback: style.fontFamilyFallback,
+      fontSize: style.fontSize,
+    ),
+  );
 }
 
 TextSpan _computeHighlight({
@@ -66,11 +90,11 @@ TextSpan _computeHighlight({
       renderer.span?.children?.clear();
     }
   } else {
-    try {
-      _highlighter.highlightAuto(code).render(renderer);
-    } catch (_) {
-      renderer.span?.children?.clear();
-    }
+    // No language resolved. Deliberately NOT highlightAuto(): it runs every one
+    // of the ~190 registered grammars against the input, synchronously on the
+    // UI thread. Unhighlighted text is a far better trade than a dropped
+    // half-second.
+    return TextSpan(text: code, style: baseStyle);
   }
   return renderer.span ?? TextSpan(text: code, style: baseStyle);
 }
@@ -121,26 +145,30 @@ class CodeHighlightView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = MediaQuery.of(context).platformBrightness;
+    // platformBrightnessOf, not MediaQuery.of: depending on the whole MediaQuery
+    // rebuilt every code block whenever the keyboard opened or insets changed.
+    final brightness = MediaQuery.platformBrightnessOf(context);
     final themeMap = followTheme
         ? (brightness == Brightness.dark
             ? dark.atomOneDarkTheme
             : light.atomOneLightTheme)
         : dark.atomOneDarkTheme;
     final baseStyle = themeMap['root'] ?? const TextStyle();
-    final span = _applyFont(
-      _cachedHighlight(
-        code: code,
-        language: language,
-        path: path,
-        followTheme: followTheme,
-        brightness: brightness,
-      ),
-      _monoStyle(fontSize),
+    final span = _cachedHighlight(
+      code: code,
+      language: language,
+      path: path,
+      followTheme: followTheme,
+      brightness: brightness,
+      fontSize: fontSize,
     );
 
     final content = lineNumbers
-        ? _LineNumberedCode(span: span, fontSize: fontSize)
+        ? _LineNumberedCode(
+            span: span,
+            lineCount: _countLines(code),
+            fontSize: fontSize,
+          )
         : RichText(text: span, textDirection: TextDirection.ltr);
 
     return Container(
@@ -157,24 +185,21 @@ class CodeHighlightView extends StatelessWidget {
         scrollDirection: Axis.vertical,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: content,
+          // Highlighted code is expensive to raster and changes rarely; keeping
+          // it on its own layer stops it repainting with its surroundings.
+          child: RepaintBoundary(child: content),
         ),
       ),
     );
   }
 
-  TextSpan _applyFont(TextSpan span, TextStyle style) {
-    return TextSpan(
-      text: span.text,
-      children: span.children
-          ?.map((e) => e is TextSpan ? _applyFont(e, style) : e)
-          .toList(),
-      style: (span.style ?? style).copyWith(
-        fontFamily: style.fontFamily,
-        fontFamilyFallback: style.fontFamilyFallback,
-        fontSize: style.fontSize,
-      ),
-    );
+  static int _countLines(String text) {
+    var lines = 1;
+    for (var i = 0; i < text.length; i++) {
+      if (text.codeUnitAt(i) == 0x0A) lines++;
+      if (lines > 1000) break;
+    }
+    return lines;
   }
 
   static TextStyle _monoStyle(double fontSize) => TextStyle(
@@ -186,17 +211,22 @@ class CodeHighlightView extends StatelessWidget {
 }
 
 class _LineNumberedCode extends StatelessWidget {
-  const _LineNumberedCode({required this.span, required this.fontSize});
+  const _LineNumberedCode({
+    required this.span,
+    required this.lineCount,
+    required this.fontSize,
+  });
 
   final TextSpan span;
+  final int lineCount;
   final double fontSize;
 
   @override
   Widget build(BuildContext context) {
-    final plain = _toPlain(span);
-    final lines = plain.split('\n');
-    final gutterWidth = '${lines.length}'.length;
-    final muted = MediaQuery.of(context).platformBrightness == Brightness.dark
+    // The line count comes from the source string, so there is no need to walk
+    // the whole span tree to recover the plain text on every build.
+    final gutterWidth = '$lineCount'.length;
+    final muted = MediaQuery.platformBrightnessOf(context) == Brightness.dark
         ? const Color(0xff7a8290)
         : const Color(0xff6b7280);
     return Row(
@@ -208,7 +238,7 @@ class _LineNumberedCode extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              for (var i = 0; i < lines.length; i++)
+              for (var i = 0; i < lineCount; i++)
                 Text(
                   '${i + 1}'.padLeft(gutterWidth),
                   style: TextStyle(
@@ -226,14 +256,6 @@ class _LineNumberedCode extends StatelessWidget {
         RichText(text: span, textDirection: TextDirection.ltr),
       ],
     );
-  }
-
-  String _toPlain(TextSpan span) {
-    final buffer = StringBuffer(span.text ?? '');
-    for (final child in span.children ?? const <InlineSpan>[]) {
-      if (child is TextSpan) buffer.write(_toPlain(child));
-    }
-    return buffer.toString();
   }
 }
 

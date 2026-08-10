@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
 
@@ -128,7 +129,9 @@ class SseClient {
     try {
       final json = jsonDecode(payload) as Map<String, dynamic>;
       _controller?.add(OpencodeEvent.fromJson(json));
-    } catch (_) {}
+    } catch (e) {
+      developer.log('Failed to parse SSE event', name: 'SSE', error: e);
+    }
   }
 
   void dispose() {

@@ -19,13 +19,14 @@ final _diffProvider = FutureProvider.family<List<FileDiff>, String>((
     final messages = await client.listMessages(sessionId);
     final assistant = messages.lastWhere(
       (m) => m.info.role == 'assistant' && m.info.id.isNotEmpty,
+      orElse: () => throw StateError('no assistant message'),
     );
     final perMessage = await client.sessionDiff(
       sessionId,
       messageId: assistant.info.id,
     );
     if (perMessage.isNotEmpty) return perMessage;
-  } on OpencodeApiException catch (_) {}
+  } on OpencodeApiException catch (_) {} on StateError catch (_) {}
   return diffs;
 });
 

@@ -118,6 +118,9 @@ class ChatController extends ChangeNotifier {
   final Ref ref;
   final String sessionId;
   Timer? _reloadTimer;
+  // Separate from _reloadTimer: a pending part-apply and a pending full
+  // reload used to share one timer and cancel each other, dropping updates.
+  Timer? _partApplyTimer;
   Timer? _pollTimer;
   Timer? _deltaThrottleTimer;
   Timer? _stuckTimer;
@@ -170,8 +173,16 @@ class ChatController extends ChangeNotifier {
 
   void _startPolling() {
     _pollTimer?.cancel();
+    // A safety net for a silent event stream, not a refresh loop: while SSE is
+    // delivering, a full reload every 8s re-parses every message and rewrites
+    // the cache for nothing — during streaming that competes with the frames
+    // we're trying to keep smooth.
     _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      if (!_paused) load();
+      if (_paused) return;
+      final last = _lastSseActivity;
+      final sseIsQuiet = last == null ||
+          DateTime.now().difference(last) > const Duration(seconds: 8);
+      if (sseIsQuiet) load();
     });
   }
 
@@ -385,8 +396,8 @@ class ChatController extends ChangeNotifier {
       }
       _deltaThrottleTimer = Timer(const Duration(milliseconds: 60), apply);
     } else {
-      _reloadTimer?.cancel();
-      _reloadTimer = Timer(const Duration(milliseconds: 200), apply);
+      _partApplyTimer?.cancel();
+      _partApplyTimer = Timer(const Duration(milliseconds: 200), apply);
     }
   }
 
@@ -680,6 +691,7 @@ class ChatController extends ChangeNotifier {
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _partApplyTimer?.cancel();
     _deltaThrottleTimer?.cancel();
     _pollTimer?.cancel();
     _stuckTimer?.cancel();
@@ -696,3 +708,117 @@ final chatControllerProvider = ChangeNotifierProvider.family
     .autoDispose<ChatController, String>((ref, sessionId) {
   return ChatController(ref, sessionId);
 });
+
+/// Whether a message renders anything at all. Messages with no visible parts
+/// are hidden from the transcript.
+bool messageHasVisibleContent(MessageWithParts m) {
+  return m.parts.any(
+    (p) =>
+        (p.type == 'text' && (p.text?.trim().isNotEmpty ?? false)) ||
+        p.type == 'tool' ||
+        p.type == 'reasoning' ||
+        p.type == 'file',
+  );
+}
+
+/// The ordered ids of messages that currently render something.
+///
+/// This exists so the chat screen can depend on the *shape* of the transcript
+/// (which rows exist, in what order) without depending on message content. A
+/// streamed token grows the tail message's text but leaves this list identical,
+/// so the screen — and therefore every other bubble — does not rebuild.
+class VisibleMessageIds {
+  const VisibleMessageIds(this.ids);
+
+  final List<String> ids;
+
+  int get length => ids.length;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! VisibleMessageIds) return false;
+    if (other.ids.length != ids.length) return false;
+    for (var i = 0; i < ids.length; i++) {
+      if (other.ids[i] != ids[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(ids);
+}
+
+final visibleMessageIdsProvider =
+    Provider.family.autoDispose<VisibleMessageIds, String>((ref, sessionId) {
+  final controller = ref.watch(chatControllerProvider(sessionId));
+  return VisibleMessageIds([
+    for (final m in controller.state.messages)
+      if (messageHasVisibleContent(m)) m.info.id,
+  ]);
+});
+
+/// A single message by id.
+///
+/// [MessageWithParts] has no `==`, so it compares by identity — and the
+/// controller preserves the identity of every message it did not touch when
+/// applying a delta. That makes this provider notify exactly one bubble: the
+/// one whose content actually changed.
+final chatMessageProvider = Provider.family
+    .autoDispose<MessageWithParts?, ChatMessageRef>((ref, key) {
+  final controller = ref.watch(chatControllerProvider(key.sessionId));
+  for (final m in controller.state.messages) {
+    if (m.info.id == key.messageId) return m;
+  }
+  return null;
+});
+
+/// Family key for [chatMessageProvider].
+class ChatMessageRef {
+  const ChatMessageRef(this.sessionId, this.messageId);
+
+  final String sessionId;
+  final String messageId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChatMessageRef &&
+      other.sessionId == sessionId &&
+      other.messageId == messageId;
+
+  @override
+  int get hashCode => Object.hash(sessionId, messageId);
+}
+
+/// The coarse chat state the screen chrome depends on: loading/error/retry
+/// flags plus the transcript shape. Deliberately excludes message content.
+///
+/// Records have structural equality, so watching this via `select` means a
+/// streamed token — which changes none of these fields — does not rebuild the
+/// screen, the app bar, or the composer.
+typedef ChatChrome = ({
+  bool loading,
+  bool loadingOlder,
+  bool hasMoreOlder,
+  bool sending,
+  bool working,
+  bool aborting,
+  bool hasMessages,
+  String? error,
+  String? retryMessage,
+  RetryAction? retryAction,
+  int? retryNext,
+});
+
+ChatChrome chatChromeOf(ChatState s) => (
+      loading: s.loading,
+      loadingOlder: s.loadingOlder,
+      hasMoreOlder: s.hasMoreOlder,
+      sending: s.sending,
+      working: s.working,
+      aborting: s.aborting,
+      hasMessages: s.messages.isNotEmpty,
+      error: s.error,
+      retryMessage: s.retryMessage,
+      retryAction: s.retryAction,
+      retryNext: s.retryNext,
+    );

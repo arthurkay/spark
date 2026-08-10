@@ -81,4 +81,17 @@ class ModelSelection {
         'providerID': providerID,
         'modelID': modelID,
       };
+
+  // Value equality matters for rebuild scoping: currentModelSelectionProvider
+  // derives a fresh instance from the message list on every chat notify. Without
+  // ==, every streamed token looks like a new selection and rebuilds the
+  // composer (including its live TextField) ~16 times a second.
+  @override
+  bool operator ==(Object other) =>
+      other is ModelSelection &&
+      other.providerID == providerID &&
+      other.modelID == modelID;
+
+  @override
+  int get hashCode => Object.hash(providerID, modelID);
 }

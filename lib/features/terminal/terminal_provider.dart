@@ -8,7 +8,9 @@ import 'package:xterm/xterm.dart' as xterm;
 
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
+import '../../core/api/pty_ws.dart';
 import '../../core/models/terminal.dart';
+import '../../shared/utf8_chunker.dart';
 
 class PtyConnectionState {
   const PtyConnectionState({
@@ -55,6 +57,9 @@ class PtyController extends ChangeNotifier {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   Timer? _reconnectTimer;
+  Timer? _flushTimer;
+  Timer? _resizeDebounce;
+  final List<int> _pendingBytes = [];
   int _reconnectAttempts = 0;
   bool _disposed = false;
   bool _exited = false;
@@ -93,29 +98,11 @@ class PtyController extends ChangeNotifier {
     if (_disposed) return;
     _cleanup();
 
-    final baseUrl = client.dio.options.baseUrl;
-    final wsScheme = baseUrl.startsWith('https') ? 'wss' : 'ws';
-    final host = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
-
-    String? authToken;
-    final password = client.password;
-    if (password != null && password.isNotEmpty) {
-      final user = client.connection.username?.isNotEmpty == true
-          ? client.connection.username!
-          : 'opencode';
-      authToken = base64Encode(utf8.encode('$user:$password'));
-    }
-
-    final queryParams = <String, String>{
-      'cursor': '0',
-      if (directory != null) 'directory': directory!,
-      if (authToken != null) 'auth_token': authToken,
-    };
-    final query = queryParams.entries
-        .map((e) =>
-            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-        .join('&');
-    final url = Uri.parse('$wsScheme://$host/pty/$ptyId/connect?$query');
+    final url = buildPtyWebSocketUri(
+      client: client,
+      ptyId: ptyId,
+      directory: directory,
+    );
 
     try {
       _channel = WebSocketChannel.connect(url);
@@ -128,8 +115,9 @@ class PtyController extends ChangeNotifier {
             if (data.isNotEmpty && data[0] == 0x00) {
               return;
             }
-            terminal.write(utf8.decode(data, allowMalformed: true));
+            _bufferOutput(data);
           } else if (data is String) {
+            _flushPendingBytes();
             terminal.write(data);
           }
         },
@@ -156,12 +144,47 @@ class PtyController extends ChangeNotifier {
       };
 
       terminal.onResize = (w, h, pw, ph) {
-        if (!_disposed) _resizePty(w, h);
+        if (_disposed) return;
+        // Debounced: the terminal sheet's height is derived from viewInsets, so
+        // opening the keyboard fires a resize per animation frame — each of
+        // which used to issue its own HTTP request.
+        _resizeDebounce?.cancel();
+        _resizeDebounce = Timer(const Duration(milliseconds: 150), () {
+          if (!_disposed) _resizePty(w, h);
+        });
       };
     } catch (e) {
       _setState(connected: false, error: 'WebSocket error: $e');
       _scheduleReconnect(ptyId);
     }
+  }
+
+  /// Coalesces PTY output into one write per frame.
+  ///
+  /// Each WebSocket frame used to become its own `terminal.write`, and each
+  /// write notifies the view — a command producing a lot of output could force
+  /// hundreds of parses and repaints per second. Buffering to a ~16ms tick
+  /// bounds that to one per frame.
+  void _bufferOutput(List<int> data) {
+    _pendingBytes.addAll(data);
+    _flushTimer ??= Timer(const Duration(milliseconds: 16), _flushPendingBytes);
+  }
+
+  void _flushPendingBytes() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    if (_pendingBytes.isEmpty || _disposed) return;
+
+    // Decode with the previous frame's trailing bytes prepended: a multi-byte
+    // UTF-8 sequence split across frames would otherwise decode to replacement
+    // characters. Any incomplete trailing sequence is held back for next time.
+    final bytes = Uint8List.fromList(_pendingBytes);
+    _pendingBytes.clear();
+    final split = splitTrailingIncompleteUtf8(bytes);
+    if (split.complete.isNotEmpty) {
+      terminal.write(utf8.decode(split.complete, allowMalformed: true));
+    }
+    _pendingBytes.addAll(split.incomplete);
   }
 
   Future<void> _resizePty(int cols, int rows) async {
@@ -218,6 +241,8 @@ class PtyController extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _flushTimer?.cancel();
+    _resizeDebounce?.cancel();
     kill();
     super.dispose();
   }

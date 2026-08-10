@@ -400,11 +400,13 @@ class OpencodeClient {
 
   Future<Project> initGitProject({String? directory}) async {
     try {
+      // The server takes `directory` as a query parameter (see POST
+      // /project/git/init in the OpenAPI spec) — an x-opencode-directory
+      // header is not part of the API and gets silently ignored, making the
+      // server init git in its own current project instead of [directory].
       final res = await _dio.post<Map<String, dynamic>>(
         Endpoints.projectGitInit,
-        options: Options(
-          headers: {if (directory != null) 'x-opencode-directory': directory},
-        ),
+        queryParameters: {if (directory != null) 'directory': directory},
       );
       return Project.fromJson(res.data!);
     } on DioException catch (e) {

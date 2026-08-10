@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -7,12 +5,17 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data_uri_cache.dart';
 import 'code_highlight_view.dart';
 
-final _markdownDoc = md.Document(
-  extensionSet: md.ExtensionSet.gitHubFlavored,
-  encodeHtml: false,
-);
+/// A fresh Document per parse.
+///
+/// `md.Document` accumulates link-reference definitions as it parses, so a
+/// single shared instance leaked references between unrelated messages.
+md.Document _newMarkdownDoc() => md.Document(
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+      encodeHtml: false,
+    );
 
 class MarkdownView extends StatelessWidget {
   const MarkdownView({super.key, required this.data, this.textStyle});
@@ -22,11 +25,13 @@ class MarkdownView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final isDark =
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     final baseStyle = textStyle ?? const TextStyle(fontSize: 15, height: 1.6);
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     final styleKey =
         '${baseStyle.fontSize}|${baseStyle.height}|${baseStyle.fontFamily}';
-    final cacheKey = '$isDark|$styleKey|$data';
+    final cacheKey = '$isDark|$styleKey|$devicePixelRatio|$data';
     final cached = _renderCache[cacheKey];
     if (cached != null) {
       _renderCacheOrder.remove(cacheKey);
@@ -36,7 +41,11 @@ class MarkdownView extends StatelessWidget {
         children: cached,
       );
     }
-    final renderer = _MarkdownRenderer(isDark: isDark, baseStyle: baseStyle);
+    final renderer = _MarkdownRenderer(
+      isDark: isDark,
+      baseStyle: baseStyle,
+      devicePixelRatio: devicePixelRatio,
+    );
     final nodes = _parse(data);
     final widgets = renderer.render(nodes);
     _renderCache[cacheKey] = widgets;
@@ -61,17 +70,31 @@ List<md.Node> _parse(String data) {
   final cached = _parseCache[data];
   if (cached != null) return cached;
   final lines = data.replaceAll('\r\n', '\n').split('\n');
-  final nodes = _markdownDoc.parseLines(lines);
-  if (_parseCache.length > 200) _parseCache.clear();
+  final nodes = _newMarkdownDoc().parseLines(lines);
+  // Evict the oldest entry instead of clearing everything: a wholesale clear
+  // meant periodically re-parsing every message still on screen.
+  if (_parseCache.length >= 200) _parseCache.remove(_parseCache.keys.first);
   _parseCache[data] = nodes;
   return nodes;
 }
 
+/// Inline markdown images render at a fixed logical width.
+const _mdImageWidth = 300.0;
+
 class _MarkdownRenderer {
-  _MarkdownRenderer({required this.isDark, required this.baseStyle});
+  _MarkdownRenderer({
+    required this.isDark,
+    required this.baseStyle,
+    required this.devicePixelRatio,
+  });
 
   final bool isDark;
   final TextStyle baseStyle;
+  final double devicePixelRatio;
+
+  /// Physical-pixel decode width, so images aren't decoded at full source
+  /// resolution just to be drawn 300px wide.
+  int get _mdDecodeWidth => decodeWidthFor(_mdImageWidth, devicePixelRatio);
 
   List<Widget> render(List<md.Node> nodes) {
     final widgets = <Widget>[];
@@ -466,7 +489,8 @@ class _MarkdownRenderer {
       child: Image.network(
         src,
         fit: BoxFit.contain,
-        width: 300,
+        width: _mdImageWidth,
+        cacheWidth: _mdDecodeWidth,
         errorBuilder: (_, __, ___) => Text(
           alt.isNotEmpty ? alt : 'Image failed to load',
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
@@ -477,11 +501,16 @@ class _MarkdownRenderer {
 
   Widget _buildSvg(String src, String alt) {
     if (src.startsWith('data:')) {
-      final data = src.substring(src.indexOf(',') + 1);
-      final decoded = utf8.decode(base64Decode(data));
+      final decoded = DataUriCache.textOf(src);
+      if (decoded == null) {
+        return Text(
+          alt.isNotEmpty ? alt : 'Image failed to load',
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        );
+      }
       return SvgPicture.string(
         decoded,
-        width: 300,
+        width: _mdImageWidth,
         fit: BoxFit.contain,
         placeholderBuilder: (_) => Text(
           alt.isNotEmpty ? alt : 'Loading SVG...',
@@ -491,7 +520,7 @@ class _MarkdownRenderer {
     }
     return SvgPicture.network(
       src,
-      width: 300,
+      width: _mdImageWidth,
       fit: BoxFit.contain,
       placeholderBuilder: (_) => Text(
         alt.isNotEmpty ? alt : 'Loading SVG...',
@@ -501,22 +530,24 @@ class _MarkdownRenderer {
   }
 
   Widget _buildDataImage(String src, String alt) {
-    try {
-      final data = src.substring(src.indexOf(',') + 1);
-      final bytes = base64Decode(data);
+    // Cached bytes: handing the same list instance to Image.memory on every
+    // build is what lets the image cache hit instead of re-decoding.
+    final bytes = DataUriCache.bytesOf(src);
+    if (bytes != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.memory(
           bytes,
           fit: BoxFit.contain,
-          width: 300,
+          width: _mdImageWidth,
+          cacheWidth: _mdDecodeWidth,
           errorBuilder: (_, __, ___) => Text(
             alt.isNotEmpty ? alt : 'Image failed to load',
             style: baseStyle.copyWith(fontStyle: FontStyle.italic),
           ),
         ),
       );
-    } catch (_) {
+    } else {
       return Text(
         alt.isNotEmpty ? alt : 'Invalid image data',
         style: baseStyle.copyWith(fontStyle: FontStyle.italic),
@@ -559,7 +590,8 @@ class _CopyableCodeState extends State<_CopyableCode> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final isDark =
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return Stack(
       children: [
         CodeHighlightView(

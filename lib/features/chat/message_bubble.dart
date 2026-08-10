@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
+import '../../app/motion.dart';
+import '../../shared/data_uri_cache.dart';
+import '../../shared/haptics.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/question_provider.dart';
@@ -16,15 +20,49 @@ import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 
-final _diffCache = <String, String>{};
+/// Cache entry keyed by a cheap hash. The inputs are kept so a hash collision
+/// is detected rather than silently rendering the wrong diff.
+class _DiffCacheEntry {
+  const _DiffCacheEntry(this.oldText, this.newText, this.result);
 
-String _unifiedEditDiff(String oldText, String newText) {
-  final key = '$oldText\x00$newText';
+  final String oldText;
+  final String newText;
+  final String result;
+}
+
+/// LRU-ish cache of rendered diffs, evicting the oldest entry rather than
+/// clearing wholesale (a full clear meant periodically re-paying the entire
+/// diff cost for every visible edit chip).
+final _diffCache = <int, _DiffCacheEntry>{};
+const _diffCacheLimit = 64;
+
+/// Upper bound on the LCS table. Beyond this the diff degrades to a
+/// block-replacement view instead of blocking the UI thread for hundreds of
+/// milliseconds — an O(n·m) dynamic-programming pass over a large file is not
+/// something a frame can absorb.
+const _maxDiffCells = 160000; // e.g. 400 x 400 changed lines
+
+@visibleForTesting
+String unifiedEditDiff(String oldText, String newText) {
+  // Hash rather than concatenate: the old key allocated a copy of both texts on
+  // every call, including on cache hits.
+  final key = Object.hash(
+    oldText.hashCode,
+    newText.hashCode,
+    oldText.length,
+    newText.length,
+  );
   final cached = _diffCache[key];
-  if (cached != null) return cached;
+  if (cached != null &&
+      cached.oldText == oldText &&
+      cached.newText == newText) {
+    return cached.result;
+  }
   final result = _computeDiff(oldText, newText);
-  if (_diffCache.length > 64) _diffCache.clear();
-  _diffCache[key] = result;
+  if (_diffCache.length >= _diffCacheLimit) {
+    _diffCache.remove(_diffCache.keys.first);
+  }
+  _diffCache[key] = _DiffCacheEntry(oldText, newText, result);
   return result;
 }
 
@@ -36,40 +74,76 @@ String _computeDiff(String oldText, String newText) {
   final n = a.length;
   final m = b.length;
 
-  final lcs = List.generate(n + 1, (_) => List.filled(m + 1, 0));
-  for (var i = n - 1; i >= 0; i--) {
-    for (var j = m - 1; j >= 0; j--) {
-      lcs[i][j] = a[i] == b[j]
-          ? lcs[i + 1][j + 1] + 1
-          : (lcs[i + 1][j] >= lcs[i][j + 1] ? lcs[i + 1][j] : lcs[i][j + 1]);
+  // Trim the identical head and tail first. Real edits touch a small region of
+  // a file, so this usually shrinks the LCS problem from "whole file" to "the
+  // few lines that changed".
+  var pre = 0;
+  while (pre < n && pre < m && a[pre] == b[pre]) {
+    pre++;
+  }
+  var suf = 0;
+  while (suf < n - pre && suf < m - pre && a[n - 1 - suf] == b[m - 1 - suf]) {
+    suf++;
+  }
+
+  final aMid = n - pre - suf;
+  final bMid = m - pre - suf;
+
+  // Edit script: list of (type, aLine, bLine) with absolute line indices.
+  // type: 'e' = equal, 'd' = delete, 'i' = insert
+  final edits = <(String, int, int)>[];
+  for (var k = 0; k < pre; k++) {
+    edits.add(('e', k, k));
+  }
+
+  if (aMid * bMid > _maxDiffCells) {
+    // Too large to align line-by-line within a frame budget: show the changed
+    // region as a wholesale replacement.
+    for (var k = 0; k < aMid; k++) {
+      edits.add(('d', pre + k, -1));
+    }
+    for (var k = 0; k < bMid; k++) {
+      edits.add(('i', -1, pre + k));
+    }
+  } else if (aMid > 0 || bMid > 0) {
+    final lcs = List.generate(aMid + 1, (_) => Uint32List(bMid + 1));
+    for (var i = aMid - 1; i >= 0; i--) {
+      final rowI = lcs[i];
+      final rowNext = lcs[i + 1];
+      for (var j = bMid - 1; j >= 0; j--) {
+        rowI[j] = a[pre + i] == b[pre + j]
+            ? rowNext[j + 1] + 1
+            : (rowNext[j] >= rowI[j + 1] ? rowNext[j] : rowI[j + 1]);
+      }
+    }
+
+    var i = 0;
+    var j = 0;
+    while (i < aMid && j < bMid) {
+      if (a[pre + i] == b[pre + j]) {
+        edits.add(('e', pre + i, pre + j));
+        i++;
+        j++;
+      } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+        edits.add(('d', pre + i, -1));
+        i++;
+      } else {
+        edits.add(('i', -1, pre + j));
+        j++;
+      }
+    }
+    while (i < aMid) {
+      edits.add(('d', pre + i, -1));
+      i++;
+    }
+    while (j < bMid) {
+      edits.add(('i', -1, pre + j));
+      j++;
     }
   }
 
-  // Reconstruct the edit script: list of (type, aLine, bLine)
-  // type: 'e' = equal, 'd' = delete, 'i' = insert
-  final edits = <(String, int, int)>[];
-  var i = 0;
-  var j = 0;
-  while (i < n && j < m) {
-    if (a[i] == b[j]) {
-      edits.add(('e', i, j));
-      i++;
-      j++;
-    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
-      edits.add(('d', i, -1));
-      i++;
-    } else {
-      edits.add(('i', -1, j));
-      j++;
-    }
-  }
-  while (i < n) {
-    edits.add(('d', i, -1));
-    i++;
-  }
-  while (j < m) {
-    edits.add(('i', -1, j));
-    j++;
+  for (var k = 0; k < suf; k++) {
+    edits.add(('e', n - suf + k, m - suf + k));
   }
 
   // Mark changed regions (consecutive d/i edits)
@@ -173,7 +247,10 @@ class MessageBubble extends StatelessWidget {
     final timestamp = message.info.timeCreated;
     final timeLabel = _formatTimestamp(timestamp);
     return GestureDetector(
-      onLongPress: () => _showContextMenu(context),
+      onLongPress: () {
+        Haptics.longPress();
+        _showContextMenu(context);
+      },
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -281,11 +358,28 @@ class MessageBubble extends StatelessWidget {
       case 'text':
         final text = part.text?.trim();
         if (text == null || text.isEmpty) return null;
-        final isMarkdown =
-            !streaming && text.contains(RegExp(r'[`*_#>\n]|^\s*- '));
+        final isMarkdown = !streaming && _markdownHint.hasMatch(text);
+        // While streaming, text renders unformatted and then flips to full
+        // markdown (and syntax highlighting) the moment the message completes.
+        // Cross-fading that swap turns an abrupt one-frame hitch into an
+        // intentional-looking transition.
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
-          child: isMarkdown ? MarkdownView(data: text) : _text(context, text),
+          child: AnimatedSwitcher(
+            duration: Motion.base,
+            switchInCurve: Motion.standard,
+            switchOutCurve: Motion.standard,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.topLeft,
+              children: [...previous, if (current != null) current],
+            ),
+            child: isMarkdown
+                ? MarkdownView(key: const ValueKey('md'), data: text)
+                : KeyedSubtree(
+                    key: const ValueKey('plain'),
+                    child: _text(context, text),
+                  ),
+          ),
         );
       case 'reasoning':
         final text = part.text?.trim();
@@ -306,14 +400,46 @@ class MessageBubble extends StatelessWidget {
             ],
           ),
         );
+      // Keyed by part id: these are stateful and built from a positional list,
+      // so without keys a part appended mid-stream shifts state (e.g. which
+      // tool chip is expanded) onto the wrong tool.
       case 'tool':
-        return _ToolChip(part: part);
+        return _ToolChip(key: ValueKey(part.id), part: part);
       case 'file':
-        return _FilePartWidget(part: part);
+        return _FilePartWidget(key: ValueKey(part.id), part: part);
       default:
         return null;
     }
   }
+}
+
+/// Cheap test for "this text probably contains markdown". Compiled once —
+/// building a RegExp inside `build` recompiled it on every frame.
+final _markdownHint = RegExp(r'[`*_#>\n]|^\s*- ');
+
+/// How many extra lines beyond the visible window to keep, so the inner scroll
+/// view still has somewhere to scroll before hitting the truncation notice.
+const _visibleLineAllowance = 8;
+
+/// Trims [text] to at most [maxLines] lines, appending a note about what was
+/// left out. Clipping the string — rather than only constraining the painted
+/// height — is what keeps text layout cost bounded.
+String _clipToLines(String text, int maxLines) {
+  if (maxLines <= 0) return text;
+  var count = 0;
+  var index = 0;
+  while (index < text.length) {
+    final next = text.indexOf('\n', index);
+    if (next == -1) return text;
+    count++;
+    if (count >= maxLines) {
+      final omittedLines = text.substring(next + 1).split('\n').length;
+      if (omittedLines <= 1) return text;
+      return '${text.substring(0, next)}\n… $omittedLines more lines';
+    }
+    index = next + 1;
+  }
+  return text;
 }
 
 const _expandableToolTypes = {
@@ -463,7 +589,7 @@ IconData _toolIcon(String? name) {
 }
 
 class _ToolChip extends StatefulWidget {
-  const _ToolChip({required this.part});
+  const _ToolChip({super.key, required this.part});
 
   final MessagePart part;
 
@@ -479,27 +605,53 @@ class _ToolChipState extends State<_ToolChip> {
   bool get _isBash => widget.part.toolName == 'bash';
   bool get _isTappable => _isQuestion || _isBash;
 
+  /// Payloads above this size start collapsed. Small tool results still show
+  /// inline as before — it's the large ones (whole-file reads, long build logs)
+  /// that cost real frame time to lay out and are unreadable inline anyway.
+  static const _autoExpandLimit = 4000;
+
   @override
   void initState() {
     super.initState();
-    _expanded = _isExpandable;
+    _expanded = _isExpandable && _output.length <= _autoExpandLimit;
   }
 
   Map<String, dynamic>? get _state =>
       widget.part.raw['state'] as Map<String, dynamic>?;
+
+  // Parsed lazily and then cached: this getter is hit several times per build
+  // and the raw form is often a JSON string.
+  Map<String, dynamic>? _inputCache;
+  bool _inputParsed = false;
   Map<String, dynamic>? get _input {
+    if (_inputParsed) return _inputCache;
+    _inputParsed = true;
     final raw = _state?['input'];
-    if (raw is Map<String, dynamic>) return raw;
-    if (raw is String && raw.isNotEmpty) {
+    if (raw is Map<String, dynamic>) {
+      _inputCache = raw;
+    } else if (raw is String && raw.isNotEmpty) {
       try {
         final parsed = jsonDecode(raw);
-        if (parsed is Map<String, dynamic>) return parsed;
+        if (parsed is Map<String, dynamic>) _inputCache = parsed;
       } catch (_) {}
     }
-    return null;
+    return _inputCache;
   }
 
   String get _output => (_state?['output'] as String?) ?? '';
+
+  @override
+  void didUpdateWidget(_ToolChip old) {
+    super.didUpdateWidget(old);
+    // The part object is replaced as the tool streams its result; drop memoized
+    // derivations so they are recomputed from the new payload.
+    if (!identical(old.part, widget.part)) {
+      _inputParsed = false;
+      _inputCache = null;
+      _todoCache = null;
+      _todoCacheKey = null;
+    }
+  }
 
   List<Map<String, dynamic>> _extractQuestions() {
     final state = widget.part.raw['state'] as Map<String, dynamic>?;
@@ -624,7 +776,7 @@ class _ToolChipState extends State<_ToolChip> {
                 constraints: const BoxConstraints(maxHeight: 300),
                 child: SingleChildScrollView(
                   child: CodeHighlightView(
-                    code: _unifiedEditDiff(oldString, newString),
+                    code: unifiedEditDiff(oldString, newString),
                     language: 'diff',
                     fontSize: 12,
                   ),
@@ -820,7 +972,20 @@ class _ToolChipState extends State<_ToolChip> {
     return Text(text).xSmall.semiBold.muted;
   }
 
+  List<_TodoItem>? _todoCache;
+  String? _todoCacheKey;
+
   List<_TodoItem> _parseTodos(String raw) {
+    // jsonDecode per build is wasted work; the payload only changes when the
+    // part does (handled in didUpdateWidget).
+    if (_todoCacheKey == raw && _todoCache != null) return _todoCache!;
+    final parsed = _parseTodosUncached(raw);
+    _todoCacheKey = raw;
+    _todoCache = parsed;
+    return parsed;
+  }
+
+  List<_TodoItem> _parseTodosUncached(String raw) {
     String? text = raw.trim();
     if (text.isEmpty) return const [];
     if (text.startsWith('{')) text = '[$text]';
@@ -851,6 +1016,10 @@ class _ToolChipState extends State<_ToolChip> {
 
   Widget _codeBlock(BuildContext context, String code, {int maxLines = 6}) {
     final theme = Theme.of(context);
+    // maxHeight only clips what is *painted*; the full string is still laid
+    // out. Cut the string so a 200KB command output doesn't cost a full text
+    // layout on every build.
+    final display = _clipToLines(code, maxLines * _visibleLineAllowance);
     return Container(
       constraints: BoxConstraints(maxHeight: 16.0 * maxLines + 20),
       padding: const EdgeInsets.all(10),
@@ -863,7 +1032,7 @@ class _ToolChipState extends State<_ToolChip> {
       ),
       child: SingleChildScrollView(
         child: SelectableText(
-          code,
+          display,
           style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 12,
@@ -948,29 +1117,33 @@ class _ToolChipState extends State<_ToolChip> {
                   ],
                   if (hasContent || _isTappable) ...[
                     const Gap(6),
-                    Icon(
-                      _expanded
-                          ? LucideIcons.chevronDown
-                          : (_isTappable
-                              ? LucideIcons.chevronRight
-                              : LucideIcons.chevronDown),
-                      size: 12,
-                    ).iconMutedForeground,
+                    // Rotates between states instead of swapping glyphs, so
+                    // expanding reads as one continuous motion.
+                    AnimatedRotation(
+                      turns: _expanded || !_isTappable ? 0.25 : 0,
+                      duration: Motion.base,
+                      curve: Motion.standard,
+                      child: const Icon(LucideIcons.chevronRight, size: 12)
+                          .iconMutedForeground,
+                    ),
                   ],
                 ],
               ),
             ),
           ),
-          if (_expanded && hasContent) ...[
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: _buildContentPreview(context),
-              ),
-            ),
-          ],
+          // Always present so the expand/collapse actually animates; guarding
+          // the AnimatedSize itself meant it was built at full size.
+          AnimatedSize(
+            duration: Motion.base,
+            curve: Motion.inOut,
+            alignment: Alignment.topCenter,
+            child: _expanded && hasContent
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: _buildContentPreview(context),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );
@@ -1586,8 +1759,11 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
   }
 }
 
+/// Inline attachments render at a fixed width.
+const _imageWidth = 300.0;
+
 class _FilePartWidget extends StatelessWidget {
-  const _FilePartWidget({required this.part});
+  const _FilePartWidget({super.key, required this.part});
 
   final MessagePart part;
 
@@ -1599,6 +1775,11 @@ class _FilePartWidget extends StatelessWidget {
     final isImage = mime.startsWith('image/') && url.isNotEmpty;
     final isSvg = mime == 'image/svg+xml' || url.startsWith('data:image/svg');
     final theme = Theme.of(context);
+
+    final cacheWidth = decodeWidthFor(
+      _imageWidth,
+      MediaQuery.devicePixelRatioOf(context),
+    );
 
     if (isSvg) {
       return Container(
@@ -1613,7 +1794,7 @@ class _FilePartWidget extends StatelessWidget {
           margin: const EdgeInsets.only(top: 4),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: _buildDataImage(url, filename, mime, theme),
+            child: _buildDataImage(url, filename, mime, theme, cacheWidth),
           ),
         );
       }
@@ -1624,7 +1805,8 @@ class _FilePartWidget extends StatelessWidget {
           child: Image.network(
             url,
             fit: BoxFit.contain,
-            width: 300,
+            width: _imageWidth,
+            cacheWidth: cacheWidth,
             errorBuilder: (context, error, stack) => _FileChip(
               filename: filename,
               mime: mime,
@@ -1640,22 +1822,20 @@ class _FilePartWidget extends StatelessWidget {
 
   Widget _buildSvgWidget(String url, String filename, ThemeData theme) {
     if (url.startsWith('data:')) {
-      try {
-        final data = url.substring(url.indexOf(',') + 1);
-        final decoded = utf8.decode(base64Decode(data));
-        return SvgPicture.string(
-          decoded,
-          width: 300,
-          fit: BoxFit.contain,
-        );
-      } catch (_) {
+      final decoded = DataUriCache.textOf(url);
+      if (decoded == null) {
         return _FileChip(
             filename: filename, mime: 'image/svg+xml', theme: theme);
       }
+      return SvgPicture.string(
+        decoded,
+        width: _imageWidth,
+        fit: BoxFit.contain,
+      );
     }
     return SvgPicture.network(
       url,
-      width: 300,
+      width: _imageWidth,
       fit: BoxFit.contain,
       placeholderBuilder: (_) =>
           _FileChip(filename: filename, mime: 'image/svg+xml', theme: theme),
@@ -1663,23 +1843,29 @@ class _FilePartWidget extends StatelessWidget {
   }
 
   Widget _buildDataImage(
-      String url, String filename, String mime, ThemeData theme) {
-    try {
-      final data = url.substring(url.indexOf(',') + 1);
-      final bytes = base64Decode(data);
-      return Image.memory(
-        bytes,
-        fit: BoxFit.contain,
-        width: 300,
-        errorBuilder: (_, __, ___) => _FileChip(
-          filename: filename,
-          mime: mime,
-          theme: theme,
-        ),
-      );
-    } catch (_) {
+    String url,
+    String filename,
+    String mime,
+    ThemeData theme,
+    int cacheWidth,
+  ) {
+    // Cached bytes, so the same list instance is handed to Image.memory on every
+    // build and the image cache actually hits.
+    final bytes = DataUriCache.bytesOf(url);
+    if (bytes == null) {
       return _FileChip(filename: filename, mime: mime, theme: theme);
     }
+    return Image.memory(
+      bytes,
+      fit: BoxFit.contain,
+      width: _imageWidth,
+      cacheWidth: cacheWidth,
+      errorBuilder: (_, __, ___) => _FileChip(
+        filename: filename,
+        mime: mime,
+        theme: theme,
+      ),
+    );
   }
 }
 

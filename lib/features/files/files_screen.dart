@@ -2,24 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
+import '../../shared/haptics.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/file_node.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/path_utils.dart';
+import '../chat/chat_provider.dart';
 import '../sessions/sessions_provider.dart';
 import '../sessions/workspace_provider.dart';
-
-final _sessionDirectoryProvider = FutureProvider.family<String?, String>((
-  ref,
-  sessionId,
-) async {
-  final client = ref.watch(opencodeClientProvider);
-  if (client == null) return null;
-  final session = await client.getSession(sessionId);
-  return session?.directory;
-});
+import 'file_write_service.dart';
 
 final _filesProvider = FutureProvider.family<List<FileNode>, _FileQuery>((
   ref,
@@ -67,19 +60,34 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
 
   String? get _directory => widget.directory;
 
-  String get _currentBrowseDirectory {
-    if (_path.isNotEmpty) return _path;
-    return _directory ?? '';
+  /// Last segment of the browsed location, for display in the confirm sheet.
+  String get _browseDirectoryLabel {
+    final source = _path.isNotEmpty ? _path : (_directory ?? '');
+    if (source.isEmpty) return 'this directory';
+    return source.split('/').last;
+  }
+
+  /// Resolves the absolute directory currently being browsed. The server's
+  /// file listing returns paths relative to the base directory, so `_path`
+  /// must be joined with the base — a bare relative path is meaningless to
+  /// the server as a `directory` argument. In session mode the base comes
+  /// from the session's directory.
+  Future<String> _resolveBrowseDirectory() async {
+    var base = _directory ?? '';
+    if (base.isEmpty && widget.sessionId != null) {
+      final sessionDir =
+          await ref.read(sessionDirectoryProvider(widget.sessionId!).future);
+      base = sessionDir ?? '';
+    }
+    if (_path.isEmpty) return base;
+    if (_path.startsWith('/') || base.isEmpty) return _path;
+    return '$base/$_path';
   }
 
   Future<void> _createProject() async {
     final client = ref.read(opencodeClientProvider);
     if (client == null) return;
-    var dir = _currentBrowseDirectory;
-    if (dir.isEmpty && widget.sessionId != null) {
-      final session = await ref.read(_sessionDirectoryProvider(widget.sessionId!).future);
-      dir = session ?? '';
-    }
+    final dir = await _resolveBrowseDirectory();
     if (dir.isEmpty) return;
     try {
       await client.initGitProject(directory: dir);
@@ -90,10 +98,12 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       context.push('/session/${newSession.id}');
     } on OpencodeApiException catch (e) {
       if (!mounted) return;
-      showAppToast(context, title: 'Failed to create project', description: e.message);
+      showAppToast(context,
+          title: 'Failed to create project', description: e.message);
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context, title: 'Failed to create project', description: e.toString());
+      showAppToast(context,
+          title: 'Failed to create project', description: e.toString());
     }
   }
 
@@ -102,7 +112,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     final sessionId = widget.sessionId;
 
     if (sessionId != null) {
-      final directoryAsync = ref.watch(_sessionDirectoryProvider(sessionId));
+      final directoryAsync = ref.watch(sessionDirectoryProvider(sessionId));
       return directoryAsync.when(
         loading: () => const Scaffold(
           child: Center(child: CircularProgressIndicator()),
@@ -160,7 +170,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                         ),
                         const Gap(12),
                         Text(
-                          'Initialize git in ${_currentBrowseDirectory.split('/').last} and create a new session?',
+                          'Initialize git in $_browseDirectoryLabel and create a new session?',
                         ).muted,
                         const Gap(20),
                         PrimaryButton(
@@ -193,16 +203,24 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
           if (nodes.isEmpty) {
             return Center(child: const Text('Empty directory').muted);
           }
-          return ListView(
+          // ListView.builder, not ListView(children:): a directory with a few
+          // thousand entries used to build every row up front, on every
+          // navigation.
+          final hasUp = _path.isNotEmpty;
+          return ListView.builder(
             padding: const EdgeInsets.all(12),
-            children: [
-              if (_path.isNotEmpty)
-                GhostButton(
+            itemCount: nodes.length + (hasUp ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (hasUp && index == 0) {
+                return GhostButton(
                   alignment: Alignment.centerLeft,
-                  onPressed: () => setState(() {
-                    final parts = _path.split('/')..removeLast();
-                    _path = parts.join('/');
-                  }),
+                  onPressed: () {
+                    Haptics.selection();
+                    setState(() {
+                      final parts = _path.split('/')..removeLast();
+                      _path = parts.join('/');
+                    });
+                  },
                   child: const Row(
                     children: [
                       Icon(LucideIcons.cornerLeftUp),
@@ -210,36 +228,36 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                       Text('..'),
                     ],
                   ),
-                ),
-              for (final node in nodes)
-                GhostButton(
-                  alignment: Alignment.centerLeft,
-                  onPressed: () {
-                    if (node.isDirectory) {
-                      setState(() => _path = node.path);
-                    } else {
-                      _openFile(context, node, directory);
-                    }
-                  },
-                  child: Row(
-                    children: [
-                      Icon(
-                        node.isDirectory
-                            ? LucideIcons.folder
-                            : LucideIcons.file,
+                );
+              }
+              final node = nodes[hasUp ? index - 1 : index];
+              return GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  Haptics.selection();
+                  if (node.isDirectory) {
+                    setState(() => _path = node.path);
+                  } else {
+                    _openFile(context, node, directory);
+                  }
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      node.isDirectory ? LucideIcons.folder : LucideIcons.file,
+                    ),
+                    const Gap(8),
+                    Expanded(
+                      child: Text(
+                        node.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const Gap(8),
-                      Expanded(
-                        child: Text(
-                          node.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-            ],
+              );
+            },
           );
         },
       ),
@@ -256,7 +274,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   }
 }
 
-class _FileViewer extends ConsumerWidget {
+class _FileViewer extends ConsumerStatefulWidget {
   const _FileViewer({required this.path, required this.name, this.directory});
 
   final String path;
@@ -264,57 +282,194 @@ class _FileViewer extends ConsumerWidget {
   final String? directory;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final client = ref.watch(opencodeClientProvider);
+  ConsumerState<_FileViewer> createState() => _FileViewerState();
+}
+
+class _FileViewerState extends ConsumerState<_FileViewer> {
+  late Future<FileContent> _contentFuture;
+  TextEditingController? _editController;
+  bool _editing = false;
+  bool _saving = false;
+  PtyFileWriter? _writer;
+
+  @override
+  void initState() {
+    super.initState();
+    _contentFuture = _fetch();
+  }
+
+  Future<FileContent> _fetch() {
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) {
+      return Future.error(OpencodeApiException('Not connected'));
+    }
+    return client.readFile(widget.path, directory: widget.directory);
+  }
+
+  void _startEdit(String content) {
+    setState(() {
+      _editController = TextEditingController(text: content);
+      _editing = true;
+    });
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _editing = false;
+      _editController?.dispose();
+      _editController = null;
+    });
+  }
+
+  Future<void> _save() async {
+    final client = ref.read(opencodeClientProvider);
+    final controller = _editController;
+    if (client == null || controller == null) return;
+    setState(() => _saving = true);
+    final writer = PtyFileWriter(client: client);
+    _writer = writer;
+    try {
+      await writer.write(
+        path: widget.path,
+        directory: widget.directory,
+        content: controller.text,
+      );
+      if (!mounted) return;
+      showAppToast(context, title: 'File saved');
+      setState(() {
+        _editing = false;
+        _saving = false;
+        _contentFuture = _fetch();
+        _editController?.dispose();
+        _editController = null;
+      });
+    } on OpencodeApiException catch (e) {
+      if (!mounted) return;
+      showAppToast(context,
+          title: 'Failed to save file', description: e.message);
+      setState(() => _saving = false);
+    } on FileWriteException catch (e) {
+      if (!mounted) return;
+      showAppToast(context,
+          title: 'Failed to save file', description: e.message);
+      setState(() => _saving = false);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, title: 'Failed to save file', description: '$e');
+      setState(() => _saving = false);
+    } finally {
+      _writer = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _writer?.cancel();
+    _editController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
         constraints: const BoxConstraints(maxHeight: 600),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+        child: FutureBuilder<FileContent>(
+          future: _contentFuture,
+          builder: (context, snapshot) {
+            final loaded = snapshot.connectionState == ConnectionState.done &&
+                !snapshot.hasError;
+            final content = snapshot.data?.content ?? '';
+            final isBinary = snapshot.data?.isBinary ?? false;
+            final canEdit = loaded && !isBinary;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ).h4,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ).h4,
+                    ),
+                    if (_editing) ...[
+                      OutlineButton(
+                        onPressed: _saving ? null : _cancelEdit,
+                        child: const Text('Cancel'),
+                      ),
+                      const Gap(8),
+                      PrimaryButton(
+                        onPressed: _saving ? null : _save,
+                        leading: _saving
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(LucideIcons.check),
+                        child: Text(_saving ? 'Saving...' : 'Save'),
+                      ),
+                    ] else ...[
+                      if (canEdit)
+                        IconButton.ghost(
+                          icon: const Icon(LucideIcons.pencil),
+                          onPressed: () => _startEdit(content),
+                        ),
+                      IconButton.ghost(
+                        icon: const Icon(LucideIcons.x),
+                        onPressed: () => closeSheet(context),
+                      ),
+                    ],
+                  ],
                 ),
-                IconButton.ghost(
-                  icon: const Icon(LucideIcons.x),
-                  onPressed: () => closeSheet(context),
+                const Gap(12),
+                Flexible(
+                  child: !loaded
+                      ? (snapshot.hasError
+                          ? Text(
+                              snapshot.error is OpencodeApiException
+                                  ? (snapshot.error as OpencodeApiException)
+                                      .message
+                                  : '${snapshot.error}',
+                            ).muted
+                          : const Center(child: CircularProgressIndicator()))
+                      : isBinary
+                          ? Center(child: const Text('Binary file').muted)
+                          : _editing
+                              ? TextArea(
+                                  controller: _editController,
+                                  enabled: !_saving,
+                                  expandableHeight: true,
+                                  initialHeight: 420,
+                                  minHeight: 200,
+                                  maxHeight: 520,
+                                  style: TextStyle(
+                                    fontFamily:
+                                        CodeHighlightView.monoFamilies.first,
+                                    fontFamilyFallback: CodeHighlightView
+                                        .monoFamilies
+                                        .skip(1)
+                                        .toList(),
+                                    fontSize: 13,
+                                  ),
+                                )
+                              : CodeHighlightView(
+                                  code: content,
+                                  path: widget.path,
+                                  lineNumbers: true,
+                                  constraints:
+                                      const BoxConstraints(maxHeight: 460),
+                                ),
                 ),
               ],
-            ),
-            const Gap(12),
-            Flexible(
-              child: FutureBuilder(
-                future: client?.readFile(path, directory: directory),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Text('${snapshot.error}').muted;
-                  }
-                  final content = snapshot.data?.content ?? '';
-                  final isBinary = snapshot.data?.isBinary ?? false;
-                  if (isBinary) {
-                    return Center(child: const Text('Binary file').muted);
-                  }
-                  return CodeHighlightView(
-                    code: content,
-                    path: path,
-                    lineNumbers: true,
-                    constraints: const BoxConstraints(maxHeight: 460),
-                  );
-                },
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

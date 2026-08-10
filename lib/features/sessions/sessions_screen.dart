@@ -4,6 +4,9 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
+import '../../app/motion.dart';
+import '../../shared/debouncer.dart';
+import '../../shared/haptics.dart';
 import '../../core/api/sse_client.dart';
 import '../../core/models/project.dart';
 import '../../core/models/server_config.dart';
@@ -12,9 +15,6 @@ import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/path_utils.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../../shared/widgets/workspace_utils.dart';
-
-import '../connection/connection_screen.dart';
-
 import '../permissions/permission_banner.dart';
 import 'sessions_provider.dart';
 import 'workspace_provider.dart';
@@ -35,6 +35,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   final _scrollController = ScrollController();
   final _titleKey = GlobalKey();
   final _titleProgress = ValueNotifier<double>(0.0);
+  final _searchDebouncer = Debouncer();
 
   Future<void> _createSession(
     BuildContext context,
@@ -222,6 +223,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   @override
   void dispose() {
+    _searchDebouncer.dispose();
     _scrollController.removeListener(_checkTitleVisibility);
     _scrollController.dispose();
     _titleProgress.dispose();
@@ -229,24 +231,27 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     super.dispose();
   }
 
+  /// Distance the large title travels before the app-bar title has fully taken
+  /// over. Measured once from the laid-out title rather than on every scroll
+  /// notification — `findRenderObject()` + `localToGlobal()` per frame is real
+  /// work to compute a single double.
+  double? _titleFadeDistance;
+
   void _checkTitleVisibility() {
-    final key = _titleKey;
-    final ctx = key.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final pos = box.localToGlobal(Offset.zero);
-    final titleTop = pos.dy;
-    final titleHeight = box.size.height;
-    double progress;
-    if (titleTop >= 0) {
-      progress = 0.0;
-    } else if (titleTop <= -titleHeight) {
-      progress = 1.0;
-    } else {
-      progress = (-titleTop) / titleHeight;
+    if (!_scrollController.hasClients) return;
+
+    var distance = _titleFadeDistance;
+    if (distance == null || distance <= 0) {
+      final box = _titleKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return;
+      distance = box.size.height;
+      if (distance <= 0) return;
+      _titleFadeDistance = distance;
     }
-    progress = progress.clamp(0.0, 1.0);
+
+    // The large title starts at the top of the scroll content, so how far it has
+    // scrolled out of view is just the scroll offset.
+    final progress = (_scrollController.offset / distance).clamp(0.0, 1.0);
     _titleProgress.value = progress;
   }
 
@@ -311,15 +316,14 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               onPressed: () => context.push('/settings'),
             ),
           ],
-          title: ValueListenableBuilder<double>(
-            valueListenable: _titleProgress,
-            builder: (context, progress, child) {
-              return Opacity(
-                opacity: progress,
-                child: child,
-              );
-            },
-            child: const Text('SparkCode'),
+          title: RepaintBoundary(
+            child: ValueListenableBuilder<double>(
+              valueListenable: _titleProgress,
+              builder: (context, progress, child) {
+                return Opacity(opacity: progress, child: child);
+              },
+              child: const Text('SparkCode'),
+            ),
           ),
           alignment: Alignment.centerLeft,
           trailing: [],
@@ -339,15 +343,14 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ValueListenableBuilder<double>(
-                      valueListenable: _titleProgress,
-                      builder: (context, progress, child) {
-                        return Opacity(
-                          opacity: 1.0 - progress,
-                          child: child,
-                        );
-                      },
-                      child: Text('SparkCode', key: _titleKey).h1,
+                    RepaintBoundary(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _titleProgress,
+                        builder: (context, progress, child) {
+                          return Opacity(opacity: 1.0 - progress, child: child);
+                        },
+                        child: Text('SparkCode', key: _titleKey).h1,
+                      ),
                     ),
                     const Gap(12),
                     _ServerSwitcher(),
@@ -360,8 +363,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                         InputFeature.leading(
                             Icon(LucideIcons.search, size: 16)),
                       ],
-                      onChanged: (value) =>
-                          setState(() => _query = value.trim()),
+                      // Debounced: each keystroke re-filters every workspace
+                      // and session and rebuilds the whole list.
+                      onChanged: (value) => _searchDebouncer.run(() {
+                        if (!mounted) return;
+                        setState(() => _query = value.trim());
+                      }),
                     ),
                     const Gap(12),
                     SizedBox(
@@ -555,6 +562,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
 class _SessionTile extends ConsumerWidget {
   const _SessionTile({
+    super.key,
     required this.session,
     required this.onTap,
     required this.onDelete,
@@ -658,7 +666,10 @@ class _SessionTile extends ConsumerWidget {
     final busy = ref.watch(sessionActivityProvider).contains(session.id);
     final theme = Theme.of(context);
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        Haptics.selection();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
@@ -784,7 +795,10 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
-            onTap: _toggle,
+            onTap: () {
+              Haptics.selection();
+              _toggle();
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
@@ -884,36 +898,50 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
                       ),
                     ),
                   const Gap(8),
-                  Icon(
-                    _expanded
-                        ? LucideIcons.chevronDown
-                        : LucideIcons.chevronRight,
-                    size: 16,
-                    color: theme.colorScheme.mutedForeground,
+                  // Rotate rather than swap glyphs, so expanding reads as one
+                  // continuous motion.
+                  AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: Motion.base,
+                    curve: Motion.standard,
+                    child: Icon(
+                      LucideIcons.chevronRight,
+                      size: 16,
+                      color: theme.colorScheme.mutedForeground,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          if (_expanded)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: Column(
-                children: widget.sessions
-                    .map(
-                      (session) => _SessionTile(
-                        session: session,
-                        onTap: () => context.push('/session/${session.id}'),
-                        onDelete: widget.onDeleteSession != null
-                            ? () => widget.onDeleteSession!(session)
-                            : () {},
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
+          // The AnimatedSize must exist on both sides of the toggle: when it was
+          // created inside `if (_expanded)` its child was already full height on
+          // the first frame, so nothing ever animated.
+          AnimatedSize(
+            duration: Motion.base,
+            curve: Motion.inOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? SizedBox(
+                    height: (widget.sessions.length * 80.0).clamp(0, 400),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: widget.sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = widget.sessions[index];
+                        return _SessionTile(
+                          key: ValueKey(session.id),
+                          session: session,
+                          onTap: () => context.push('/session/${session.id}'),
+                          onDelete: widget.onDeleteSession != null
+                              ? () => widget.onDeleteSession!(session)
+                              : () {},
+                        );
+                      },
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );
@@ -976,9 +1004,7 @@ class _ServerSwitcher extends ConsumerWidget {
 
     if (configs.isEmpty) {
       return GestureDetector(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ConnectionScreen()),
-        ),
+        onTap: () => context.push('/servers/add'),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -1086,11 +1112,7 @@ class _ServerSwitcher extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 onPressed: () {
                   closeSheet(sheetContext);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ConnectionScreen(),
-                    ),
-                  );
+                  context.push('/servers/add');
                 },
                 child: const Row(
                   children: [

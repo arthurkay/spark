@@ -4,6 +4,8 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
+import '../../app/motion.dart';
+import '../../shared/haptics.dart';
 import '../../core/models/permission.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
@@ -19,8 +21,20 @@ class PermissionBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(pendingPermissionsProvider);
-    if (pending.isEmpty) return const SizedBox.shrink();
     final requests = pending.values.toList();
+    // AnimatedSize with an always-present child: appearing/disappearing
+    // instantly used to shove the whole chat list up and down.
+    return AnimatedSize(
+      duration: Motion.base,
+      curve: Motion.inOut,
+      alignment: Alignment.topCenter,
+      child: requests.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : _bannerBody(context, requests),
+    );
+  }
+
+  Widget _bannerBody(BuildContext context, List<PermissionRequest> requests) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -99,12 +113,13 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
                         ).semiBold,
                       ),
                       if (hasMetadata)
-                        Icon(
-                          _expanded
-                              ? LucideIcons.chevronDown
-                              : LucideIcons.chevronRight,
-                          size: 14,
-                        ).iconMutedForeground
+                        AnimatedRotation(
+                          turns: _expanded ? 0.25 : 0,
+                          duration: Motion.base,
+                          curve: Motion.standard,
+                          child: const Icon(LucideIcons.chevronRight, size: 14)
+                              .iconMutedForeground,
+                        )
                       else
                         const Icon(LucideIcons.chevronRight, size: 14)
                             .iconMutedForeground,
@@ -142,14 +157,15 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
                 Expanded(
                   child: OutlineButton(
                     onPressed: () =>
-                        _respond(ref, client, permission, 'reject'),
+                        _respondWithFeedback(ref, client, permission, 'reject'),
                     child: const Text('Reject'),
                   ),
                 ),
                 const Gap(8),
                 Expanded(
                   child: PrimaryButton(
-                    onPressed: () => _respond(ref, client, permission, 'once'),
+                    onPressed: () =>
+                        _respondWithFeedback(ref, client, permission, 'once'),
                     child: const Text('Allow'),
                   ),
                 ),
@@ -194,6 +210,17 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
             .catchError((_) {});
       },
     );
+  }
+
+  void _respondWithFeedback(
+    WidgetRef ref,
+    OpencodeClient? client,
+    PermissionRequest permission,
+    String response,
+  ) {
+    // Approving or denying is a commitment — it should be felt.
+    Haptics.commit();
+    _respond(ref, client, permission, response);
   }
 
   void _respond(

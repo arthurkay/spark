@@ -44,6 +44,9 @@ flutter test
 
 # Run the app (needs a device/emulator)
 flutter run
+
+# Judge animation smoothness / frame rate (see Performance below)
+flutter run --profile
 ```
 
 ## opencode server API
@@ -166,6 +169,53 @@ from `pendingQuestionsProvider` at submit time (via `messageKey`/`callKey`) so a
 question that was populated after the sheet opened still submits — do NOT rely only
 on the `requestID` captured when the sheet was built (it may be empty).
 
+## Performance
+
+**Never judge animation smoothness in a debug build.** `flutter run` (debug) runs
+Dart in JIT with assertions on and pays shader-compilation cost on first use —
+animations are visibly janky there regardless of the code. Use
+`flutter run --profile` on a **physical device** and DevTools → Performance.
+
+Rules the chat screen depends on — breaking these reintroduces streaming jank:
+
+- **Never watch the whole `ChatController` from a widget that builds messages.**
+  `ChatScreen` watches only `chatChromeOf` (coarse flags) and
+  `visibleMessageIdsProvider` (transcript shape). Each bubble subscribes to its
+  own message via `chatMessageProvider`, so a streamed token rebuilds one bubble
+  instead of the screen, every visible bubble, and the composer's `TextField`.
+  `MessageWithParts` has no `==` on purpose — identity equality is what makes
+  that per-message subscription exact.
+- **Value objects used in provider return types need `==`** (see
+  `ModelSelection`). Without it a derived provider looks changed on every notify
+  and the invalidation fans out.
+- **Do not animate the chat scroll during streaming.** `_pinToBottom(animate:
+  false)` uses `jumpTo`; an `animateTo` restarted on every delta never completes
+  and the position never settles. `animate: true` is only for discrete events.
+- **Keep side effects out of `build`.** Scroll and animation control live in
+  `ref.listen`/`listenManual` callbacks.
+- **Nothing expensive per build.** Syntax highlighting is cached *with the font
+  already applied* (`_cachedHighlight`); `highlightAuto` is never called (it
+  tries ~190 grammars synchronously); markdown parse/render results are cached;
+  `base64Decode` for inline images goes through `DataUriCache` so `Image.memory`
+  gets a stable byte-list reference and the image cache actually hits; images
+  pass `cacheWidth`.
+- **Bound worst cases rather than assuming inputs are small.** `unifiedEditDiff`
+  trims the common prefix/suffix, then falls back to a block-replacement view
+  above `_maxDiffCells`. Tool payloads over `_autoExpandLimit` start collapsed,
+  and `_codeBlock` clips the *string* (`_clipToLines`) — constraining only the
+  painted height still lays out the whole text.
+- **Terminal output is coalesced** to one `terminal.write` per ~16ms frame, with
+  partial UTF-8 sequences held across frames (`splitTrailingIncompleteUtf8`).
+
+Motion values come from `lib/app/motion.dart` (`Motion.fast/base/slow/...`) —
+don't inline `Duration`/`Curves` literals. Haptics go through
+`lib/shared/haptics.dart`; `shadcn`'s `enableFeedback` is the click-sound path and
+does not vibrate.
+
+Pushed routes use `CupertinoPage` (`lib/app/router.dart`), which animates the
+outgoing page and provides the edge swipe-back gesture. Use `context.push` — do
+not hand-roll `Navigator.push(MaterialPageRoute(...))`, it won't match.
+
 ## Conventions
 
 - Do NOT add code comments unless explicitly requested.
@@ -188,18 +238,25 @@ on the `requestID` captured when the sheet was built (it may be empty).
   `package:flutter/widgets.dart`.
 - Tool-call chips in `lib/features/chat/message_bubble.dart`: `_expandableToolTypes`
   lists tools whose content expands inline (`glob`, `read`, `edit`, `todowrite`,
-  `write`, `bash`, `grep`). `_buildContentPreview` renders a structured widget per
-  tool — `todowrite` parses its JSON payload into a checkbox/todo list
+  `write`, `bash`, `grep`). Such chips auto-expand only when their output is under
+  `_autoExpandLimit`; larger payloads start collapsed so opening a session doesn't
+  lay out megabytes of tool output. `_buildContentPreview` renders a structured
+  widget per tool — `todowrite` parses its JSON payload into a checkbox/todo list
   (`_TodoRow` + `_TodoPriorityBadge`); `grep` shows Pattern/Path/Results; `bash`
   shows Command + Output. Content blocks use `ConstrainedBox` + `SingleChildScrollView`
   so short content (e.g. a single command or filename) stays minimal height while
   long output scrolls within a cap. Do NOT give `_codeBlock`/`_diffBlock` a fixed
-  height or rely on `SelectableText.maxLines` for sizing (reserves full height).
+  height or rely on `SelectableText.maxLines` for sizing (reserves full height) —
+  `_codeBlock` instead clips the source string via `_clipToLines`, since a height
+  constraint alone still pays full text layout.
 - **edit tool chips** render a single interleaved unified diff (green `+` / red `-`
   lines via `CodeHighlightView(language: 'diff')`) under a "Diff" label, instead of
-  two separate Removed/Added blocks. The diff is computed by `_unifiedEditDiff()`
-  (LCS-based, in `message_bubble.dart`) from the tool's `oldString`/`newString`.
-  When only one side exists it falls back to the single colored block.
+  two separate Removed/Added blocks. The diff is computed by `unifiedEditDiff()`
+  (in `message_bubble.dart`; `@visibleForTesting`, covered by
+  `test/edit_diff_test.dart`) from the tool's `oldString`/`newString`. It trims the
+  common prefix/suffix before running LCS on the remainder, and degrades to a
+  block-replacement view past `_maxDiffCells`. When only one side exists it falls
+  back to the single colored block.
 - **App + notification icons** are generated, not codegen'd. Run
   `python3 tools/generate_icons.py` (Pillow only) to (re)write
   `android/app/src/main/res/mipmap-*/ic_launcher.png` (color launcher, zinc rounded

@@ -1,4 +1,4 @@
-# Spark
+# SparkCode
 
 **Spark** is a Flutter mobile app (Android/iOS) that acts as a remote client for a
 running [`opencode serve`](https://opencode.ai/docs/server/) HTTP server. From your

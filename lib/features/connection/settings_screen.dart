@@ -8,7 +8,6 @@ import '../../core/models/server_config.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
-import '../connection/connection_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -31,17 +30,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _addServer() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ConnectionScreen()),
-    );
+    context.push('/servers/add');
   }
 
   void _editServer(ServerConfig config) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ConnectionScreen(serverId: config.id),
-      ),
-    );
+    context.push('/servers/${config.id}/edit');
   }
 
   void _confirmDelete(ServerConfig config) {

@@ -53,7 +53,10 @@
 	<string>SparkCode needs camera access to allow you to capture images and screenshots for the AI assistant.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>SparkCode uses speech recognition to convert your voice input into text for chatting with the AI assistant.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SparkCode uses your location to provide context-aware assistance when you're working on location-specific projects.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

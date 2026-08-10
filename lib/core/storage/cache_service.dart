@@ -1,7 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+
+// Top-level so they can run in an isolate via compute().
+String _encodeJson(Map<String, dynamic> value) => jsonEncode(value);
+
+Map<String, dynamic>? _decodeJson(String raw) {
+  try {
+    final decoded = jsonDecode(raw);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 class CacheService {
   CacheService._();
@@ -27,7 +40,11 @@ class CacheService {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'data': data,
     };
-    await file.writeAsString(jsonEncode(envelope));
+    // Encode off the UI isolate: serialising a whole message list (including
+    // every tool output blob) is easily a multi-frame stall on the main isolate,
+    // and this runs while responses are streaming.
+    final encoded = await compute(_encodeJson, envelope);
+    await file.writeAsString(encoded);
   }
 
   Future<Map<String, dynamic>?> read(
@@ -39,7 +56,8 @@ class CacheService {
       final file = File('${dir.path}/$key');
       if (!await file.exists()) return null;
       final raw = await file.readAsString();
-      final envelope = jsonDecode(raw) as Map<String, dynamic>;
+      final envelope = await compute(_decodeJson, raw);
+      if (envelope == null) return null;
       final ts = envelope['timestamp'] as int?;
       if (ts != null) {
         final age = DateTime.now().millisecondsSinceEpoch - ts;

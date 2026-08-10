@@ -1,7 +1,7 @@
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
-import 'connection_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -94,11 +94,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   opacity: _buttonFade,
                   child: PrimaryButton(
                     onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ConnectionScreen(),
-                        ),
-                      );
+                      context.push('/servers/add');
                     },
                     child: const Text('Get started'),
                   ),

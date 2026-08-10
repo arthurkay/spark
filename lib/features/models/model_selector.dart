@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
+import '../../shared/debouncer.dart';
+import '../../shared/haptics.dart';
 import '../../core/models/provider.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 import 'models_provider.dart';
@@ -179,17 +181,38 @@ class _ModelPickerList extends StatefulWidget {
 
 class _ModelPickerListState extends State<_ModelPickerList> {
   final _searchController = TextEditingController();
+  final _searchDebouncer = Debouncer();
   String _query = '';
 
   @override
   void dispose() {
+    _searchDebouncer.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Flattened, filtered rows for the list. Building this first lets the list be
+  /// lazy: the previous nested provider×model loops inside a
+  /// `ListView(shrinkWrap: true)` constructed every row of every provider on
+  /// each keystroke.
+  List<_PickerRow> _rows(String q) {
+    final rows = <_PickerRow>[];
+    for (final provider in widget.providers) {
+      if (!_providerHasMatch(provider, q)) continue;
+      rows.add(_PickerRow.header(provider.name));
+      for (final model in provider.models) {
+        if (_modelMatches(model, q)) {
+          rows.add(_PickerRow.model(provider.id, model));
+        }
+      }
+    }
+    return rows;
   }
 
   @override
   Widget build(BuildContext context) {
     final q = _query.toLowerCase();
+    final rows = _rows(q);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -201,45 +224,50 @@ class _ModelPickerListState extends State<_ModelPickerList> {
           features: const [
             InputFeature.leading(Icon(LucideIcons.search, size: 16)),
           ],
-          onChanged: (value) => setState(() => _query = value.trim()),
+          onChanged: (value) => _searchDebouncer.run(() {
+            if (!mounted) return;
+            setState(() => _query = value.trim());
+          }),
         ),
         const Gap(8),
         Flexible(
-          child: ListView(
+          child: ListView.builder(
             shrinkWrap: true,
-            children: [
-              for (final provider in widget.providers) ...[
-                if (_providerHasMatch(provider, q)) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Text(provider.name).muted.small.semiBold,
-                  ),
-                  for (final model in provider.models)
-                    if (_modelMatches(model, q))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: GhostButton(
-                          alignment: Alignment.centerLeft,
-                          onPressed: () => widget.onSelect(
-                            ModelSelection(
-                              providerID: provider.id,
-                              modelID: model.id,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(model.name)),
-                              if (widget.selectedModel?.providerID ==
-                                      provider.id &&
-                                  widget.selectedModel?.modelID == model.id)
-                                const Icon(LucideIcons.check, size: 16),
-                            ],
-                          ),
-                        ),
+            itemCount: rows.length,
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              final model = row.model;
+              if (model == null) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(row.label).muted.small.semiBold,
+                );
+              }
+              final selected =
+                  widget.selectedModel?.providerID == row.providerID &&
+                      widget.selectedModel?.modelID == model.id;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: GhostButton(
+                  alignment: Alignment.centerLeft,
+                  onPressed: () {
+                    Haptics.selection();
+                    widget.onSelect(
+                      ModelSelection(
+                        providerID: row.providerID!,
+                        modelID: model.id,
                       ),
-                ],
-              ],
-            ],
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(model.name)),
+                      if (selected) const Icon(LucideIcons.check, size: 16),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -257,4 +285,18 @@ class _ModelPickerListState extends State<_ModelPickerList> {
     return model.name.toLowerCase().contains(q) ||
         model.id.toLowerCase().contains(q);
   }
+}
+
+/// One row of the flattened model picker: either a provider header
+/// ([model] == null) or a selectable model.
+class _PickerRow {
+  const _PickerRow.header(this.label)
+      : providerID = null,
+        model = null;
+
+  const _PickerRow.model(this.providerID, this.model) : label = '';
+
+  final String label;
+  final String? providerID;
+  final ModelInfo? model;
 }
