@@ -21,6 +21,8 @@ import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 import 'tts_provider.dart';
 import 'tts_equalizer.dart';
+import 'pdf_service.dart';
+import 'package:printing/printing.dart';
 
 /// Cache entry keyed by a cheap hash. The inputs are kept so a hash collision
 /// is detected rather than silently rendering the wrong diff.
@@ -339,8 +341,7 @@ class MessageBubble extends StatelessWidget {
               Consumer(
                 builder: (context, ref, _) {
                   final tts = ref.watch(ttsStateProvider);
-                  final isSpeaking =
-                      tts.status != TtsStatus.idle &&
+                  final isSpeaking = tts.status != TtsStatus.idle &&
                       tts.messageId == message.info.id;
                   final isPaused = tts.status == TtsStatus.paused && isSpeaking;
                   return GhostButton(
@@ -370,11 +371,48 @@ class MessageBubble extends StatelessWidget {
                   );
                 },
               ),
+              const Gap(8),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _exportToPdf(context);
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.fileDown, size: 16),
+                    Gap(10),
+                    Text('Export as PDF'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _exportToPdf(BuildContext context) async {
+    final text = message.parts
+        .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
+        .map((p) => p.text!)
+        .join('\n\n');
+    if (text.isEmpty) {
+      showAppToast(context, title: 'No content to export');
+      return;
+    }
+    try {
+      final bytes = await buildMessagePdf(message);
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'message-${message.info.id}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        showAppToast(context, title: 'Failed to export PDF');
+      }
+    }
   }
 
   Widget _text(BuildContext context, String text) {
