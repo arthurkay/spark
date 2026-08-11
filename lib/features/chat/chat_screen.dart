@@ -896,7 +896,7 @@ class _ComposerState extends ConsumerState<_Composer> {
     final defaultAgent = ref.watch(defaultAgentProvider);
     final agentLabel = selectedAgent ?? defaultAgent;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -1013,7 +1013,7 @@ class _ComposerState extends ConsumerState<_Composer> {
                   ),
                 ),
               ],
-              const Gap(10),
+              //const Gap(10),
               ValueListenableBuilder<List<Attachment>>(
                 valueListenable: widget.attachments,
                 builder: (context, attachments, _) {
