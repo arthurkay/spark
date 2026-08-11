@@ -13,21 +13,32 @@ import 'core/api/providers.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
+import 'core/storage/settings_store.dart';
 import 'features/sessions/sessions_provider.dart';
 import 'features/chat/tts_provider.dart';
 
-final _routerProvider = Provider<GoRouter>((ref) => createRouter(ref));
+String? _pendingRestoreRoute;
+
+final _routerProvider = Provider<GoRouter>((ref) {
+  return createRouter(ref);
+});
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final container = ProviderContainer();
   await container.read(serverManagerProvider.notifier).restore();
+
+  final savedRoute = await SettingsStore().loadLastRoute();
+  if (savedRoute != null && savedRoute.isNotEmpty && savedRoute != '/') {
+    _pendingRestoreRoute = savedRoute;
+  }
+
   await NotificationService.instance.init(
     onTap: (permissionID, sessionID) {
-      container.read(_routerProvider).go('/session/$sessionID');
+      container.read(_routerProvider).push('/session/$sessionID');
     },
     onRouteTap: (route) {
-      container.read(_routerProvider).go(route);
+      container.read(_routerProvider).push(route);
     },
   );
   container.read(permissionListenerProvider);
@@ -56,6 +67,14 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _pendingRestoreRoute;
+      if (route != null) {
+        _pendingRestoreRoute = null;
+        final router = ref.read(_routerProvider);
+        router.push(route);
+      }
+    });
   }
 
   @override

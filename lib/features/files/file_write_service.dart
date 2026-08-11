@@ -166,7 +166,7 @@ class PtyFileWriter {
         _readyTimeout,
         onTimeout: () => throw FileWriteException(
           'Timed out waiting for the shell to accept the write'
-              '${_diagnostics(tail)}',
+          '${_diagnostics(tail)}',
         ),
       );
 
@@ -247,7 +247,9 @@ class PtyFileWriter {
 
   void _scheduleTeardown() {
     unawaited(
-      _teardown().timeout(_teardownTimeout, onTimeout: () {}).catchError((_) {}),
+      _teardown()
+          .timeout(_teardownTimeout, onTimeout: () {})
+          .catchError((_) {}),
     );
   }
 

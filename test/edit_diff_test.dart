@@ -20,10 +20,8 @@ void main() {
       final diff = unifiedEditDiff('a\nc\n', 'a\nb\nc\n');
       expect(diff, contains('+b'));
       // Check body lines only — the hunk header legitimately contains '-'.
-      final deletions = diff
-          .split('\n')
-          .where((l) => l.startsWith('-'))
-          .toList();
+      final deletions =
+          diff.split('\n').where((l) => l.startsWith('-')).toList();
       expect(deletions, isEmpty,
           reason: 'an insertion should not report deletions');
     });

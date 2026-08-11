@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/api/providers.dart';
+import '../core/storage/settings_store.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/connection/connection_screen.dart';
 import '../features/connection/settings_screen.dart';
@@ -50,6 +51,13 @@ GoRouter createRouter(Ref ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: _ConnectionListenable(ref),
+    redirect: (context, state) {
+      final location = state.uri.toString();
+      if (location != '/') {
+        ref.read(settingsStoreProvider).saveLastRoute(location);
+      }
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/',

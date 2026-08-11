@@ -5,6 +5,7 @@ class SettingsStore {
   static const _themeModeKey = 'opencode_theme_mode';
   static const _collapseFilePermissionsKey =
       'opencode_collapse_file_permissions';
+  static const _lastRouteKey = 'opencode_last_route';
 
   Future<String> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,6 +25,16 @@ class SettingsStore {
   Future<void> saveCollapseFilePermissions(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_collapseFilePermissionsKey, value);
+  }
+
+  Future<String?> loadLastRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastRouteKey);
+  }
+
+  Future<void> saveLastRoute(String route) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastRouteKey, route);
   }
 }
 

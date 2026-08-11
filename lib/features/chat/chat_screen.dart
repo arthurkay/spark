@@ -56,6 +56,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       duration: const Duration(milliseconds: 1200),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // dispose() disposes _showScrollToBottom, so leaving the chat within a
+      // frame of opening it would write to a disposed notifier.
+      if (!mounted) return;
       if (_scrollController.hasClients) {
         _showScrollToBottom.value = !_isNearBottom;
       }

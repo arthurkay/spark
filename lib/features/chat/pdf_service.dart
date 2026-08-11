@@ -8,12 +8,37 @@ import 'package:printing/printing.dart';
 
 import '../../core/models/message.dart';
 
+/// Loads the export fonts, falling back to the PDF built-ins when offline.
+///
+/// [PdfGoogleFonts] fetches from fonts.gstatic.com on every export, and this
+/// app is routinely pointed at a LAN server with no internet — where the whole
+/// export used to fail. The built-ins need no network but are Latin-1 only, so
+/// non-Latin text degrades in that fallback rather than blocking the export.
+Future<List<pw.Font>> _loadFonts() async {
+  try {
+    return [
+      await PdfGoogleFonts.nunitoRegular(),
+      await PdfGoogleFonts.nunitoBold(),
+      await PdfGoogleFonts.nunitoItalic(),
+      await PdfGoogleFonts.firaCodeRegular(),
+    ];
+  } catch (_) {
+    return [
+      pw.Font.helvetica(),
+      pw.Font.helveticaBold(),
+      pw.Font.helveticaOblique(),
+      pw.Font.courier(),
+    ];
+  }
+}
+
 Future<Uint8List> buildMessagePdf(MessageWithParts message) async {
   final doc = pw.Document();
-  final font = await PdfGoogleFonts.nunitoRegular();
-  final boldFont = await PdfGoogleFonts.nunitoBold();
-  final italicFont = await PdfGoogleFonts.nunitoItalic();
-  final monoFont = await PdfGoogleFonts.firaCodeRegular();
+  final fonts = await _loadFonts();
+  final font = fonts[0];
+  final boldFont = fonts[1];
+  final italicFont = fonts[2];
+  final monoFont = fonts[3];
 
   final text = message.parts
       .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
@@ -45,7 +70,12 @@ Future<Uint8List> buildMessagePdf(MessageWithParts message) async {
     pw.SizedBox(height: 12),
   ];
 
-  final ast = md.Document().parse(text);
+  // Same extension set the on-screen renderer uses (markdown_view.dart), so an
+  // export matches what the user was looking at. The default (CommonMark) has
+  // no table or strikethrough syntax, which left tables in the PDF as raw
+  // `| a | b |` text.
+  final ast =
+      md.Document(extensionSet: md.ExtensionSet.gitHubFlavored).parse(text);
   elements.addAll(_renderAst(ast, font, boldFont, italicFont, monoFont));
 
   doc.addPage(
@@ -275,17 +305,34 @@ pw.Widget _blockquote(
   );
 }
 
-pw.Widget _table(md.Element element, pw.Font font, pw.Font boldFont) {
+/// Flattens a markdown `table` element to rows of cell text.
+///
+/// The AST nests as `table > thead|tbody > tr > th|td`. Walking `table`'s
+/// children as if they were rows yields one row per section with every cell
+/// concatenated into a single string.
+List<List<String>> tableRows(md.Element table) {
   final rows = <List<String>>[];
-  for (final row in element.children ?? []) {
-    if (row is md.Element) {
-      final cells = <String>[];
-      for (final cell in row.children ?? []) {
-        cells.add(_extractText(cell));
-      }
-      rows.add(cells);
+  for (final section in table.children ?? const <md.Node>[]) {
+    if (section is! md.Element) continue;
+    // Tolerate a `tr` sitting directly under `table` as well as under a
+    // thead/tbody wrapper.
+    final trs = section.tag == 'tr'
+        ? [section]
+        : (section.children ?? const <md.Node>[])
+            .whereType<md.Element>()
+            .where((e) => e.tag == 'tr');
+    for (final tr in trs) {
+      rows.add((tr.children ?? const <md.Node>[])
+          .whereType<md.Element>()
+          .map(_extractText)
+          .toList());
     }
   }
+  return rows;
+}
+
+pw.Widget _table(md.Element element, pw.Font font, pw.Font boldFont) {
+  final rows = tableRows(element);
   if (rows.isEmpty) return pw.SizedBox.shrink();
 
   return pw.TableHelper.fromTextArray(

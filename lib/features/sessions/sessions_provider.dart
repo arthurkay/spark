@@ -8,6 +8,12 @@ import '../../core/models/session.dart';
 import '../../core/storage/cache_service.dart';
 import 'workspace_provider.dart';
 
+/// The TTS preprocessing session is an implementation detail of "read aloud"
+/// and must never appear in the session list — including when a cache written
+/// before it was hidden is served after a request fails.
+bool _isHiddenSession(Session s) =>
+    s.title?.startsWith('[TTS Preprocessing]') == true;
+
 void _sortSessions(List<Session> sessions) {
   sessions.sort((a, b) {
     final at = a.time?.updated ?? a.time?.created ?? 0;
@@ -25,8 +31,7 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
       'sessions/${directory != null ? Uri.encodeComponent(directory) : 'all'}.json';
   try {
     final sessions = await client.listSessions(directory: directory);
-    sessions
-        .removeWhere((s) => s.title?.startsWith('[TTS Preprocessing]') == true);
+    sessions.removeWhere(_isHiddenSession);
     _sortSessions(sessions);
     await CacheService.instance.write(cacheKey, {
       'items': sessions.map((s) => s.toJson()).toList(),
@@ -39,6 +44,7 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
       final sessions = items
           .whereType<Map<String, dynamic>>()
           .map(Session.fromJson)
+          .where((s) => !_isHiddenSession(s))
           .toList();
       _sortSessions(sessions);
       return sessions;
@@ -64,7 +70,7 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
     final all = <Session>[];
     for (final sessions in results) {
       for (final s in sessions) {
-        if (s.title?.startsWith('[TTS Preprocessing]') == true) continue;
+        if (_isHiddenSession(s)) continue;
         if (seen.add(s.id)) all.add(s);
       }
     }
@@ -80,6 +86,7 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
       final sessions = items
           .whereType<Map<String, dynamic>>()
           .map(Session.fromJson)
+          .where((s) => !_isHiddenSession(s))
           .toList();
       _sortSessions(sessions);
       return sessions;

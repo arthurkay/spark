@@ -25,8 +25,7 @@ class MarkdownView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     final baseStyle = textStyle ?? const TextStyle(fontSize: 15, height: 1.6);
     final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     final styleKey =
@@ -590,8 +589,7 @@ class _CopyableCodeState extends State<_CopyableCode> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return Stack(
       children: [
         CodeHighlightView(

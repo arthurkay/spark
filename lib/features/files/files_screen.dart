@@ -18,6 +18,7 @@ import '../chat/chat_provider.dart';
 import '../sessions/sessions_provider.dart';
 import '../sessions/workspace_provider.dart';
 import 'file_write_service.dart';
+import 'file_ops_service.dart';
 
 final _filesProvider = FutureProvider.family<List<FileNode>, _FileQuery>((
   ref,
@@ -154,6 +155,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
               : const Text('Project root').muted.small,
           trailing: [
             IconButton.ghost(
+              icon: const Icon(LucideIcons.filePlus),
+              onPressed: () => _showCreateDialog(context, ref, directory,
+                  isDirectory: false),
+            ),
+            IconButton.ghost(
               icon: const Icon(LucideIcons.folderPlus),
               onPressed: () => openSheetOverlay(
                 context: context,
@@ -240,49 +246,57 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                   node.isDirectory ? null : extensionFromPath(node.path);
               final isImage =
                   ext != null && isSupportedImageExtension(node.path);
-              return GhostButton(
-                alignment: Alignment.centerLeft,
-                onPressed: () {
-                  Haptics.selection();
-                  if (node.isDirectory) {
-                    setState(() => _path = node.path);
-                  } else {
-                    _openFile(context, node, directory);
-                  }
+              return GestureDetector(
+                onLongPress: () {
+                  Haptics.longPress();
+                  _showFileActions(context, ref, node, directory);
                 },
-                child: Row(
-                  children: [
-                    Icon(
-                      node.isDirectory
-                          ? LucideIcons.folder
-                          : isImage
-                              ? LucideIcons.image
-                              : LucideIcons.file,
-                    ),
-                    const Gap(8),
-                    Expanded(
-                      child: Text(
-                        node.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                child: GhostButton(
+                  alignment: Alignment.centerLeft,
+                  onPressed: () {
+                    Haptics.selection();
+                    if (node.isDirectory) {
+                      setState(() => _path = node.path);
+                    } else {
+                      _openFile(context, node, directory);
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Icon(
+                        node.isDirectory
+                            ? LucideIcons.folder
+                            : isImage
+                                ? LucideIcons.image
+                                : LucideIcons.file,
                       ),
-                    ),
-                    if (!node.isDirectory && ext != null) ...[
                       const Gap(8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                      Expanded(
+                        child: Text(
+                          node.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        decoration: BoxDecoration(
-                          color:
-                              Theme.of(context).colorScheme.muted.withAlpha(40),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text('.$ext').xSmall.muted,
                       ),
+                      if (!node.isDirectory && ext != null) ...[
+                        const Gap(8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .muted
+                                .withAlpha(40),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('.$ext').xSmall.muted,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               );
             },
@@ -290,6 +304,240 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
         },
       ),
     );
+  }
+
+  void _showFileActions(
+      BuildContext context, WidgetRef ref, FileNode node, String? directory) {
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(node.name).h4,
+              const Gap(12),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _renameItem(context, ref, node, directory);
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.pencil, size: 16),
+                    Gap(10),
+                    Text('Rename'),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _deleteItem(context, ref, node, directory);
+                },
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.trash2,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.destructive),
+                    const Gap(10),
+                    Text('Delete',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.destructive)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameItem(BuildContext context, WidgetRef ref, FileNode node,
+      String? directory) async {
+    final controller = TextEditingController(text: node.name);
+    String? result;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Rename').h4,
+              const Gap(12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                placeholder: const Text('New name'),
+              ),
+              const Gap(16),
+              PrimaryButton(
+                onPressed: () {
+                  result = controller.text.trim();
+                  closeSheet(sheetContext);
+                },
+                child: const Text('Rename'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (result == null || !context.mounted) return;
+
+    final newName = result!;
+    if (newName.isEmpty || newName == node.name) return;
+
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+
+    final dir = directory ?? _resolveCurrentDirectory(node);
+    final parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
+    final newPath = '$parentPath/$newName';
+
+    final service = FileOpsService(client: client);
+    final opResult = await service.rename(node.path, newPath, directory: dir);
+    if (!context.mounted) return;
+
+    if (opResult.success) {
+      ref.invalidate(_filesProvider);
+      showAppToast(context, title: 'Renamed to $newName');
+    } else {
+      showAppToast(context,
+          title: 'Failed to rename', description: opResult.error);
+    }
+  }
+
+  Future<void> _deleteItem(BuildContext context, WidgetRef ref, FileNode node,
+      String? directory) async {
+    bool confirmed = false;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Delete').h4,
+              const Gap(12),
+              Text('Delete "${node.name}"?').muted,
+              const Gap(16),
+              PrimaryButton(
+                onPressed: () {
+                  confirmed = true;
+                  closeSheet(sheetContext);
+                },
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!confirmed || !context.mounted) return;
+
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+
+    final dir = directory ?? _resolveCurrentDirectory(node);
+    final service = FileOpsService(client: client);
+    final result = node.isDirectory
+        ? await service.deleteDirectory(node.path, directory: dir)
+        : await service.deleteFile(node.path, directory: dir);
+    if (!context.mounted) return;
+
+    if (result.success) {
+      ref.invalidate(_filesProvider);
+      showAppToast(context, title: 'Deleted ${node.name}');
+    } else {
+      showAppToast(context,
+          title: 'Failed to delete', description: result.error);
+    }
+  }
+
+  String _resolveCurrentDirectory(FileNode node) {
+    final parts = node.path.split('/');
+    parts.removeLast();
+    return parts.join('/');
+  }
+
+  Future<void> _showCreateDialog(
+      BuildContext context, WidgetRef ref, String? directory,
+      {required bool isDirectory}) async {
+    final controller = TextEditingController();
+    String? nameResult;
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(isDirectory ? 'New Folder' : 'New File').h4,
+              const Gap(12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                placeholder: Text(isDirectory ? 'Folder name' : 'File name'),
+              ),
+              const Gap(16),
+              PrimaryButton(
+                onPressed: () {
+                  nameResult = controller.text.trim();
+                  closeSheet(sheetContext);
+                },
+                child: const Text('Create'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (nameResult == null || !context.mounted) return;
+
+    final name = nameResult!;
+    if (name.isEmpty) return;
+
+    final client = ref.read(opencodeClientProvider);
+    if (client == null) return;
+
+    final basePath = _path.isEmpty ? '' : '$_path/';
+    final newPath = '$basePath$name';
+
+    final service = FileOpsService(client: client);
+    final opResult = isDirectory
+        ? await service.createDirectory(newPath, directory: directory)
+        : await service.createFile(newPath, directory: directory);
+    if (!context.mounted) return;
+
+    if (opResult.success) {
+      ref.invalidate(_filesProvider);
+      showAppToast(context, title: 'Created $name');
+    } else {
+      showAppToast(context,
+          title: 'Failed to create', description: opResult.error);
+    }
   }
 
   void _openFile(BuildContext context, FileNode node, String? directory) {

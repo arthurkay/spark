@@ -26,7 +26,8 @@ final _diffProvider = FutureProvider.family<List<FileDiff>, String>((
       messageId: assistant.info.id,
     );
     if (perMessage.isNotEmpty) return perMessage;
-  } on OpencodeApiException catch (_) {} on StateError catch (_) {}
+  } on OpencodeApiException catch (_) {
+  } on StateError catch (_) {}
   return diffs;
 });
 
