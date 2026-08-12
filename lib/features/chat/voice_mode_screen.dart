@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -38,6 +41,26 @@ MessageWithParts? replyToNarrate(
   return last;
 }
 
+/// What to say while the agent works. Step 0 acknowledges the request; later
+/// steps reassure. [salt] varies the pick between turns so consecutive waits
+/// don't sound scripted; the sequence never repeats a phrase back-to-back.
+String fillerPhrase(int step, int salt) {
+  const openers = [
+    'Alright, let me work on that.',
+    'Okay, on it.',
+    'Let me think that through.',
+  ];
+  const continuers = [
+    'Still working on it.',
+    'Just a moment more.',
+    'Still thinking this through.',
+    'Working through it now.',
+    'Nearly there — still going.',
+  ];
+  if (step == 0) return openers[salt % openers.length];
+  return continuers[(salt + step) % continuers.length];
+}
+
 class VoiceModeScreen extends ConsumerStatefulWidget {
   const VoiceModeScreen({super.key, required this.sessionId});
 
@@ -47,12 +70,21 @@ class VoiceModeScreen extends ConsumerStatefulWidget {
   ConsumerState<VoiceModeScreen> createState() => _VoiceModeScreenState();
 }
 
-class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
+class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
+    with SingleTickerProviderStateMixin {
   final SpeechToText _speech = SpeechToText();
   VoicePhase _phase = VoicePhase.starting;
   String _partial = '';
   String? _lastNarratedId;
   bool _closing = false;
+
+  /// Long turns are dead air without them: a spoken acknowledgment shortly
+  /// after sending, then periodic reassurance until the reply arrives.
+  Timer? _fillerTimer;
+  int _fillerStep = 0;
+  int _fillerSalt = 0;
+  String _fillerText = '';
+  late final AnimationController _thinkingPulse;
 
   @override
   void initState() {
@@ -65,15 +97,44 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
     });
     // A conversation is hands-free by definition; the screen stays on.
     WakelockPlus.enable();
+    _thinkingPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
     _start();
   }
 
   @override
   void dispose() {
     _closing = true;
+    _fillerTimer?.cancel();
+    _thinkingPulse.dispose();
     _speech.cancel();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  /// First filler ~5s in (a fast reply shouldn't get one at all), then every
+  /// ~14-20s. Each fires only if the turn is still in flight.
+  void _scheduleFiller() {
+    _fillerTimer?.cancel();
+    final delay = _fillerStep == 0
+        ? const Duration(seconds: 5)
+        : Duration(seconds: 14 + math.Random().nextInt(7));
+    _fillerTimer = Timer(delay, () {
+      if (!mounted || _closing || _phase != VoicePhase.waiting) return;
+      final phrase = fillerPhrase(_fillerStep, _fillerSalt);
+      setState(() => _fillerText = phrase);
+      ref.read(ttsControllerProvider).speakFiller(phrase);
+      _fillerStep++;
+      _scheduleFiller();
+    });
+  }
+
+  void _stopFillers() {
+    _fillerTimer?.cancel();
+    _fillerTimer = null;
+    _fillerText = '';
   }
 
   Future<void> _start() async {
@@ -109,6 +170,7 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
 
   Future<void> _listen() async {
     if (!mounted || _closing) return;
+    _stopFillers();
     setState(() {
       _phase = VoicePhase.listening;
       _partial = '';
@@ -130,6 +192,9 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
   Future<void> _send(String text) async {
     Haptics.tap();
     setState(() => _phase = VoicePhase.waiting);
+    _fillerStep = 0;
+    _fillerSalt = math.Random().nextInt(1 << 16);
+    _scheduleFiller();
     await _speech.stop();
     final model = ref.read(selectedModelProvider(widget.sessionId));
     final agent = ref.read(selectedAgentProvider) ??
@@ -141,6 +206,7 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
   }
 
   void _narrate(MessageWithParts message) {
+    _stopFillers();
     _lastNarratedId = message.info.id;
     setState(() => _phase = VoicePhase.speaking);
     // The same pipeline as Read Aloud: preprocess, LLM speech rewrite (cached
@@ -184,6 +250,7 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
 
   void _exit() {
     _closing = true;
+    _stopFillers();
     _speech.cancel();
     ref.read(ttsStateProvider.notifier).stop();
     ref.read(voiceModeActiveProvider.notifier).state = false;
@@ -204,6 +271,13 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
         _phase == VoicePhase.speaking && tts.status == TtsStatus.processing
             ? VoicePhase.waiting
             : _phase;
+
+    // Loop the pulse only while it is on screen.
+    if (effectivePhase == VoicePhase.waiting) {
+      if (!_thinkingPulse.isAnimating) _thinkingPulse.repeat(reverse: true);
+    } else if (_thinkingPulse.isAnimating) {
+      _thinkingPulse.stop();
+    }
 
     final (label, hint) = switch (effectivePhase) {
       VoicePhase.starting => ('Starting…', ''),
@@ -239,17 +313,39 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
                       height: 56,
                       color: theme.colorScheme.primary,
                     )
-                  : Icon(
-                      effectivePhase == VoicePhase.listening
-                          ? LucideIcons.mic
-                          : effectivePhase == VoicePhase.error
-                              ? LucideIcons.micOff
-                              : LucideIcons.brain,
-                      size: 56,
-                      color: effectivePhase == VoicePhase.listening
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.mutedForeground,
-                    ),
+                  : effectivePhase == VoicePhase.waiting
+                      // Breathing, not static: long turns read as hung
+                      // otherwise.
+                      ? AnimatedBuilder(
+                          animation: _thinkingPulse,
+                          builder: (context, child) {
+                            final t = Curves.easeInOut
+                                .transform(_thinkingPulse.value);
+                            return Transform.scale(
+                              scale: 0.88 + 0.18 * t,
+                              child: Opacity(
+                                opacity: 0.45 + 0.55 * t,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            LucideIcons.brain,
+                            size: 56,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      : Icon(
+                          effectivePhase == VoicePhase.listening
+                              ? LucideIcons.mic
+                              : effectivePhase == VoicePhase.error
+                                  ? LucideIcons.micOff
+                                  : LucideIcons.brain,
+                          size: 56,
+                          color: effectivePhase == VoicePhase.listening
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.mutedForeground,
+                        ),
             ),
             const Gap(20),
             Center(child: Text(label).h4),
@@ -269,10 +365,15 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen> {
                           controller: ref.read(ttsControllerProvider),
                           fullText: tts.fullText ?? '',
                         )
-                      : Text(
-                          _partial.isEmpty ? ' ' : _partial,
-                          textAlign: TextAlign.center,
-                        ).large,
+                      : effectivePhase == VoicePhase.waiting
+                          ? Text(
+                              _fillerText.isEmpty ? ' ' : _fillerText,
+                              textAlign: TextAlign.center,
+                            ).muted.italic
+                          : Text(
+                              _partial.isEmpty ? ' ' : _partial,
+                              textAlign: TextAlign.center,
+                            ).large,
                 ),
               ),
             ),

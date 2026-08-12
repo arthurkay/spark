@@ -190,6 +190,20 @@ class TtsController {
     }
   }
 
+  /// Speaks a short standalone phrase — voice mode's thinking fillers.
+  ///
+  /// Deliberately outside the narration pipeline: no LLM rewrite (that is the
+  /// very thing being waited on), no cache, no [TtsState] bookkeeping beyond
+  /// what the engine handlers do on their own. Uses the selected voice so the
+  /// filler sounds like the narrator.
+  Future<void> speakFiller(String text) async {
+    await init();
+    await _applyPersistedVoice();
+    // May flush a previous filler still tailing off.
+    _expectInterruption = true;
+    await _tts.speak(text);
+  }
+
   /// Speaks a short sample in [voice] without touching the persisted choice —
   /// [speak] re-applies the persisted voice, so a preview can't leak into
   /// narration. No client and no messageId: no LLM call, no cache write.
@@ -270,6 +284,10 @@ class TtsController {
       {String? messageId, String? sourceText}) async {
     _fullText = narration;
     progress.value = null;
+    // Starting narration may flush something already speaking — a thinking
+    // filler, or a previous narration. The engine reports the flushed
+    // utterance as cancelled; without this it would wipe the state just set.
+    _expectInterruption = true;
     _updateState(TtsState(
       status: TtsStatus.playing,
       messageId: messageId,
