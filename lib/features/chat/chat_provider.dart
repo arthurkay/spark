@@ -185,11 +185,35 @@ class ChatController extends ChangeNotifier {
 
   final MessageQueue _messageQueue = MessageQueue();
 
+  /// Renders the cached transcript before the first network round-trip.
+  ///
+  /// Cache-first: a session you have opened before shows its messages
+  /// immediately — no spinner — while `load()` refreshes in the background.
+  /// `working` stays false: the cache is a snapshot, and a stale streaming
+  /// tail must not pin the header to "working" while offline.
+  Future<void> _hydrateFromCache() async {
+    final cached = await CacheService.instance
+        .read(_cacheKey, maxAge: const Duration(days: 30));
+    if (cached == null || state.messages.isNotEmpty || !state.loading) return;
+    final items = cached['items'] as List<dynamic>? ?? [];
+    final messages = items
+        .whereType<Map<String, dynamic>>()
+        .map(MessageWithParts.fromJson)
+        .toList();
+    if (messages.isEmpty) return;
+    state = state.copyWith(
+      messages: messages,
+      loading: false,
+      working: false,
+    );
+  }
+
   Future<void> _init() async {
     _paused = ref.read(appPausedProvider);
     ref.listen<bool>(appPausedProvider, (prev, next) {
       setPaused(next);
     });
+    await _hydrateFromCache();
     await load();
     _subscribeEvents();
     _startPolling();
@@ -277,24 +301,14 @@ class ChatController extends ChangeNotifier {
         'items': merged.map((m) => m.toJson()).toList(),
       });
     } on OpencodeApiException catch (e) {
-      final cached = await CacheService.instance
-          .read(_cacheKey, maxAge: const Duration(days: 30));
-      if (cached != null && state.messages.isEmpty) {
-        final items = cached['items'] as List<dynamic>? ?? [];
-        final messages = items
-            .whereType<Map<String, dynamic>>()
-            .map(MessageWithParts.fromJson)
-            .toList();
-        state = state.copyWith(
-          messages: messages,
-          loading: false,
-          error: 'Offline — showing cached messages',
-          working: false,
-        );
-      } else {
-        state =
-            state.copyWith(loading: false, error: e.message, working: false);
+      // Stale transcript already on screen (the cache hydrate ran before the
+      // first load): fail quietly — the offline banner explains the situation,
+      // and re-raising an error toast on every 8s poll would be noise.
+      if (state.messages.isNotEmpty) {
+        state = state.copyWith(loading: false, working: false);
+        return;
       }
+      state = state.copyWith(loading: false, error: e.message, working: false);
     }
   }
 

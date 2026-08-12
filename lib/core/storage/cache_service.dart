@@ -84,3 +84,30 @@ class CacheService {
     } catch (_) {}
   }
 }
+
+/// Cache first, network second — the offline-first read path.
+///
+/// Emits the cached value immediately when one exists (no loading state where
+/// stale data would do), then fetches and emits the fresh value. A fetch
+/// failure is silent when something was already served — the stale data stays
+/// up and the offline banner explains why — and is an error only when there was
+/// nothing to show. An empty cached list counts as no cache: flashing an empty
+/// state and then filling it reads worse than a loader.
+Stream<List<T>> cacheFirstThenFetch<T>({
+  required Future<List<T>?> Function() readCache,
+  required Future<List<T>> Function() fetch,
+}) async* {
+  List<T>? cached;
+  try {
+    cached = await readCache();
+  } catch (_) {
+    // A corrupt cache must never block the network path.
+  }
+  final served = cached != null && cached.isNotEmpty;
+  if (cached != null && cached.isNotEmpty) yield cached;
+  try {
+    yield await fetch();
+  } catch (_) {
+    if (!served) rethrow;
+  }
+}

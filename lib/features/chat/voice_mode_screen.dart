@@ -85,6 +85,7 @@ VoiceActivity? describeActivity(MessageWithParts? tail) {
 
   String? toolLine;
   String? reasoningTail;
+  String? rawReasoning;
   String? answerTail;
   for (final part in tail.parts) {
     switch (part.type) {
@@ -93,7 +94,10 @@ VoiceActivity? describeActivity(MessageWithParts? tail) {
         if (line != null) toolLine = line;
       case 'reasoning':
         final text = part.text?.trim();
-        if (text != null && text.isNotEmpty) reasoningTail = _tail(text);
+        if (text != null && text.isNotEmpty) {
+          rawReasoning = text;
+          reasoningTail = _tail(text);
+        }
       case 'text':
         final text = part.text?.trim();
         if (text != null && text.isNotEmpty) answerTail = _tail(text);
@@ -107,10 +111,13 @@ VoiceActivity? describeActivity(MessageWithParts? tail) {
     );
   }
   if (reasoningTail != null) {
-    // Raw chain-of-thought reads fine but speaks badly mid-sentence; show it,
-    // say something grounded in it existing.
+    // Voice the model's actual thought when a complete sentence exists —
+    // insight into the mental process beats reassurance. Otherwise stay
+    // grounded in what is known.
+    final thought = speakableThought(rawReasoning ?? '');
     return VoiceActivity(
-      spoken: toolLine == null ? 'Thinking it through now.' : "I'm $toolLine.",
+      spoken: thought ??
+          (toolLine == null ? 'Thinking it through now.' : "I'm $toolLine."),
       shown: reasoningTail,
     );
   }
@@ -141,6 +148,26 @@ String? _toolPhrase(MessagePart part) {
     null => null,
     _ => 'using ${part.toolName}',
   };
+}
+
+/// The most recent *complete* sentence of streamed reasoning, cleaned for
+/// speech — so the wait voices the model's actual thought ("The handler needs
+/// a null check first.") rather than a canned phrase. Null when no full
+/// sentence exists yet, or the candidate is too short or too long to speak
+/// well; callers fall back to the generic filler.
+String? speakableThought(String reasoning) {
+  // Strip what reads fine but speaks badly: code spans, markdown emphasis.
+  final cleaned = reasoning
+      .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+      .replaceAll('`', '')
+      .replaceAll(RegExp(r'[*_#]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final matches = RegExp(r'[^.!?]+[.!?]').allMatches(cleaned).toList();
+  if (matches.isEmpty) return null;
+  final sentence = matches.last.group(0)!.trim();
+  if (sentence.length < 12 || sentence.length > 160) return null;
+  return sentence;
 }
 
 /// The last ~140 chars, starting cleanly after a word boundary.

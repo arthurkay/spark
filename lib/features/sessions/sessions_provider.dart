@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
-import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/api/sse_client.dart';
 import '../../core/models/session.dart';
@@ -22,79 +21,79 @@ void _sortSessions(List<Session> sessions) {
   });
 }
 
-final sessionsProvider = FutureProvider<List<Session>>((ref) async {
+/// Parses, filters and sorts a cached session payload; null when unusable.
+List<Session>? _decodeCachedSessions(Map<String, dynamic>? cached) {
+  final items = cached?['items'];
+  if (items is! List) return null;
+  final sessions = items
+      .whereType<Map<String, dynamic>>()
+      .map(Session.fromJson)
+      .where((s) => !_isHiddenSession(s))
+      .toList();
+  _sortSessions(sessions);
+  return sessions;
+}
+
+/// Cache-first, then network — see [cacheFirstThenFetch].
+final sessionsProvider = StreamProvider<List<Session>>((ref) async* {
   ref.watch(sessionsRefreshProvider);
   final client = ref.watch(opencodeClientProvider);
-  if (client == null) return [];
+  if (client == null) {
+    yield [];
+    return;
+  }
   final directory = ref.watch(selectedWorkspaceProvider)?.worktree;
   final cacheKey =
       'sessions/${directory != null ? Uri.encodeComponent(directory) : 'all'}.json';
-  try {
-    final sessions = await client.listSessions(directory: directory);
-    sessions.removeWhere(_isHiddenSession);
-    _sortSessions(sessions);
-    await CacheService.instance.write(cacheKey, {
-      'items': sessions.map((s) => s.toJson()).toList(),
-    });
-    return sessions;
-  } on OpencodeApiException catch (_) {
-    final cached = await CacheService.instance
-        .read(cacheKey, maxAge: const Duration(days: 30));
-    if (cached != null) {
-      final items = cached['items'] as List<dynamic>? ?? [];
-      final sessions = items
-          .whereType<Map<String, dynamic>>()
-          .map(Session.fromJson)
-          .where((s) => !_isHiddenSession(s))
-          .toList();
+  yield* cacheFirstThenFetch<Session>(
+    readCache: () async => _decodeCachedSessions(await CacheService.instance
+        .read(cacheKey, maxAge: const Duration(days: 30))),
+    fetch: () async {
+      final sessions = await client.listSessions(directory: directory);
+      sessions.removeWhere(_isHiddenSession);
       _sortSessions(sessions);
+      await CacheService.instance.write(cacheKey, {
+        'items': sessions.map((s) => s.toJson()).toList(),
+      });
       return sessions;
-    }
-    return [];
-  }
+    },
+  );
 });
 
-final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
+final allSessionsProvider = StreamProvider<List<Session>>((ref) async* {
   ref.watch(sessionsRefreshProvider);
   final client = ref.watch(opencodeClientProvider);
-  if (client == null) return [];
-  const cacheKey = 'sessions/all.json';
-  try {
-    final projects = await ref.watch(projectsProvider.future);
-    final directories =
-        projects.where((p) => !p.isGlobal).map((p) => p.worktree).toList();
-    final results = await Future.wait([
-      client.listSessions(),
-      for (final dir in directories) client.listSessions(directory: dir),
-    ]);
-    final seen = <String>{};
-    final all = <Session>[];
-    for (final sessions in results) {
-      for (final s in sessions) {
-        if (_isHiddenSession(s)) continue;
-        if (seen.add(s.id)) all.add(s);
-      }
-    }
-    _sortSessions(all);
-    await CacheService.instance.write(cacheKey, {
-      'items': all.map((s) => s.toJson()).toList(),
-    });
-    return all;
-  } on OpencodeApiException catch (_) {
-    final cached = await CacheService.instance
-        .read(cacheKey, maxAge: const Duration(days: 30));
-    if (cached != null) {
-      final items = cached['items'] as List<dynamic>? ?? [];
-      final sessions = items
-          .whereType<Map<String, dynamic>>()
-          .map(Session.fromJson)
-          .where((s) => !_isHiddenSession(s))
-          .toList();
-      _sortSessions(sessions);
-      return sessions;
-    }
-    return [];
+  if (client == null) {
+    yield [];
+    return;
   }
+  const cacheKey = 'sessions/all.json';
+  yield* cacheFirstThenFetch<Session>(
+    readCache: () async => _decodeCachedSessions(await CacheService.instance
+        .read(cacheKey, maxAge: const Duration(days: 30))),
+    fetch: () async {
+      final projects = await ref.watch(projectsProvider.future);
+      final directories =
+          projects.where((p) => !p.isGlobal).map((p) => p.worktree).toList();
+      final results = await Future.wait([
+        client.listSessions(),
+        for (final dir in directories) client.listSessions(directory: dir),
+      ]);
+      final seen = <String>{};
+      final all = <Session>[];
+      for (final sessions in results) {
+        for (final s in sessions) {
+          if (_isHiddenSession(s)) continue;
+          if (seen.add(s.id)) all.add(s);
+        }
+      }
+      _sortSessions(all);
+      await CacheService.instance.write(cacheKey, {
+        'items': all.map((s) => s.toJson()).toList(),
+      });
+      return all;
+    },
+  );
 });
 
 final sessionsRefreshProvider = StateProvider<int>((ref) => 0);
