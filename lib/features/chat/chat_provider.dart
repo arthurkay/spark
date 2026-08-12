@@ -277,7 +277,8 @@ class ChatController extends ChangeNotifier {
         'items': merged.map((m) => m.toJson()).toList(),
       });
     } on OpencodeApiException catch (e) {
-      final cached = await CacheService.instance.read(_cacheKey);
+      final cached = await CacheService.instance
+          .read(_cacheKey, maxAge: const Duration(days: 30));
       if (cached != null && state.messages.isEmpty) {
         final items = cached['items'] as List<dynamic>? ?? [];
         final messages = items

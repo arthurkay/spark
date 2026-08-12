@@ -492,6 +492,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               : null,
           trailing: [
             IconButton.ghost(
+              icon: const Icon(LucideIcons.audioLines),
+              onPressed: () =>
+                  context.push('/session/${widget.sessionId}/voice'),
+            ),
+            IconButton.ghost(
               icon: const Icon(LucideIcons.ellipsisVertical),
               onPressed: () => _showChatMenu(context, ref),
             ),

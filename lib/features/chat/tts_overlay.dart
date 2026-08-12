@@ -31,6 +31,8 @@ class TtsOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The voice-conversation screen narrates through its own surface.
+    if (ref.watch(voiceModeActiveProvider)) return const SizedBox.shrink();
     final status = ref.watch(ttsStateProvider.select((s) => s.status));
     final active = status == TtsStatus.playing || status == TtsStatus.paused;
     if (!active && status != TtsStatus.processing) {

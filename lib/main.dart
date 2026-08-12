@@ -16,6 +16,7 @@ import 'core/storage/settings_provider.dart';
 import 'core/storage/settings_store.dart';
 import 'features/sessions/sessions_provider.dart';
 import 'features/chat/tts_overlay.dart';
+import 'shared/widgets/offline_banner.dart';
 import 'features/chat/tts_provider.dart';
 
 String? _pendingRestoreRoute;
@@ -150,6 +151,12 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
             builder: (context, child) => Stack(
               children: [
                 child ?? const SizedBox.shrink(),
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: OfflineBanner(),
+                ),
                 // Positioned.fill, not a bare child: a Stack sizes to its
                 // non-positioned children, and once the processing scrim fades
                 // to SizedBox.shrink the overlay would collapse to 0x0 — with

@@ -38,7 +38,8 @@ final sessionsProvider = FutureProvider<List<Session>>((ref) async {
     });
     return sessions;
   } on OpencodeApiException catch (_) {
-    final cached = await CacheService.instance.read(cacheKey);
+    final cached = await CacheService.instance
+        .read(cacheKey, maxAge: const Duration(days: 30));
     if (cached != null) {
       final items = cached['items'] as List<dynamic>? ?? [];
       final sessions = items
@@ -80,7 +81,8 @@ final allSessionsProvider = FutureProvider<List<Session>>((ref) async {
     });
     return all;
   } on OpencodeApiException catch (_) {
-    final cached = await CacheService.instance.read(cacheKey);
+    final cached = await CacheService.instance
+        .read(cacheKey, maxAge: const Duration(days: 30));
     if (cached != null) {
       final items = cached['items'] as List<dynamic>? ?? [];
       final sessions = items
