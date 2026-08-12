@@ -5,17 +5,49 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/project.dart';
 import '../../core/models/vcs.dart';
+import '../../core/storage/cache_service.dart';
 
-final projectsProvider = FutureProvider<List<Project>>((ref) async {
-  ref.watch(projectsRefreshProvider);
-  final client = ref.watch(opencodeClientProvider);
-  if (client == null) return [];
-  final projects = await client.listProjects();
+const _projectsCacheKey = 'projects/list.json';
+
+void _sortProjects(List<Project> projects) {
   projects.sort((a, b) {
     if (a.isGlobal != b.isGlobal) return a.isGlobal ? 1 : -1;
     return a.worktree.compareTo(b.worktree);
   });
-  return projects;
+}
+
+/// Cache-first: the last known project list renders immediately (the sessions
+/// screen sits behind this — a cold offline start used to stare at a loader
+/// for the full connect timeout), then the network refreshes it.
+final projectsProvider = StreamProvider<List<Project>>((ref) async* {
+  ref.watch(projectsRefreshProvider);
+  final client = ref.watch(opencodeClientProvider);
+  if (client == null) {
+    yield [];
+    return;
+  }
+  yield* cacheFirstThenFetch<Project>(
+    readCache: () async {
+      final cached = await CacheService.instance
+          .read(_projectsCacheKey, maxAge: const Duration(days: 30));
+      final items = cached?['items'];
+      if (items is! List) return null;
+      final projects = items
+          .whereType<Map<String, dynamic>>()
+          .map(Project.fromJson)
+          .toList();
+      _sortProjects(projects);
+      return projects;
+    },
+    fetch: () async {
+      final projects = await client.listProjects();
+      _sortProjects(projects);
+      await CacheService.instance.write(_projectsCacheKey, {
+        'items': projects.map((p) => p.toJson()).toList(),
+      });
+      return projects;
+    },
+  );
 });
 
 final projectsRefreshProvider = StateProvider<int>((ref) => 0);

@@ -14,6 +14,7 @@ import '../../core/api/providers.dart';
 import '../../core/api/question_provider.dart';
 import '../../core/models/message.dart';
 import '../../core/models/question.dart';
+import '../../core/storage/settings_provider.dart';
 import '../sessions/workspace_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
@@ -749,16 +750,16 @@ class _ReasoningBlockState extends State<_ReasoningBlock> {
   }
 }
 
-class _ToolChip extends StatefulWidget {
+class _ToolChip extends ConsumerStatefulWidget {
   const _ToolChip({super.key, required this.part});
 
   final MessagePart part;
 
   @override
-  State<_ToolChip> createState() => _ToolChipState();
+  ConsumerState<_ToolChip> createState() => _ToolChipState();
 }
 
-class _ToolChipState extends State<_ToolChip> {
+class _ToolChipState extends ConsumerState<_ToolChip> {
   late bool _expanded;
 
   bool get _isExpandable => _expandableToolTypes.contains(widget.part.toolName);
@@ -774,7 +775,12 @@ class _ToolChipState extends State<_ToolChip> {
   @override
   void initState() {
     super.initState();
-    _expanded = _isExpandable && _output.length <= _autoExpandLimit;
+    // "Collapse file permissions" applies to these chips too: with it on,
+    // every tool result starts collapsed — the header still names the file or
+    // command, so a collapsed chip stays informative.
+    final collapse = ref.read(collapseFilePermissionsProvider);
+    _expanded =
+        !collapse && _isExpandable && _output.length <= _autoExpandLimit;
   }
 
   Map<String, dynamic>? get _state =>
@@ -800,6 +806,23 @@ class _ToolChipState extends State<_ToolChip> {
   }
 
   String get _output => (_state?['output'] as String?) ?? '';
+
+  /// What this tool is working on — file basename or command — so a collapsed
+  /// chip still says what happened, not just which tool ran.
+  String? get _subjectLine {
+    final input = _input;
+    if (input == null) return null;
+    final path = input['filePath'] ?? input['path'] ?? input['pattern'];
+    if (path is String && path.isNotEmpty) return path.split('/').last;
+    final command = input['command'];
+    if (command is String && command.isNotEmpty) {
+      final line = command.split('\n').first.trim();
+      return line.length > 40 ? '${line.substring(0, 40)}…' : line;
+    }
+    final description = input['description'];
+    if (description is String && description.isNotEmpty) return description;
+    return null;
+  }
 
   @override
   void didUpdateWidget(_ToolChip old) {
@@ -1270,7 +1293,21 @@ class _ToolChipState extends State<_ToolChip> {
                   Icon(_toolIcon(name), size: 14),
                   const Gap(8),
                   Expanded(
-                    child: Text(name).small.semiBold,
+                    child: _subjectLine == null
+                        ? Text(name).small.semiBold
+                        : Row(
+                            children: [
+                              Text(name).small.semiBold,
+                              const Gap(6),
+                              Flexible(
+                                child: Text(
+                                  _subjectLine!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ).xSmall.muted,
+                              ),
+                            ],
+                          ),
                   ),
                   if (status.isNotEmpty) ...[
                     const Gap(6),

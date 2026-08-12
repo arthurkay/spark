@@ -55,6 +55,38 @@ void main() {
     });
   });
 
+  group('speakableThought', () {
+    test('extracts the last complete sentence', () {
+      expect(
+        speakableThought(
+            'The handler is wrong. I should add a null check first. Then we'),
+        'I should add a null check first.',
+      );
+    });
+
+    test('returns null for a sentence still streaming', () {
+      expect(speakableThought('I need to check the'), isNull);
+    });
+
+    test('strips code spans and markdown before speaking', () {
+      expect(
+        speakableThought('So `foo()` needs **fixing** in the handler.'),
+        'So foo() needs fixing in the handler.',
+      );
+    });
+
+    test('rejects fragments too short or too long to speak well', () {
+      expect(speakableThought('Ok.'), isNull);
+      expect(speakableThought('${'word ' * 60}.'), isNull);
+    });
+
+    test('fenced code blocks never leak into speech', () {
+      final thought = speakableThought(
+          'The fix is simple. ```dart\nvoid main() {}\n``` Now I apply it.');
+      expect(thought, 'Now I apply it.');
+    });
+  });
+
   group('describeActivity', () {
     test('a tool call becomes a spoken phrase with the file name', () {
       final activity = describeActivity(_streaming(parts: [
@@ -75,7 +107,7 @@ void main() {
         {'type': 'reasoning', 'text': 'I need to check the handler first.'},
       ]));
       expect(activity?.shown, 'I need to check the handler first.');
-      expect(activity?.spoken, 'Thinking it through now.');
+      expect(activity?.spoken, 'I need to check the handler first.');
     });
 
     test('a streaming answer beats reasoning and tools', () {
