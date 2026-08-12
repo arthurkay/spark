@@ -776,9 +776,13 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
   void initState() {
     super.initState();
     // "Collapse file permissions" applies to these chips too: with it on,
-    // every tool result starts collapsed — the header still names the file or
-    // command, so a collapsed chip stays informative.
-    final collapse = ref.read(collapseFilePermissionsProvider);
+    // tool results start collapsed — the header still names the file or
+    // command, so a collapsed chip stays informative. Two exceptions stay
+    // open: the todo list and edit diffs are the turn's actual substance,
+    // not noise to fold away.
+    final collapse = ref.read(collapseFilePermissionsProvider) &&
+        widget.part.toolName != 'todowrite' &&
+        widget.part.toolName != 'edit';
     _expanded =
         !collapse && _isExpandable && _output.length <= _autoExpandLimit;
   }
