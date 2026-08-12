@@ -19,6 +19,17 @@ MessageWithParts _msg({
   );
 }
 
+MessageWithParts _streaming({List<Map<String, dynamic>> parts = const []}) {
+  return MessageWithParts(
+    info:
+        const MessageInfo(id: 'msg_s', role: 'assistant', time: {'created': 1}),
+    parts: [
+      for (final (i, p) in parts.indexed)
+        MessagePart.fromJson({'id': 'p_$i', ...p}),
+    ],
+  );
+}
+
 void main() {
   group('fillerPhrase', () {
     test('step 0 is an acknowledgment, later steps reassure', () {
@@ -41,6 +52,86 @@ void main() {
     test('salt varies the opener between turns', () {
       final openers = {for (var s = 0; s < 6; s++) fillerPhrase(0, s)};
       expect(openers.length, greaterThan(1));
+    });
+  });
+
+  group('describeActivity', () {
+    test('a tool call becomes a spoken phrase with the file name', () {
+      final activity = describeActivity(_streaming(parts: [
+        {
+          'type': 'tool',
+          'tool': 'read',
+          'state': {
+            'input': {'filePath': '/home/a/project/rollback.go'}
+          },
+        },
+      ]));
+      expect(activity?.spoken, "I'm reading rollback.go.");
+      expect(activity?.shown, 'reading rollback.go…');
+    });
+
+    test('streamed reasoning shows its tail, spoken stays grounded', () {
+      final activity = describeActivity(_streaming(parts: [
+        {'type': 'reasoning', 'text': 'I need to check the handler first.'},
+      ]));
+      expect(activity?.shown, 'I need to check the handler first.');
+      expect(activity?.spoken, 'Thinking it through now.');
+    });
+
+    test('a streaming answer beats reasoning and tools', () {
+      final activity = describeActivity(_streaming(parts: [
+        {
+          'type': 'tool',
+          'tool': 'bash',
+          'state': {'input': {}},
+        },
+        {'type': 'reasoning', 'text': 'thinking...'},
+        {'type': 'text', 'text': 'The fix is to'},
+      ]));
+      expect(activity?.shown, 'The fix is to');
+      expect(activity?.spoken, 'The answer is coming together now.');
+    });
+
+    test('the newest of several tool calls wins', () {
+      final activity = describeActivity(_streaming(parts: [
+        {
+          'type': 'tool',
+          'tool': 'read',
+          'state': {
+            'input': {'filePath': 'a.go'}
+          },
+        },
+        {
+          'type': 'tool',
+          'tool': 'edit',
+          'state': {
+            'input': {'filePath': 'b.go'}
+          },
+        },
+      ]));
+      expect(activity?.spoken, "I'm editing b.go.");
+    });
+
+    test('a completed or non-assistant tail describes nothing', () {
+      expect(describeActivity(null), isNull);
+      expect(
+        describeActivity(_msg(id: 'a', role: 'assistant', completed: 2)),
+        isNull,
+      );
+      expect(describeActivity(_msg(id: 'u', role: 'user')), isNull);
+    });
+
+    test('an empty streaming turn describes nothing yet', () {
+      expect(describeActivity(_streaming()), isNull);
+    });
+
+    test('long reasoning is tailed from a word boundary', () {
+      final text = 'word ' * 100;
+      final activity = describeActivity(_streaming(parts: [
+        {'type': 'reasoning', 'text': text},
+      ]));
+      expect(activity!.shown.length, lessThanOrEqualTo(141));
+      expect(activity.shown, startsWith('…'));
     });
   });
 

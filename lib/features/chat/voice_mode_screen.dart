@@ -61,6 +61,96 @@ String fillerPhrase(int step, int salt) {
   return continuers[(salt + step) % continuers.length];
 }
 
+/// A live description of what the in-flight turn is doing, derived from its
+/// streaming parts — so the wait can say "reading rollback.go" instead of a
+/// generic reassurance.
+class VoiceActivity {
+  const VoiceActivity({required this.spoken, required this.shown});
+
+  /// Short phrase suitable for speech, or null when only display text exists.
+  final String? spoken;
+
+  /// Text for the transcript slot: the reasoning tail, the answer starting to
+  /// stream, or the tool line.
+  final String shown;
+}
+
+/// Describes the tail message of an in-flight turn, newest activity first:
+/// the answer streaming beats reasoning, which beats tool calls. Returns null
+/// when the tail is not a generating assistant message or shows nothing yet.
+VoiceActivity? describeActivity(MessageWithParts? tail) {
+  if (tail == null) return null;
+  final info = tail.info;
+  if (info.role != 'assistant' || info.timeCompleted != null) return null;
+
+  String? toolLine;
+  String? reasoningTail;
+  String? answerTail;
+  for (final part in tail.parts) {
+    switch (part.type) {
+      case 'tool':
+        final line = _toolPhrase(part);
+        if (line != null) toolLine = line;
+      case 'reasoning':
+        final text = part.text?.trim();
+        if (text != null && text.isNotEmpty) reasoningTail = _tail(text);
+      case 'text':
+        final text = part.text?.trim();
+        if (text != null && text.isNotEmpty) answerTail = _tail(text);
+    }
+  }
+
+  if (answerTail != null) {
+    return VoiceActivity(
+      spoken: 'The answer is coming together now.',
+      shown: answerTail,
+    );
+  }
+  if (reasoningTail != null) {
+    // Raw chain-of-thought reads fine but speaks badly mid-sentence; show it,
+    // say something grounded in it existing.
+    return VoiceActivity(
+      spoken: toolLine == null ? 'Thinking it through now.' : "I'm $toolLine.",
+      shown: reasoningTail,
+    );
+  }
+  if (toolLine != null) {
+    return VoiceActivity(spoken: "I'm $toolLine.", shown: '$toolLine…');
+  }
+  return null;
+}
+
+/// "reading main.go", "running a command" — from the tool part's name and
+/// input, defensively parsed.
+String? _toolPhrase(MessagePart part) {
+  final rawState = part.raw['state'];
+  final input = rawState is Map<String, dynamic> ? rawState['input'] : null;
+  String? path;
+  if (input is Map) {
+    final p = input['filePath'] ?? input['path'] ?? input['pattern'];
+    if (p is String && p.isNotEmpty) path = p.split('/').last;
+  }
+  return switch (part.toolName) {
+    'read' => path == null ? 'reading a file' : 'reading $path',
+    'edit' || 'write' => path == null ? 'making an edit' : 'editing $path',
+    'bash' => 'running a command',
+    'grep' || 'glob' => 'searching the code',
+    'webfetch' || 'websearch' => 'looking something up',
+    'task' => 'delegating a subtask',
+    'todowrite' => 'planning the steps',
+    null => null,
+    _ => 'using ${part.toolName}',
+  };
+}
+
+/// The last ~140 chars, starting cleanly after a word boundary.
+String _tail(String text) {
+  if (text.length <= 140) return text;
+  final cut = text.substring(text.length - 140);
+  final space = cut.indexOf(' ');
+  return '…${space > 0 && space < 40 ? cut.substring(space + 1) : cut}';
+}
+
 class VoiceModeScreen extends ConsumerStatefulWidget {
   const VoiceModeScreen({super.key, required this.sessionId});
 
@@ -84,6 +174,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
   int _fillerStep = 0;
   int _fillerSalt = 0;
   String _fillerText = '';
+  String? _lastFillerSpoken;
+  VoiceActivity? _activity;
   late final AnimationController _thinkingPulse;
 
   @override
@@ -123,7 +215,14 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
         : Duration(seconds: 14 + math.Random().nextInt(7));
     _fillerTimer = Timer(delay, () {
       if (!mounted || _closing || _phase != VoicePhase.waiting) return;
-      final phrase = fillerPhrase(_fillerStep, _fillerSalt);
+      // Prefer what the turn is actually doing; fall back to reassurance. A
+      // long-running tool would repeat itself verbatim, which sounds robotic —
+      // alternate with the generic phrases instead.
+      final live = _activity?.spoken;
+      final phrase = (live != null && live != _lastFillerSpoken)
+          ? live
+          : fillerPhrase(_fillerStep, _fillerSalt);
+      _lastFillerSpoken = phrase;
       setState(() => _fillerText = phrase);
       ref.read(ttsControllerProvider).speakFiller(phrase);
       _fillerStep++;
@@ -135,6 +234,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     _fillerTimer?.cancel();
     _fillerTimer = null;
     _fillerText = '';
+    _lastFillerSpoken = null;
+    _activity = null;
   }
 
   Future<void> _start() async {
@@ -227,8 +328,20 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
 
   void _onChatChange(ChatController controller) {
     if (!mounted || _closing || _phase != VoicePhase.waiting) return;
-    final reply = replyToNarrate(controller.state.messages, _lastNarratedId);
-    if (reply != null) _narrate(reply);
+    final messages = controller.state.messages;
+    final reply = replyToNarrate(messages, _lastNarratedId);
+    if (reply != null) {
+      _narrate(reply);
+      return;
+    }
+    // Surface what the turn is doing while it streams. setState only when the
+    // description changes — deltas arrive many times a second.
+    final activity = describeActivity(messages.isEmpty ? null : messages.last);
+    if (activity?.shown != _activity?.shown) {
+      setState(() => _activity = activity);
+    } else {
+      _activity = activity;
+    }
   }
 
   void _onMicPressed() {
@@ -367,7 +480,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
                         )
                       : effectivePhase == VoicePhase.waiting
                           ? Text(
-                              _fillerText.isEmpty ? ' ' : _fillerText,
+                              _activity?.shown ??
+                                  (_fillerText.isEmpty ? ' ' : _fillerText),
                               textAlign: TextAlign.center,
                             ).muted.italic
                           : Text(
