@@ -21,8 +21,6 @@ import '../../shared/haptics.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
-import 'tts_loading_overlay.dart';
-import 'tts_mini_player.dart';
 
 /// How close to the bottom counts as "following the conversation".
 const _nearBottomSlack = 120.0;
@@ -513,7 +511,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 ),
               ),
               const PermissionBanner(),
-              const TtsMiniPlayer(),
               _Composer(
                 sessionId: widget.sessionId,
                 controller: _composerController,
@@ -535,7 +532,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               ),
             ],
           ),
-          const TtsLoadingOverlay(),
         ],
       ),
     );

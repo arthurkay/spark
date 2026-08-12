@@ -15,6 +15,7 @@ import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
 import 'core/storage/settings_store.dart';
 import 'features/sessions/sessions_provider.dart';
+import 'features/chat/tts_overlay.dart';
 import 'features/chat/tts_provider.dart';
 
 String? _pendingRestoreRoute;
@@ -143,6 +144,19 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
             darkTheme: buildDarkTheme(),
             themeMode: themeMode,
             routerConfig: router,
+            // Above the router, so narration keeps playing — and stays
+            // controllable — through every navigation. Only the player's own
+            // pixels take hits; the rest of the stack stays transparent.
+            builder: (context, child) => Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                // Positioned.fill, not a bare child: a Stack sizes to its
+                // non-positioned children, and once the processing scrim fades
+                // to SizedBox.shrink the overlay would collapse to 0x0 — with
+                // the player Positioned inside a zero-sized box, i.e. invisible.
+                const Positioned.fill(child: TtsOverlay()),
+              ],
+            ),
           ),
         ),
       ),

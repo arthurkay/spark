@@ -469,21 +469,13 @@ class MessageBubble extends StatelessWidget {
       case 'reasoning':
         final text = part.text?.trim();
         if (text == null || text.isEmpty) return null;
-        return Container(
-          margin: const EdgeInsets.only(top: 4, bottom: 2),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.muted,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(LucideIcons.brain, size: 14).iconMutedForeground,
-              const Gap(8),
-              Expanded(child: Text(text).muted.small.italic),
-            ],
-          ),
+        // Keyed by part id for the same reason the tool chips are: these are
+        // stateful and built from a positional list, so without a key a part
+        // appended mid-stream would move the expanded state onto another part.
+        return _ReasoningBlock(
+          key: ValueKey(part.id),
+          text: text,
+          streaming: streaming,
         );
       // Keyed by part id: these are stateful and built from a positional list,
       // so without keys a part appended mid-stream shifts state (e.g. which
@@ -670,6 +662,90 @@ IconData _toolIcon(String? name) {
       return LucideIcons.searchCode;
     default:
       return LucideIcons.wrench;
+  }
+}
+
+/// The model's reasoning, collapsed by default.
+///
+/// Reasoning arrives before the answer and is usually far longer than it, so
+/// left expanded it pushed the actual reply off the screen — and it relaid out
+/// on every delta while streaming. Collapsed, the text isn't built at all until
+/// asked for. Follows the same header/chevron/[AnimatedSize] shape as
+/// [_ToolChip] so the two read as one control.
+class _ReasoningBlock extends StatefulWidget {
+  const _ReasoningBlock({
+    super.key,
+    required this.text,
+    required this.streaming,
+  });
+
+  final String text;
+  final bool streaming;
+
+  @override
+  State<_ReasoningBlock> createState() => _ReasoningBlockState();
+}
+
+class _ReasoningBlockState extends State<_ReasoningBlock> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.muted,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.brain, size: 14).iconMutedForeground,
+                  const Gap(8),
+                  Expanded(
+                    child: Text(widget.streaming ? 'Thinking…' : 'Thought')
+                        .muted
+                        .small
+                        .semiBold,
+                  ),
+                  const Gap(6),
+                  // Rotates rather than swapping glyphs, so expanding reads as
+                  // one continuous motion — as in [_ToolChip].
+                  AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: Motion.base,
+                    curve: Motion.standard,
+                    child: const Icon(LucideIcons.chevronRight, size: 12)
+                        .iconMutedForeground,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Always present so collapsing animates; guarding the AnimatedSize
+          // itself would build it at full size.
+          AnimatedSize(
+            duration: Motion.base,
+            curve: Motion.inOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Text(widget.text).muted.small.italic,
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
   }
 }
 

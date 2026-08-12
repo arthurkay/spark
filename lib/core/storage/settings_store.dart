@@ -7,6 +7,8 @@ class SettingsStore {
       'opencode_collapse_file_permissions';
   static const _lastRouteKey = 'opencode_last_route';
   static const _scrollPositionPrefix = 'opencode_scroll_';
+  static const _ttsVoiceNameKey = 'opencode_tts_voice_name';
+  static const _ttsVoiceLocaleKey = 'opencode_tts_voice_locale';
 
   Future<String> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,6 +38,29 @@ class SettingsStore {
   Future<void> saveLastRoute(String route) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastRouteKey, route);
+  }
+
+  /// The narration voice, or null for the engine default.
+  Future<({String name, String locale})?> loadTtsVoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_ttsVoiceNameKey);
+    final locale = prefs.getString(_ttsVoiceLocaleKey);
+    if (name == null || name.isEmpty || locale == null || locale.isEmpty) {
+      return null;
+    }
+    return (name: name, locale: locale);
+  }
+
+  Future<void> saveTtsVoice(String name, String locale) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_ttsVoiceNameKey, name);
+    await prefs.setString(_ttsVoiceLocaleKey, locale);
+  }
+
+  Future<void> clearTtsVoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_ttsVoiceNameKey);
+    await prefs.remove(_ttsVoiceLocaleKey);
   }
 
   Future<double?> loadScrollPosition(String key) async {
