@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api/providers.dart';
 import '../core/storage/settings_store.dart';
 import '../features/chat/chat_screen.dart';
+import '../features/chat/voice_mode_screen.dart';
 import '../features/connection/connection_screen.dart';
 import '../features/connection/settings_screen.dart';
 import '../features/connection/welcome_screen.dart';
@@ -87,6 +88,13 @@ GoRouter createRouter(Ref ref) {
         pageBuilder: (context, state) => _stackPage(
           state,
           ChatScreen(sessionId: state.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: '/session/:id/voice',
+        pageBuilder: (context, state) => _stackPage(
+          state,
+          VoiceModeScreen(sessionId: state.pathParameters['id']!),
         ),
       ),
       GoRoute(

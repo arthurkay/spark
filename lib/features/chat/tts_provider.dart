@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../core/api/opencode_client.dart';
@@ -486,6 +487,24 @@ class TtsStateNotifier extends Notifier<TtsState> {
     ref.read(ttsControllerProvider).stop();
   }
 
+  /// Narrates [message] unconditionally — voice mode's counterpart of
+  /// [toggle], which flips between play and stop for the same message.
+  void narrate(MessageWithParts message) {
+    final text = message.parts
+        .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
+        .map((p) => p.text!)
+        .join('\n\n');
+    if (text.isEmpty) return;
+    ref.read(ttsControllerProvider).speak(
+          text,
+          client: ref.read(opencodeClientProvider),
+          messageId: message.info.id,
+        );
+  }
+
+  /// Stops playback and waits for the engine, so voice mode starts clean.
+  Future<void> stopForVoiceMode() => ref.read(ttsControllerProvider).stop();
+
   /// Seeks to a fraction of the narration, from the player's seek bar.
   void seek(double fraction) {
     final length = state.fullText?.length ?? 0;
@@ -499,6 +518,10 @@ class TtsStateNotifier extends Notifier<TtsState> {
 final ttsStateProvider = NotifierProvider<TtsStateNotifier, TtsState>(
   TtsStateNotifier.new,
 );
+
+/// True while the voice-conversation screen owns audio; the global player
+/// overlay hides itself so the two surfaces don't duplicate controls.
+final voiceModeActiveProvider = StateProvider<bool>((ref) => false);
 
 /// One selectable engine voice.
 class TtsVoice {
