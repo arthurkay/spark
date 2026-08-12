@@ -16,6 +16,7 @@ import '../../core/api/connectivity_provider.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
+import '../../shared/debouncer.dart';
 import '../../shared/haptics.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
@@ -25,6 +26,16 @@ import 'tts_mini_player.dart';
 
 /// How close to the bottom counts as "following the conversation".
 const _nearBottomSlack = 120.0;
+
+/// Maps a row of the bottom-anchored transcript to a message id.
+///
+/// The list runs `reverse: true`, so row 0 is the *newest* message and the
+/// highest row is the oldest. Returns null for any row past the messages, which
+/// is where the load-older header goes.
+String? transcriptIdForRow(List<String> ids, int row) {
+  if (row < 0 || row >= ids.length) return null;
+  return ids[ids.length - 1 - row];
+}
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.sessionId});
@@ -36,9 +47,17 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _composerController = TextEditingController();
   final _scrollController = ScrollController();
+
+  /// Persists the composer as you type.
+  ///
+  /// Saving only in [dispose] lost the draft whenever the process was killed
+  /// rather than navigated away from — swipe the app away, or let Android
+  /// reclaim it, and dispose never runs. Writing shortly after each keystroke
+  /// means the draft is already on disk before the app is ever backgrounded.
+  final _draftDebouncer = Debouncer(delay: const Duration(milliseconds: 400));
   // A ValueNotifier rather than screen state: attachments render inside the
   // composer, so editing them must not rebuild the message transcript.
   final _attachments = ValueNotifier<List<Attachment>>(const []);
@@ -48,7 +67,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    _composerController.addListener(_onComposerChanged);
     NotificationService.instance.requestPermission();
     _loadDraft();
     _workingAnimController = AnimationController(
@@ -68,7 +89,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    if (position.pixels < 200) {
+    // Reversed: the oldest messages are at maxScrollExtent, so that end is
+    // where "scrolled back far enough to load more" happens.
+    if (position.maxScrollExtent - position.pixels < 200) {
       final controller = ref.read(
         chatControllerProvider(widget.sessionId).notifier,
       );
@@ -77,8 +100,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _showScrollToBottom.value = !_isNearBottom;
   }
 
+  void _onComposerChanged() => _draftDebouncer.run(_saveDraft);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) {
+      // Write anything typed in the last few hundred milliseconds before the
+      // process is at risk of being killed.
+      _draftDebouncer.flush();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _composerController.removeListener(_onComposerChanged);
+    _draftDebouncer.dispose();
     _saveDraft();
     _scrollController.removeListener(_onScroll);
     _composerController.dispose();
@@ -114,24 +152,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     await prefs.remove(_draftKey(widget.sessionId));
   }
 
-  /// Keeps the transcript pinned to the newest content.
+  /// Returns the transcript to the newest content.
   ///
-  /// [animate] should only be true for discrete, user-perceived events (a
-  /// message was sent, the scroll-to-bottom button was tapped). For streaming
-  /// growth it must be false: an animation restarted on every delta is
-  /// cancelled before it finishes, so the position never settles.
+  /// Only for discrete, user-perceived events — a message was sent, the
+  /// scroll-to-bottom button was tapped. Streaming growth needs no scrolling at
+  /// all now: the list is bottom-anchored, so a growing tail extends away from
+  /// offset 0 and the viewport stays exactly where it is.
   void _pinToBottom({required bool animate}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final target = _scrollController.position.maxScrollExtent;
+      if (!mounted || !_scrollController.hasClients) return;
+      if (_scrollController.position.pixels == 0) return;
       if (animate) {
         _scrollController.animateTo(
-          target,
+          0,
           duration: Motion.base,
           curve: Motion.standard,
         );
       } else {
-        _scrollController.jumpTo(target);
+        _scrollController.jumpTo(0);
       }
     });
   }
@@ -322,13 +360,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  bool _initialScrollDone = false;
   bool _listenersAttached = false;
 
+  /// The transcript is a `reverse: true` list, so offset 0 *is* the newest
+  /// content and [ScrollPosition.maxScrollExtent] is the oldest. Everything
+  /// below reads in those terms.
   bool get _isNearBottom {
     if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels < _nearBottomSlack;
+    return _scrollController.position.pixels < _nearBottomSlack;
   }
 
   /// Registers the reactions that used to run as side effects inside `build`.
@@ -339,32 +378,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _listenersAttached = true;
 
     // Transcript shape changed: a row was added or removed.
+    //
+    // There is no initial scroll to perform — a bottom-anchored list opens at
+    // offset 0, which already shows the newest message. That also removes the
+    // one-frame flash where the transcript rendered from the top and snapped.
     ref.listenManual<VisibleMessageIds>(
       visibleMessageIdsProvider(widget.sessionId),
       (prev, next) {
         if (next.length == 0) return;
-        if (!_initialScrollDone) {
-          _initialScrollDone = true;
-          _pinToBottom(animate: false);
-          _showScrollToBottom.value = !_isNearBottom;
-        } else if ((prev?.length ?? 0) != next.length && _isNearBottom) {
-          // A genuinely new message — worth animating to.
+        // Ease back to the newest only if the reader had drifted slightly off
+        // it. Sitting exactly at 0 — the normal case — does nothing.
+        if ((prev?.length ?? 0) != next.length && _isNearBottom) {
           _pinToBottom(animate: true);
         }
       },
       fireImmediately: true,
     );
 
-    // The tail message grew while streaming. Pin without animating: restarting a
-    // 200ms animateTo every 60ms means it never completes and the position
-    // never settles, which is what read as juddering.
-    ref.listenManual<int>(
-      chatControllerProvider(widget.sessionId).select(_tailTextLength),
-      (prev, next) {
-        if (next == 0 || prev == next) return;
-        if (_isNearBottom) _pinToBottom(animate: false);
-      },
-    );
+    // Deliberately no listener on the streaming tail's length. Following a
+    // growing message used to mean a jumpTo() every 60ms, and each of those was
+    // a visible teleport: the new text laid out at the old offset for one frame,
+    // then snapped. Anchoring the list at the bottom makes the growth itself
+    // move the text into place, so there is nothing left to chase.
 
     // Drive the typing dots off the working flag rather than from build().
     ref.listenManual<bool>(
@@ -379,16 +414,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       },
       fireImmediately: true,
     );
-  }
-
-  static int _tailTextLength(ChatController c) {
-    final messages = c.state.messages;
-    if (messages.isEmpty) return 0;
-    var total = 0;
-    for (final p in messages.last.parts) {
-      if (p.type == 'text' && p.text != null) total += p.text!.length;
-    }
-    return total;
   }
 
   @override
@@ -496,6 +521,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 working: working,
                 aborting: chrome.aborting,
                 error: chrome.error,
+                errorType: chrome.errorType,
+                statusCode: chrome.statusCode,
                 retryMessage: chrome.retryMessage,
                 retryAction: chrome.retryAction,
                 retryNext: chrome.retryNext,
@@ -511,6 +538,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           const TtsLoadingOverlay(),
         ],
       ),
+    );
+  }
+
+  /// The permanent bottom slot holding the typing dots.
+  ///
+  /// Always present in the list and collapsed to zero height when idle, so
+  /// starting and finishing a turn eases the height instead of inserting and
+  /// removing a row. `bottomLeft` keeps the dots pinned to the bottom of the
+  /// slot as it grows, matching the bottom-anchored list.
+  Widget _buildWorkingSlot(bool working) {
+    return AnimatedSize(
+      duration: Motion.base,
+      curve: Motion.inOut,
+      alignment: Alignment.bottomLeft,
+      child: working
+          ? Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: _buildWorkingIndicator(),
+            )
+          : const SizedBox(width: double.infinity),
     );
   }
 
@@ -597,8 +644,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       );
     }
     final hasHeader = chrome.loadingOlder || chrome.hasMoreOlder;
-    final itemCount =
-        visibleIds.length + (hasHeader ? 1 : 0) + (working ? 1 : 0);
+    // The working slot is always in the list, collapsed to nothing when idle.
+    // As a conditional row it was inserted and removed on every turn, and each
+    // of those was a layout jump.
+    final itemCount = 1 + visibleIds.length + (hasHeader ? 1 : 0);
     Widget? header;
     if (chrome.loadingOlder) {
       header = const Padding(
@@ -620,16 +669,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView.separated(
               controller: _scrollController,
+              // Bottom-anchored: offset 0 is the newest message, and a growing
+              // tail extends away from it. Nothing has to scroll to follow a
+              // streaming reply, so nothing can judder while it arrives.
+              reverse: true,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               itemCount: itemCount,
-              separatorBuilder: (context, index) => const Gap(24),
+              // Index 0 is the working slot, which carries its own spacing.
+              separatorBuilder: (context, index) =>
+                  index == 0 ? const SizedBox.shrink() : const Gap(24),
               itemBuilder: (context, index) {
-                if (hasHeader && index == 0) return header!;
-                if (working && index == itemCount - 1) {
-                  return _buildWorkingIndicator();
-                }
-                final messageIndex = hasHeader ? index - 1 : index;
-                final id = visibleIds[messageIndex];
+                if (index == 0) return _buildWorkingSlot(working);
+                final id = transcriptIdForRow(visibleIds, index - 1);
+                // Past the newest..oldest range is the load-older header, which
+                // sits at the far (top) end of a reversed list.
+                if (id == null) return header ?? const SizedBox.shrink();
                 // Only the id is passed down: the bubble subscribes to its own
                 // message, so a streamed token rebuilds that bubble alone.
                 // ListView.separated already adds repaint boundaries per item.
@@ -787,6 +841,8 @@ class _Composer extends ConsumerStatefulWidget {
     required this.working,
     required this.aborting,
     required this.error,
+    required this.errorType,
+    required this.statusCode,
     required this.retryMessage,
     required this.retryAction,
     required this.retryNext,
@@ -804,6 +860,8 @@ class _Composer extends ConsumerStatefulWidget {
   final bool working;
   final bool aborting;
   final String? error;
+  final String? errorType;
+  final int? statusCode;
   final String? retryMessage;
   final RetryAction? retryAction;
   final int? retryNext;
@@ -975,42 +1033,95 @@ class _ComposerState extends ConsumerState<_Composer> {
               ],
               if (widget.error != null) ...[
                 const Gap(8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withAlpha(15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
+                Builder(
+                  builder: (context) {
+                    final isRateLimit = widget.statusCode == 429;
+                    final isAuthError = widget.errorType == 'ProviderAuthError';
+                    final isQuota = widget.statusCode == 402;
+                    final color = isRateLimit
+                        ? Colors.orange
+                        : isAuthError
+                            ? Colors.amber
+                            : isQuota
+                                ? Colors.purple
+                                : Colors.red;
+                    final icon = isRateLimit
+                        ? LucideIcons.clock
+                        : isAuthError
+                            ? LucideIcons.keyRound
+                            : isQuota
+                                ? LucideIcons.wallet
+                                : LucideIcons.triangleAlert;
+                    final label = isRateLimit
+                        ? 'Rate limited'
+                        : isAuthError
+                            ? 'Auth error'
+                            : isQuota
+                                ? 'Quota exceeded'
+                                : null;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: color.withAlpha(15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(LucideIcons.triangleAlert,
-                              size: 14, color: Colors.red),
+                          Row(
+                            children: [
+                              Icon(icon, size: 14, color: color),
+                              const Gap(6),
+                              if (label != null) Text(label).xSmall.bold,
+                              if (label != null) const Gap(4),
+                              Expanded(
+                                child: Text(widget.error!).xSmall,
+                              ),
+                            ],
+                          ),
+                          if (isRateLimit) ...[
+                            const Gap(4),
+                            Text(
+                              'Try again in a moment or switch to a different model.',
+                              style: TextStyle(
+                                  fontSize: 11, color: color.withAlpha(180)),
+                            ),
+                          ],
+                          if (isAuthError) ...[
+                            const Gap(4),
+                            Text(
+                              'Check your API key in server settings.',
+                              style: TextStyle(
+                                  fontSize: 11, color: color.withAlpha(180)),
+                            ),
+                          ],
+                          if (isQuota) ...[
+                            const Gap(4),
+                            Text(
+                              'Your plan limit has been reached. Upgrade or wait for it to reset.',
+                              style: TextStyle(
+                                  fontSize: 11, color: color.withAlpha(180)),
+                            ),
+                          ],
                           const Gap(6),
-                          Expanded(
-                            child: Text(widget.error!).xSmall,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              TextButton(
+                                onPressed: widget.onDismiss,
+                                child: const Text('Dismiss').xSmall,
+                              ),
+                              TextButton(
+                                onPressed: widget.onAbort,
+                                child: const Text('Abort session').xSmall,
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      const Gap(6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          TextButton(
-                            onPressed: widget.onDismiss,
-                            child: const Text('Dismiss').xSmall,
-                          ),
-                          TextButton(
-                            onPressed: widget.onAbort,
-                            child: const Text('Abort session').xSmall,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ],
               //const Gap(10),

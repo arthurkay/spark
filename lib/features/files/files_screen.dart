@@ -14,6 +14,7 @@ import '../../shared/data_uri_cache.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/path_utils.dart';
+import '../../shared/widgets/sheet_keyboard_padding.dart';
 import '../chat/chat_provider.dart';
 import '../sessions/sessions_provider.dart';
 import '../sessions/workspace_provider.dart';
@@ -155,52 +156,8 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
               : const Text('Project root').muted.small,
           trailing: [
             IconButton.ghost(
-              icon: const Icon(LucideIcons.filePlus),
-              onPressed: () => _showCreateDialog(context, ref, directory,
-                  isDirectory: false),
-            ),
-            IconButton.ghost(
-              icon: const Icon(LucideIcons.folderPlus),
-              onPressed: () => openSheetOverlay(
-                context: context,
-                position: OverlayPosition.bottom,
-                barrierDismissible: true,
-                builder: (sheetContext) => SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(LucideIcons.folderPlus),
-                            const Gap(8),
-                            const Text('Create Project').h4,
-                          ],
-                        ),
-                        const Gap(12),
-                        Text(
-                          'Initialize git in $_browseDirectoryLabel and create a new session?',
-                        ).muted,
-                        const Gap(20),
-                        PrimaryButton(
-                          onPressed: () {
-                            closeSheet(sheetContext);
-                            _createProject();
-                          },
-                          child: const Text('Create'),
-                        ),
-                        const Gap(8),
-                        OutlineButton(
-                          onPressed: () => closeSheet(sheetContext),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              icon: const Icon(LucideIcons.plus),
+              onPressed: () => _showNewItemMenu(context, ref, directory),
             ),
           ],
         ),
@@ -306,6 +263,124 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     );
   }
 
+  /// One "+" for the three things you can create here.
+  ///
+  /// These used to be two app-bar icons, one of which was a `folderPlus` that
+  /// created a *git project* rather than a directory — leaving no way at all to
+  /// make a folder. Labelled rows say what each one does and leave room for the
+  /// third action on a phone-width bar.
+  void _showNewItemMenu(
+      BuildContext context, WidgetRef ref, String? directory) {
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Create').h4,
+              const Gap(4),
+              Text(_path.isEmpty ? 'In project root' : 'In $_path').muted.small,
+              const Gap(12),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _showCreateDialog(context, ref, directory,
+                      isDirectory: false);
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.filePlus, size: 16),
+                    Gap(10),
+                    Text('New file'),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _showCreateDialog(context, ref, directory, isDirectory: true);
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.folderPlus, size: 16),
+                    Gap(10),
+                    Text('New folder'),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              GhostButton(
+                alignment: Alignment.centerLeft,
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _showCreateProjectSheet(context);
+                },
+                child: const Row(
+                  children: [
+                    Icon(LucideIcons.folderGit2, size: 16),
+                    Gap(10),
+                    Text('New project'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCreateProjectSheet(BuildContext context) {
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.folderGit2),
+                  const Gap(8),
+                  const Text('New project').h4,
+                ],
+              ),
+              const Gap(12),
+              Text(
+                'Initialize git in $_browseDirectoryLabel and create a new session?',
+              ).muted,
+              const Gap(20),
+              PrimaryButton(
+                onPressed: () {
+                  closeSheet(sheetContext);
+                  _createProject();
+                },
+                child: const Text('Create'),
+              ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () => closeSheet(sheetContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showFileActions(
       BuildContext context, WidgetRef ref, FileNode node, String? directory) {
     openSheetOverlay(
@@ -365,37 +440,46 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       String? directory) async {
     final controller = TextEditingController(text: node.name);
     String? result;
-    openSheetOverlay(
+    // Awaited: openSheetOverlay returns as soon as the sheet is *shown*, so
+    // reading `result` without waiting for it to close always saw null and
+    // abandoned the rename.
+    await openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Rename').h4,
-              const Gap(12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                placeholder: const Text('New name'),
-              ),
-              const Gap(16),
-              PrimaryButton(
-                onPressed: () {
-                  result = controller.text.trim();
-                  closeSheet(sheetContext);
-                },
-                child: const Text('Rename'),
-              ),
-            ],
+      builder: (sheetContext) => SheetKeyboardPadding(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Rename').h4,
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  placeholder: const Text('New name'),
+                  onSubmitted: (_) {
+                    result = controller.text.trim();
+                    closeSheet(sheetContext);
+                  },
+                ),
+                const Gap(16),
+                PrimaryButton(
+                  onPressed: () {
+                    result = controller.text.trim();
+                    closeSheet(sheetContext);
+                  },
+                  child: const Text('Rename'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
+    ).future;
     if (result == null || !context.mounted) return;
 
     final newName = result!;
@@ -405,8 +489,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     if (client == null) return;
 
     final dir = directory ?? _resolveCurrentDirectory(node);
-    final parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
-    final newPath = '$parentPath/$newName';
+    // A file at the project root has no '/' in its path — substring(0, -1)
+    // used to throw instead of renaming it.
+    final slash = node.path.lastIndexOf('/');
+    final newPath =
+        slash < 0 ? newName : '${node.path.substring(0, slash)}/$newName';
 
     final service = FileOpsService(client: client);
     final opResult = await service.rename(node.path, newPath, directory: dir);
@@ -424,7 +511,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   Future<void> _deleteItem(BuildContext context, WidgetRef ref, FileNode node,
       String? directory) async {
     bool confirmed = false;
-    openSheetOverlay(
+    await openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
@@ -439,18 +526,23 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
               const Gap(12),
               Text('Delete "${node.name}"?').muted,
               const Gap(16),
-              PrimaryButton(
+              DestructiveButton(
                 onPressed: () {
                   confirmed = true;
                   closeSheet(sheetContext);
                 },
                 child: const Text('Delete'),
               ),
+              const Gap(8),
+              OutlineButton(
+                onPressed: () => closeSheet(sheetContext),
+                child: const Text('Cancel'),
+              ),
             ],
           ),
         ),
       ),
-    );
+    ).future;
     if (!confirmed || !context.mounted) return;
 
     final client = ref.read(opencodeClientProvider);
@@ -483,37 +575,43 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       {required bool isDirectory}) async {
     final controller = TextEditingController();
     String? nameResult;
-    openSheetOverlay(
+    await openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
       barrierDismissible: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(isDirectory ? 'New Folder' : 'New File').h4,
-              const Gap(12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                placeholder: Text(isDirectory ? 'Folder name' : 'File name'),
-              ),
-              const Gap(16),
-              PrimaryButton(
-                onPressed: () {
-                  nameResult = controller.text.trim();
-                  closeSheet(sheetContext);
-                },
-                child: const Text('Create'),
-              ),
-            ],
+      builder: (sheetContext) => SheetKeyboardPadding(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(isDirectory ? 'New Folder' : 'New File').h4,
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  placeholder: Text(isDirectory ? 'Folder name' : 'File name'),
+                  onSubmitted: (_) {
+                    nameResult = controller.text.trim();
+                    closeSheet(sheetContext);
+                  },
+                ),
+                const Gap(16),
+                PrimaryButton(
+                  onPressed: () {
+                    nameResult = controller.text.trim();
+                    closeSheet(sheetContext);
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
+    ).future;
     if (nameResult == null || !context.mounted) return;
 
     final name = nameResult!;

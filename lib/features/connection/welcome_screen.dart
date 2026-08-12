@@ -60,9 +60,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   child: ScaleTransition(
                     scale: _logoScale,
                     child: SvgPicture.asset(
-                      'assets/logo/icon.svg',
+                      'assets/logo/spark.svg',
                       width: 96,
                       height: 96,
+                      colorFilter: ColorFilter.mode(
+                        Theme.of(context).colorScheme.foreground,
+                        BlendMode.srcIn,
+                      ),
                     ),
                   ),
                 ),

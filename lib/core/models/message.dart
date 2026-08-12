@@ -35,7 +35,12 @@ class MessageInfo {
     if (error == null) return null;
     final data = error!['data'];
     if (data is Map<String, dynamic>) {
-      return data['message'] as String?;
+      final message = data['message'];
+      // Fall through to the name rather than returning null: the errors that
+      // matter most here — MessageOutputLengthError, ContextOverflowError —
+      // carry an empty `data`, and reporting nothing at all left the failure
+      // unexplained.
+      if (message is String && message.isNotEmpty) return message;
     }
     return error!['name']?.toString();
   }
@@ -44,6 +49,21 @@ class MessageInfo {
     if (error == null) return false;
     return error!['name']?.toString() == 'APIError';
   }
+
+  /// The server's error tag, e.g. `MessageOutputLengthError`,
+  /// `ContextOverflowError`, `MessageAbortedError`, `ProviderAuthError`.
+  String? get errorName => error?['name']?.toString();
+
+  /// An errored turn is over, whatever the reason.
+  ///
+  /// The server does not always stamp `time.completed` when a turn dies — a
+  /// model that runs out of output tokens or overflows its context just gets an
+  /// `error`. Treating that as unfinished left the session pinned to "working"
+  /// forever.
+  bool get hasError => error != null;
+
+  /// The user pressed stop. Terminal, but not worth an error banner.
+  bool get wasAborted => errorName == 'MessageAbortedError';
 
   factory MessageInfo.fromJson(Map<String, dynamic> json) {
     String? modelID = json['modelID'] as String?;

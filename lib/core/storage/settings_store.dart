@@ -6,6 +6,7 @@ class SettingsStore {
   static const _collapseFilePermissionsKey =
       'opencode_collapse_file_permissions';
   static const _lastRouteKey = 'opencode_last_route';
+  static const _scrollPositionPrefix = 'opencode_scroll_';
 
   Future<String> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -35,6 +36,16 @@ class SettingsStore {
   Future<void> saveLastRoute(String route) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastRouteKey, route);
+  }
+
+  Future<double?> loadScrollPosition(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble('$_scrollPositionPrefix$key');
+  }
+
+  Future<void> saveScrollPosition(String key, double offset) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('$_scrollPositionPrefix$key', offset);
   }
 }
 

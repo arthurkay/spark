@@ -95,10 +95,15 @@ class PtyShellRunner {
         onTimeout: () => throw Exception('Timed out connecting to the server'),
       );
 
-      final quotedCmd = _shellQuote(command);
+      // [command] is interpolated raw: it is a command *line* for the inner
+      // `sh -c` to parse, not a single argument. Quoting it made the shell look
+      // for a program literally named `touch "notes.txt"` and fail with 127,
+      // which is why every file operation silently did nothing. The one round
+      // of quoting applied to the whole script below is what protects it from
+      // the outer login shell.
       final script = 'p=$_markerPrefix; stty -echo 2>/dev/null; '
           "printf '\\n%s_RDY:$nonce\\n' \"\$p\"; "
-          '$quotedCmd; rc=\$?; '
+          '$command; rc=\$?; '
           "printf '\\n%s_DONE:$nonce:%s\\n' \"\$p\" \"\$rc\"";
       channel.sink.add(utf8.encode('sh -c ${_shellQuote(script)}\n'));
 
@@ -134,8 +139,16 @@ class PtyShellRunner {
     } catch (_) {}
   }
 
-  static String _shellQuote(String s) => "'${s.replaceAll("'", "'\\''")}'";
+  static String _shellQuote(String s) => shellQuote(s);
 }
+
+/// Wraps [s] in single quotes so the shell treats it as one literal word.
+///
+/// Use this for every path or filename interpolated into a command. Double
+/// quotes are not enough: `"$name"` still expands `$`, backticks and `\`, so a
+/// file called `notes$HOME.txt` would break — and a crafted name could run a
+/// command.
+String shellQuote(String s) => "'${s.replaceAll("'", "'\\''")}'";
 
 class _MarkerTail {
   _MarkerTail();
