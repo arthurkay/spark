@@ -52,10 +52,12 @@ GoRouter createRouter(Ref ref) {
     initialLocation: '/',
     refreshListenable: _ConnectionListenable(ref),
     redirect: (context, state) {
-      final location = state.uri.toString();
-      if (location != '/') {
-        ref.read(settingsStoreProvider).saveLastRoute(location);
-      }
+      // '/' is recorded like any other location. Skipping it meant backing out
+      // to the project list left the previous deep route stored, so the next
+      // launch reopened that screen instead of the list you actually left the
+      // app on. `main()` treats a saved '/' as "no restore needed", which is
+      // already correct since '/' is the initial location.
+      ref.read(settingsStoreProvider).saveLastRoute(state.uri.toString());
       return null;
     },
     routes: [

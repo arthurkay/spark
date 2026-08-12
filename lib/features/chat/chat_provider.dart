@@ -63,6 +63,8 @@ class ChatState {
     this.working = false,
     this.aborting = false,
     this.error,
+    this.errorType,
+    this.statusCode,
     this.retryMessage,
     this.retryAction,
     this.retryNext,
@@ -76,6 +78,8 @@ class ChatState {
   final bool working;
   final bool aborting;
   final String? error;
+  final String? errorType;
+  final int? statusCode;
   final String? retryMessage;
   final RetryAction? retryAction;
   final int? retryNext;
@@ -90,6 +94,8 @@ class ChatState {
     bool? aborting,
     String? error,
     bool clearError = false,
+    String? errorType,
+    int? statusCode,
     String? retryMessage,
     bool clearRetry = false,
     RetryAction? retryAction,
@@ -104,11 +110,34 @@ class ChatState {
       working: working ?? this.working,
       aborting: aborting ?? this.aborting,
       error: clearError ? null : (error ?? this.error),
+      errorType: clearError ? null : (errorType ?? this.errorType),
+      statusCode: clearError ? null : (statusCode ?? this.statusCode),
       retryMessage: clearRetry ? null : (retryMessage ?? this.retryMessage),
       retryAction: clearRetry ? null : (retryAction ?? this.retryAction),
       retryNext: clearRetry ? null : (retryNext ?? this.retryNext),
     );
   }
+}
+
+/// Whether the tail of [messages] is a turn the model is still generating.
+///
+/// Busy only while the model is actively generating at the tail of the
+/// conversation. Two things are deliberately *not* working:
+///
+/// * a stale incomplete assistant message that another message follows — e.g.
+///   the server restarted mid-turn;
+/// * an assistant message carrying an `error`. The server does not stamp
+///   `time.completed` when a turn dies, so running out of output tokens
+///   (`MessageOutputLengthError`) or overflowing the context
+///   (`ContextOverflowError`) used to pin the session to "working" forever. The
+///   live `session.error` event cleared it, but every later reload recomputed it
+///   straight back to true.
+bool isTailGenerating(List<MessageWithParts> messages) {
+  if (messages.isEmpty) return false;
+  final info = messages.last.info;
+  if (info.role != 'assistant') return false;
+  if (info.hasError) return false;
+  return info.timeCompleted == null;
 }
 
 class ChatController extends ChangeNotifier {
@@ -235,10 +264,13 @@ class ChatController extends ChangeNotifier {
       final working = _computeWorking(merged);
       if (!working) _stuck = false;
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
+      final tailError = _tailErrorInfo(merged);
       state = state.copyWith(
         messages: merged,
         loading: false,
-        clearError: true,
+        clearError: tailError == null,
+        error: tailError?.errorMessage,
+        errorType: tailError?.errorName,
         working: working,
       );
       await CacheService.instance.write(_cacheKey, {
@@ -512,10 +544,14 @@ class ChatController extends ChangeNotifier {
           _optimisticBusy = false;
           final errorObj = props['error'];
           String? errorMessage;
+          String? errorType;
+          int? statusCode;
           if (errorObj is Map<String, dynamic>) {
+            errorType = errorObj['name'] as String?;
             final data = errorObj['data'];
             if (data is Map<String, dynamic>) {
               errorMessage = data['message'] as String?;
+              statusCode = data['statusCode'] as int?;
             }
             errorMessage ??= errorObj['name']?.toString();
           }
@@ -524,6 +560,8 @@ class ChatController extends ChangeNotifier {
             aborting: false,
             clearRetry: true,
             error: errorMessage,
+            errorType: errorType,
+            statusCode: statusCode,
           );
         }
         break;
@@ -542,13 +580,19 @@ class ChatController extends ChangeNotifier {
         DateTime.now().isBefore(_abortGraceUntil!)) {
       return false;
     }
-    final last = messages.last;
-    // Busy only while the model is actively generating at the tail of the
-    // conversation. A stale, incomplete assistant message that another
-    // message follows (e.g. after the server was restarted mid-turn) must
-    // NOT keep the session flagged as working.
-    if (last.info.role != 'assistant') return false;
-    return last.info.timeCompleted == null;
+    return isTailGenerating(messages);
+  }
+
+  /// The tail message's error, for the banner — so a turn that died explains
+  /// itself instead of just going quiet. A user-initiated abort is terminal but
+  /// not an error worth reporting.
+  MessageInfo? _tailErrorInfo(List<MessageWithParts> messages) {
+    if (messages.isEmpty) return null;
+    final info = messages.last.info;
+    if (info.role != 'assistant' || !info.hasError || info.wasAborted) {
+      return null;
+    }
+    return info;
   }
 
   bool _computeWorking(List<MessageWithParts> messages) {
@@ -806,6 +850,8 @@ typedef ChatChrome = ({
   bool aborting,
   bool hasMessages,
   String? error,
+  String? errorType,
+  int? statusCode,
   String? retryMessage,
   RetryAction? retryAction,
   int? retryNext,
@@ -820,6 +866,8 @@ ChatChrome chatChromeOf(ChatState s) => (
       aborting: s.aborting,
       hasMessages: s.messages.isNotEmpty,
       error: s.error,
+      errorType: s.errorType,
+      statusCode: s.statusCode,
       retryMessage: s.retryMessage,
       retryAction: s.retryAction,
       retryNext: s.retryNext,

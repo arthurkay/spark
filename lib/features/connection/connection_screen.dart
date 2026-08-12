@@ -165,9 +165,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
                     child: ScaleTransition(
                       scale: _logoAnimation,
                       child: SvgPicture.asset(
-                        'assets/logo/icon.svg',
+                        'assets/logo/spark.svg',
                         width: 64,
                         height: 64,
+                        colorFilter: ColorFilter.mode(
+                          Theme.of(context).colorScheme.foreground,
+                          BlendMode.srcIn,
+                        ),
                       ),
                     ),
                   ),

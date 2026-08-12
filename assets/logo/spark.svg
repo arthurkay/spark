@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Large 4-pointed spark -->
+  <g transform="translate(512,480)">
+    <path d="M 0 -320 L 48 -48 L 320 0 L 48 48 L 0 320 L -48 48 L -320 0 L -48 -48 Z" fill="#71717a"/>
+  </g>
+  <!-- Small accent spark (lower-right) -->
+  <g transform="translate(700,680)">
+    <path d="M 0 -140 L 24 -24 L 140 0 L 24 24 L 0 140 L -24 24 L -140 0 L -24 -24 Z" fill="#71717a"/>
+  </g>
+</svg>

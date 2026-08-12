@@ -440,20 +440,30 @@ class MessageBubble extends StatelessWidget {
         // intentional-looking transition.
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
-          child: AnimatedSwitcher(
+          // The cross-fade hid the pixels of the plain→markdown swap but not
+          // its geometry: headings, code blocks and list indents change the
+          // height, and the Stack below takes the taller of the two children
+          // the instant the swap begins. AnimatedSize eases that height change
+          // so the transcript settles instead of snapping.
+          child: AnimatedSize(
             duration: Motion.base,
-            switchInCurve: Motion.standard,
-            switchOutCurve: Motion.standard,
-            layoutBuilder: (current, previous) => Stack(
-              alignment: Alignment.topLeft,
-              children: [...previous, if (current != null) current],
+            curve: Motion.inOut,
+            alignment: Alignment.topLeft,
+            child: AnimatedSwitcher(
+              duration: Motion.base,
+              switchInCurve: Motion.standard,
+              switchOutCurve: Motion.standard,
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.topLeft,
+                children: [...previous, if (current != null) current],
+              ),
+              child: isMarkdown
+                  ? MarkdownView(key: const ValueKey('md'), data: text)
+                  : KeyedSubtree(
+                      key: const ValueKey('plain'),
+                      child: _text(context, text),
+                    ),
             ),
-            child: isMarkdown
-                ? MarkdownView(key: const ValueKey('md'), data: text)
-                : KeyedSubtree(
-                    key: const ValueKey('plain'),
-                    child: _text(context, text),
-                  ),
           ),
         );
       case 'reasoning':
@@ -1420,73 +1430,22 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-Widget _questionCard(
-  BuildContext context,
-  List<Map<String, dynamic>> questions,
-  List<List<String>> selections,
-  void Function(int, String) onSelect,
-) {
-  return Card(
-    padding: const EdgeInsets.all(12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var qi = 0; qi < questions.length; qi++)
-          _questionItem(context, qi, questions, selections, onSelect),
-      ],
-    ),
-  );
-}
-
-Widget _questionItem(
-  BuildContext context,
-  int qi,
-  List<Map<String, dynamic>> questions,
-  List<List<String>> selections,
-  void Function(int, String) onSelect,
-) {
-  final q = questions[qi];
-  final children = <Widget>[
-    if (q['header'] is String) ...[
-      Text(q['header'] as String).semiBold,
-      const Gap(4),
-    ],
-    SelectableText((q['question'] as String?) ?? ''),
+/// Assembles what gets sent for one question: the labels picked from the
+/// agent's options, plus the typed answer when "Other…" is active.
+///
+/// A blank typed answer is dropped rather than sent as an empty string — for a
+/// single-select question that leaves the answer empty, which is what gates the
+/// Submit button.
+List<String> buildQuestionAnswer({
+  required List<String> selectedLabels,
+  required bool customSelected,
+  required String customText,
+}) {
+  final trimmed = customText.trim();
+  return [
+    ...selectedLabels,
+    if (customSelected && trimmed.isNotEmpty) trimmed,
   ];
-  if (q['options'] is List && (q['options'] as List).isNotEmpty) {
-    children.add(const Gap(8));
-    for (final opt in (q['options'] as List)) {
-      if (opt is Map<String, dynamic>) {
-        children.add(
-          _QuestionOptionTile(
-            label: (opt['label'] as String?) ?? '',
-            description: opt['description'] as String?,
-            selected: selections[qi].contains(opt['label']),
-            onTap: () => onSelect(qi, opt['label'] as String),
-          ),
-        );
-      } else if (opt is String) {
-        children.add(
-          _QuestionOptionTile(
-            label: opt,
-            selected: selections[qi].contains(opt),
-            onTap: () => onSelect(qi, opt),
-          ),
-        );
-      }
-      children.add(const Gap(6));
-    }
-  } else if (q['custom'] == true) {
-    children.add(const Gap(8));
-    children.add(const Text('Free-form answer above.').xSmall.muted);
-  }
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      ...children,
-      if (qi != questions.length - 1) const Gap(12),
-    ],
-  );
 }
 
 class _QuestionOptionTile extends StatelessWidget {
@@ -1575,49 +1534,103 @@ class _QuestionSheetBody extends ConsumerStatefulWidget {
 }
 
 class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
-  late final TextEditingController _controller;
+  /// Labels picked from the options the agent supplied, per question.
   late List<List<String>> _selections;
+
+  /// Whether the typed answer is the active choice for a question, and the text
+  /// backing it. One entry per question — a shared controller can't serve a
+  /// request with more than one question.
+  late List<bool> _customSelected;
+  late List<TextEditingController> _customControllers;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
-    _selections = List.generate(widget.questions.length, (_) => <String>[]);
+    _initAnswerState();
   }
+
+  void _initAnswerState() {
+    _selections = List.generate(widget.questions.length, (_) => <String>[]);
+    // One spare controller so a request whose questions couldn't be parsed
+    // still has somewhere to type a free-form answer.
+    _customControllers = List.generate(
+      widget.questions.isEmpty ? 1 : widget.questions.length,
+      (_) => TextEditingController(),
+    );
+    // A question that arrives with no options at all is free-form by
+    // definition, so its field shows immediately with no tile to tick.
+    _customSelected =
+        List.generate(widget.questions.length, (i) => !_hasOptionsAt(i));
+  }
+
+  bool _hasOptionsAt(int qi) {
+    if (qi >= widget.questions.length) return false;
+    final options = widget.questions[qi]['options'];
+    return options is List && options.isNotEmpty;
+  }
+
+  String _customTextAt(int qi) =>
+      qi < _customControllers.length ? _customControllers[qi].text.trim() : '';
 
   @override
   void didUpdateWidget(_QuestionSheetBody oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.questions.length != widget.questions.length) {
-      _selections = List.generate(widget.questions.length, (_) => <String>[]);
+      for (final c in _customControllers) {
+        c.dispose();
+      }
+      _initAnswerState();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    for (final c in _customControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  bool get _hasOptions {
-    return widget.questions.any(
-      (q) => q['options'] is List && (q['options'] as List).isNotEmpty,
-    );
-  }
+  List<String> _answerAt(int qi) => buildQuestionAnswer(
+        selectedLabels: qi < _selections.length ? _selections[qi] : const [],
+        customSelected: qi < _customSelected.length && _customSelected[qi],
+        customText: _customTextAt(qi),
+      );
 
   bool get _canSubmit {
+    if (widget.questions.isEmpty) return _customTextAt(0).isNotEmpty;
     for (var i = 0; i < widget.questions.length; i++) {
-      final q = widget.questions[i];
-      if (q['options'] is List && (q['options'] as List).isNotEmpty) {
-        if (i >= _selections.length || _selections[i].isEmpty) return false;
-      } else {
-        if (_controller.text.trim().isEmpty) return false;
-      }
-    }
-    if (widget.questions.isEmpty) {
-      return _controller.text.trim().isNotEmpty;
+      if (_answerAt(i).isEmpty) return false;
     }
     return true;
+  }
+
+  void _selectOption(int qi, String label) {
+    setState(() {
+      final multiple = widget.questions[qi]['multiple'] == true;
+      if (multiple) {
+        if (_selections[qi].contains(label)) {
+          _selections[qi].remove(label);
+        } else {
+          _selections[qi].add(label);
+        }
+      } else {
+        _selections[qi] = [label];
+        // Single-select: picking a supplied option replaces a typed answer.
+        _customSelected[qi] = false;
+      }
+    });
+  }
+
+  void _toggleCustom(int qi) {
+    setState(() {
+      final selecting = !_customSelected[qi];
+      _customSelected[qi] = selecting;
+      // Keep whatever was typed, so toggling off and back on doesn't lose it.
+      if (selecting && widget.questions[qi]['multiple'] != true) {
+        _selections[qi] = <String>[];
+      }
+    });
   }
 
   QuestionRequest? _findQuestion() {
@@ -1681,15 +1694,13 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
       return;
     }
     final client = ref.read(opencodeClientProvider);
-    final answers = <List<String>>[];
-    for (var i = 0; i < widget.questions.length; i++) {
-      final q = widget.questions[i];
-      if (q['options'] is List && (q['options'] as List).isNotEmpty) {
-        answers.add(i < _selections.length ? _selections[i] : <String>[]);
-      } else {
-        answers.add([_controller.text.trim()]);
-      }
-    }
+    final answers = widget.questions.isEmpty
+        ? [
+            [_customTextAt(0)]
+          ]
+        : [
+            for (var i = 0; i < widget.questions.length; i++) _answerAt(i),
+          ];
     try {
       await client?.replyQuestion(
         requestId: requestId,
@@ -1727,6 +1738,94 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     }
   }
 
+  Widget _buildQuestionCard({required bool interactive}) {
+    return Card(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var qi = 0; qi < widget.questions.length; qi++)
+            _buildQuestionItem(qi, interactive: interactive),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionItem(int qi, {required bool interactive}) {
+    final q = widget.questions[qi];
+    final options = q['options'] is List ? q['options'] as List : const [];
+    final children = <Widget>[
+      if (q['header'] is String) ...[
+        Text(q['header'] as String).semiBold,
+        const Gap(4),
+      ],
+      SelectableText((q['question'] as String?) ?? ''),
+    ];
+
+    if (options.isNotEmpty) {
+      children.add(const Gap(8));
+      for (final opt in options) {
+        final label = opt is Map<String, dynamic>
+            ? (opt['label'] as String?) ?? ''
+            : opt is String
+                ? opt
+                : null;
+        if (label == null) continue;
+        children.add(
+          _QuestionOptionTile(
+            label: label,
+            description: opt is Map<String, dynamic>
+                ? opt['description'] as String?
+                : null,
+            selected: _selections[qi].contains(label),
+            onTap: interactive ? () => _selectOption(qi, label) : () {},
+          ),
+        );
+        children.add(const Gap(6));
+      }
+    }
+
+    // A typed answer is always available alongside whatever the agent offered.
+    // With no options at all the field stands on its own — there is nothing to
+    // choose between, so a tile would just be an extra tap.
+    if (interactive) {
+      if (options.isNotEmpty) {
+        children.add(
+          _QuestionOptionTile(
+            label: 'Other…',
+            description: 'Type your own answer',
+            selected: _customSelected[qi],
+            onTap: () => _toggleCustom(qi),
+          ),
+        );
+      }
+      if (_customSelected[qi]) {
+        children.add(const Gap(6));
+        children.add(
+          Padding(
+            padding: EdgeInsets.only(left: options.isNotEmpty ? 12 : 0),
+            child: TextArea(
+              controller: _customControllers[qi],
+              placeholder: const Text('Type your answer…'),
+              minLines: 1,
+              maxLines: 4,
+              // Rebuild so Submit enables as soon as there is something to send.
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...children,
+        if (qi != widget.questions.length - 1) const Gap(12),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(pendingQuestionsProvider);
@@ -1757,22 +1856,7 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (widget.questions.isNotEmpty)
-                    _questionCard(context, widget.questions, _selections,
-                        (qi, label) {
-                      setState(() {
-                        final multiple =
-                            widget.questions[qi]['multiple'] == true;
-                        if (multiple) {
-                          if (_selections[qi].contains(label)) {
-                            _selections[qi].remove(label);
-                          } else {
-                            _selections[qi].add(label);
-                          }
-                        } else {
-                          _selections[qi] = [label];
-                        }
-                      });
-                    })
+                    _buildQuestionCard(interactive: showInput)
                   else
                     Card(
                       padding: const EdgeInsets.all(12),
@@ -1791,12 +1875,13 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
                         ],
                       ),
                     )
-                  else if (showInput && !_hasOptions)
+                  else if (showInput && widget.questions.isEmpty)
                     TextArea(
-                      controller: _controller,
+                      controller: _customControllers[0],
                       placeholder: const Text('Type your answer…'),
                       minLines: 2,
                       maxLines: 6,
+                      onChanged: (_) => setState(() {}),
                     )
                   else if (!showInput)
                     Card(

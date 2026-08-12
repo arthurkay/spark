@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../app/motion.dart';
+import '../../core/storage/settings_store.dart';
 import '../../shared/debouncer.dart';
 import '../../shared/haptics.dart';
 import '../../core/api/sse_client.dart';
@@ -219,16 +223,40 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_checkTitleVisibility);
+    _scrollController.addListener(_onScroll);
+    _restoreScrollPosition();
   }
 
   @override
   void dispose() {
+    _saveScrollPosition();
     _searchDebouncer.dispose();
     _scrollController.removeListener(_checkTitleVisibility);
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _titleProgress.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Timer? _scrollSaveTimer;
+
+  void _onScroll() {
+    _scrollSaveTimer?.cancel();
+    _scrollSaveTimer = Timer(const Duration(seconds: 1), _saveScrollPosition);
+  }
+
+  Future<void> _restoreScrollPosition() async {
+    final saved = await SettingsStore().loadScrollPosition('sessions');
+    if (saved != null && saved > 0 && _scrollController.hasClients) {
+      _scrollController.jumpTo(saved);
+    }
+  }
+
+  void _saveScrollPosition() {
+    if (_scrollController.hasClients) {
+      SettingsStore().saveScrollPosition('sessions', _scrollController.offset);
+    }
   }
 
   /// Distance the large title travels before the app-bar title has fully taken
@@ -312,7 +340,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         AppBar(
           leading: [
             IconButton.ghost(
-              icon: const Icon(LucideIcons.zap),
+              icon: SvgPicture.asset(
+                'assets/logo/spark.svg',
+                width: 46,
+                height: 46,
+                colorFilter: ColorFilter.mode(
+                  Theme.of(context).colorScheme.foreground,
+                  BlendMode.srcIn,
+                ),
+              ),
               onPressed: () => context.push('/settings'),
             ),
           ],
@@ -679,8 +715,11 @@ class _SessionTile extends ConsumerWidget {
         ),
         child: Row(
           children: [
+            // A session is a conversation, not a directory — folder rows nested
+            // under a folder row made sessions read as subfolders of the project.
+            // Same icon the empty states already use for conversations.
             Icon(
-              LucideIcons.folder,
+              LucideIcons.messagesSquare,
               size: 20,
               color: theme.colorScheme.foreground,
             ),
