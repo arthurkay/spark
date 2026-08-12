@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -8,6 +10,9 @@ import '../../core/models/server_config.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_provider.dart';
 import '../../shared/widgets/app_toast.dart';
+import '../../core/storage/settings_store.dart';
+import '../chat/tts_cache.dart';
+import '../chat/tts_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -188,6 +193,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const Gap(28),
+          Text('Narration').small.semiBold.muted,
+          const Gap(10),
+          const _VoiceTile(),
+          const Gap(8),
+          const _NarrationCacheTile(),
+          const Gap(28),
           Text('Permissions').small.semiBold.muted,
           const Gap(10),
           Container(
@@ -333,6 +344,283 @@ class _ServerTile extends StatelessWidget {
             onPressed: onDelete,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shows what the narration cache holds and lets it be emptied.
+///
+/// Narrations are kept so replaying a message never repeats the model
+/// round-trip. The cache is bounded (oldest-played evicted first), but it is
+/// still the user's data, so it has to be visible and clearable.
+class _NarrationCacheTile extends StatefulWidget {
+  const _NarrationCacheTile();
+
+  @override
+  State<_NarrationCacheTile> createState() => _NarrationCacheTileState();
+}
+
+class _NarrationCacheTileState extends State<_NarrationCacheTile> {
+  NarrationCacheStats? _stats;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final stats = await NarrationCache.instance.stats();
+    if (mounted) setState(() => _stats = stats);
+  }
+
+  Future<void> _clear() async {
+    await NarrationCache.instance.clear();
+    if (!mounted) return;
+    showAppToast(context, title: 'Narrations cleared');
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = _stats;
+    final count = stats?.count ?? 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.muted,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.audioLines, size: 18),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Saved narrations'),
+                Text(
+                  stats == null
+                      ? 'Checking…'
+                      : count == 0
+                          ? 'Nothing saved yet'
+                          : '$count message${count == 1 ? '' : 's'} · ${stats.sizeLabel}',
+                ).xSmall.muted,
+              ],
+            ),
+          ),
+          const Gap(8),
+          OutlineButton(
+            size: ButtonSize.small,
+            density: ButtonDensity.compact,
+            onPressed: count == 0 ? null : _clear,
+            child: const Text('Clear').small,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chooses the narration voice from what the device's engine offers.
+///
+/// Selection persists via [SettingsStore] and is applied by the controller at
+/// the start of every narration, so previews here can't leak into playback.
+class _VoiceTile extends ConsumerStatefulWidget {
+  const _VoiceTile();
+
+  @override
+  ConsumerState<_VoiceTile> createState() => _VoiceTileState();
+}
+
+class _VoiceTileState extends ConsumerState<_VoiceTile> {
+  String? _currentLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final voice = await SettingsStore().loadTtsVoice();
+    if (mounted) {
+      setState(() => _currentLabel =
+          voice == null ? null : '${voice.name} (${voice.locale})');
+    }
+  }
+
+  void _openPicker() {
+    final controller = ref.read(ttsControllerProvider);
+    openSheetOverlay(
+      context: context,
+      position: OverlayPosition.bottom,
+      barrierDismissible: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: ConstrainedBox(
+            // Bounded: engines ship hundreds of voices across every language.
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(LucideIcons.audioLines, size: 18),
+                    const Gap(8),
+                    const Text('Narration voice').h4,
+                  ],
+                ),
+                const Gap(4),
+                Text('Tap to use a voice, play to hear a sample.').xSmall.muted,
+                const Gap(12),
+                Flexible(
+                  child: FutureBuilder(
+                    future: controller.availableVoices(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      // The device's language first, then other English
+                      // variants, then the rest — an alphabetical list opens
+                      // on Arabic with the useful voices pages away.
+                      final lang = PlatformDispatcher
+                          .instance.locale.languageCode
+                          .toLowerCase();
+                      int rank(TtsVoice v) {
+                        final locale = v.locale.toLowerCase();
+                        if (locale.startsWith(lang)) return 0;
+                        if (locale.startsWith('en')) return 1;
+                        return 2;
+                      }
+
+                      final voices = [...snapshot.data!]..sort((a, b) {
+                          final byRank = rank(a).compareTo(rank(b));
+                          if (byRank != 0) return byRank;
+                          final byLocale = a.locale.compareTo(b.locale);
+                          if (byLocale != 0) return byLocale;
+                          return a.name.compareTo(b.name);
+                        });
+                      if (voices.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child:
+                                const Text('No voices reported by the engine')
+                                    .muted
+                                    .small,
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: voices.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            return _voiceRow(
+                              sheetContext,
+                              label: 'System default',
+                              sublabel: 'Whatever the engine picks',
+                              voice: null,
+                            );
+                          }
+                          final voice = voices[index - 1];
+                          return _voiceRow(
+                            sheetContext,
+                            label: voice.locale,
+                            sublabel: voice.name,
+                            voice: voice,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceRow(
+    BuildContext sheetContext, {
+    required String label,
+    required String sublabel,
+    required TtsVoice? voice,
+  }) {
+    final controller = ref.read(ttsControllerProvider);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        await controller.setVoiceSelection(voice);
+        if (!sheetContext.mounted) return;
+        closeSheet(sheetContext);
+        if (!mounted) return;
+        showAppToast(context,
+            title: voice == null ? 'Using system voice' : 'Voice selected');
+        await _refresh();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label).small.semiBold,
+                  Text(sublabel).xSmall.muted,
+                ],
+              ),
+            ),
+            if (voice != null)
+              IconButton.ghost(
+                size: ButtonSize.small,
+                density: ButtonDensity.compact,
+                icon: const Icon(LucideIcons.play, size: 16),
+                onPressed: () => controller.previewVoice(voice),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _openPicker,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.muted,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.micVocal, size: 18),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Voice'),
+                  Text(_currentLabel ?? 'System default').xSmall.muted,
+                ],
+              ),
+            ),
+            const Gap(8),
+            const Icon(LucideIcons.chevronRight, size: 16).iconMutedForeground,
+          ],
+        ),
       ),
     );
   }
