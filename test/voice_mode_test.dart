@@ -20,6 +20,30 @@ MessageWithParts _msg({
 }
 
 void main() {
+  group('fillerPhrase', () {
+    test('step 0 is an acknowledgment, later steps reassure', () {
+      expect(fillerPhrase(0, 0), contains('let me work'));
+      expect(fillerPhrase(1, 0).toLowerCase(), isNot(contains('alright')));
+    });
+
+    test('consecutive steps never repeat a phrase', () {
+      for (var salt = 0; salt < 40; salt++) {
+        for (var step = 0; step < 12; step++) {
+          expect(
+            fillerPhrase(step, salt),
+            isNot(fillerPhrase(step + 1, salt)),
+            reason: 'salt=\$salt step=\$step',
+          );
+        }
+      }
+    });
+
+    test('salt varies the opener between turns', () {
+      final openers = {for (var s = 0; s < 6; s++) fillerPhrase(0, s)};
+      expect(openers.length, greaterThan(1));
+    });
+  });
+
   group('replyToNarrate', () {
     test('narrates a fresh completed assistant reply', () {
       final reply = replyToNarrate(
