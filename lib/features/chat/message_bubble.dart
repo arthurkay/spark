@@ -21,6 +21,7 @@ import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
+import '../../shared/widgets/streaming_text.dart';
 import 'tts_provider.dart';
 import 'tts_equalizer.dart';
 import 'pdf_service.dart';
@@ -463,7 +464,14 @@ class MessageBubble extends StatelessWidget {
                   ? MarkdownView(key: const ValueKey('md'), data: text)
                   : KeyedSubtree(
                       key: const ValueKey('plain'),
-                      child: _text(context, text),
+                      // Word-by-word reveal while streaming: the server sends
+                      // the whole accumulated message per update, so a burst
+                      // from the model used to drop in as a block.
+                      child: StreamingText(
+                        text: text,
+                        streaming: streaming,
+                        builder: _text,
+                      ),
                     ),
             ),
           ),
