@@ -1270,7 +1270,9 @@ class _ComposerState extends ConsumerState<_Composer> {
                         if (widget.working ||
                             widget.aborting ||
                             widget.error != null)
-                          IconButton.destructive(
+                          // Primary, not destructive: this is the send button
+                          // changing state while a turn runs, not an alarm.
+                          IconButton.primary(
                             icon: const Icon(LucideIcons.square),
                             size: ButtonSize.small,
                             shape: ButtonShape.circle,
