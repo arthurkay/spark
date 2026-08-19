@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../app/motion.dart';
-import 'tts_equalizer.dart';
 import 'tts_provider.dart';
 
 class TtsLoadingOverlay extends ConsumerStatefulWidget {
@@ -70,11 +69,18 @@ class _TtsLoadingOverlayState extends ConsumerState<TtsLoadingOverlay>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TtsEqualizer(
-                        isPlaying: true,
-                        barCount: 5,
-                        height: 48,
-                        color: Theme.of(context).colorScheme.primary,
+                      // A spinner, not the equalizer: dancing bars are the
+                      // playback glyph and read as "audio has started". This
+                      // stage is a wait (the speech rewrite is in flight), so
+                      // it shows what waiting looks like everywhere else in
+                      // the app.
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       const Gap(20),
                       Text(
