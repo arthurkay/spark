@@ -43,12 +43,17 @@ MessageWithParts? replyToNarrate(
 
 /// What to say while the agent works. Step 0 acknowledges the request; later
 /// steps reassure. [salt] varies the pick between turns so consecutive waits
-/// don't sound scripted; the sequence never repeats a phrase back-to-back.
-String fillerPhrase(int step, int salt) {
+/// don't sound scripted, and phrases in [used] are skipped while any unused
+/// remain — a person doesn't say "still working on it" the same way twice in
+/// one conversation.
+String fillerPhrase(int step, int salt, {Set<String> used = const {}}) {
   const openers = [
     'Alright, let me work on that.',
     'Okay, on it.',
     'Let me think that through.',
+    'Sure — give me a moment.',
+    'Right, looking into it.',
+    'Good question, let me dig in.',
   ];
   const continuers = [
     'Still working on it.',
@@ -56,9 +61,20 @@ String fillerPhrase(int step, int salt) {
     'Still thinking this through.',
     'Working through it now.',
     'Nearly there — still going.',
+    'Bear with me, this one takes a bit.',
+    'Making progress on it.',
+    'Hang on, almost sorted.',
+    'Taking a little longer than usual.',
+    'Still at it.',
   ];
-  if (step == 0) return openers[salt % openers.length];
-  return continuers[(salt + step) % continuers.length];
+  final pool = step == 0 ? openers : continuers;
+  final start = step == 0 ? salt : salt + step;
+  for (var i = 0; i < pool.length; i++) {
+    final candidate = pool[(start + i) % pool.length];
+    if (!used.contains(candidate)) return candidate;
+  }
+  // Everything has been said once; cycle rather than fall silent.
+  return pool[start % pool.length];
 }
 
 /// A live description of what the in-flight turn is doing, derived from its
@@ -203,6 +219,10 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
   String _fillerText = '';
   String? _lastFillerSpoken;
   VoiceActivity? _activity;
+
+  /// Everything spoken as filler this conversation, so nothing repeats until
+  /// the pool is exhausted.
+  final Set<String> _usedFillers = {};
   late final AnimationController _thinkingPulse;
 
   @override
@@ -233,13 +253,16 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     super.dispose();
   }
 
-  /// First filler ~5s in (a fast reply shouldn't get one at all), then every
-  /// ~14-20s. Each fires only if the turn is still in flight.
+  /// First filler ~5s in (a fast reply shouldn't get one at all), then with a
+  /// growing backoff — a person interjects less, not more, the longer they
+  /// work. Each fires only if the turn is still in flight.
   void _scheduleFiller() {
     _fillerTimer?.cancel();
     final delay = _fillerStep == 0
         ? const Duration(seconds: 5)
-        : Duration(seconds: 14 + math.Random().nextInt(7));
+        : Duration(
+            seconds:
+                math.min(12 + _fillerStep * 6, 35) + math.Random().nextInt(6));
     _fillerTimer = Timer(delay, () {
       if (!mounted || _closing || _phase != VoicePhase.waiting) return;
       // Prefer what the turn is actually doing; fall back to reassurance. A
@@ -248,8 +271,9 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
       final live = _activity?.spoken;
       final phrase = (live != null && live != _lastFillerSpoken)
           ? live
-          : fillerPhrase(_fillerStep, _fillerSalt);
+          : fillerPhrase(_fillerStep, _fillerSalt, used: _usedFillers);
       _lastFillerSpoken = phrase;
+      _usedFillers.add(phrase);
       setState(() => _fillerText = phrase);
       ref.read(ttsControllerProvider).speakFiller(phrase);
       _fillerStep++;
@@ -382,8 +406,11 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
         _speech.stop(); // Forces the final result now.
       case VoicePhase.error:
         _start();
-      case VoicePhase.starting:
       case VoicePhase.waiting:
+        // Force-stop the agent's turn and hand the floor back.
+        ref.read(chatControllerProvider(widget.sessionId).notifier).abort();
+        _listen();
+      case VoicePhase.starting:
         break;
     }
   }
@@ -422,7 +449,7 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     final (label, hint) = switch (effectivePhase) {
       VoicePhase.starting => ('Starting…', ''),
       VoicePhase.listening => ('Listening', 'Tap the mic when you finish'),
-      VoicePhase.waiting => ('Thinking…', ''),
+      VoicePhase.waiting => ('Thinking…', 'Tap the mic to stop the agent'),
       VoicePhase.speaking => ('Speaking', 'Tap the mic to interrupt'),
       VoicePhase.error => ('Microphone unavailable', 'Tap the mic to retry'),
     };

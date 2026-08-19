@@ -19,6 +19,7 @@ import '../sessions/workspace_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
+import '../../shared/widgets/shimmer_loading.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
 import 'tts_provider.dart';
 import 'tts_equalizer.dart';
@@ -712,10 +713,13 @@ class _ReasoningBlockState extends State<_ReasoningBlock> {
                   const Icon(LucideIcons.brain, size: 14).iconMutedForeground,
                   const Gap(8),
                   Expanded(
-                    child: Text(widget.streaming ? 'Thinking…' : 'Thought')
-                        .muted
-                        .small
-                        .semiBold,
+                    child: ShimmerLoading(
+                      isLoading: widget.streaming,
+                      child: Text(widget.streaming ? 'Thinking…' : 'Thought')
+                          .muted
+                          .small
+                          .semiBold,
+                    ),
                   ),
                   const Gap(6),
                   // Rotates rather than swapping glyphs, so expanding reads as
@@ -1297,21 +1301,29 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
                   Icon(_toolIcon(name), size: 14),
                   const Gap(8),
                   Expanded(
-                    child: _subjectLine == null
-                        ? Text(name).small.semiBold
-                        : Row(
-                            children: [
-                              Text(name).small.semiBold,
-                              const Gap(6),
-                              Flexible(
-                                child: Text(
-                                  _subjectLine!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ).xSmall.muted,
-                              ),
-                            ],
-                          ),
+                    child: Builder(
+                      builder: (context) {
+                        final isActive = status == 'running' || status.isEmpty;
+                        final textWidget = _subjectLine == null
+                            ? Text(name).small.semiBold
+                            : Row(
+                                children: [
+                                  Text(name).small.semiBold,
+                                  const Gap(6),
+                                  Flexible(
+                                    child: Text(
+                                      _subjectLine!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ).xSmall.muted,
+                                  ),
+                                ],
+                              );
+                        return isActive
+                            ? ShimmerLoading(child: textWidget)
+                            : textWidget;
+                      },
+                    ),
                   ),
                   if (status.isNotEmpty) ...[
                     const Gap(6),

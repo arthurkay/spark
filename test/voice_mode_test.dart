@@ -87,6 +87,28 @@ void main() {
     });
   });
 
+  group('fillerPhrase used-set', () {
+    test('phrases in the used set are skipped while unused ones remain', () {
+      final used = <String>{};
+      final seen = <String>{};
+      for (var step = 0; step < 9; step++) {
+        final phrase = fillerPhrase(step, 3, used: used);
+        expect(seen.contains(phrase), isFalse,
+            reason: 'repeated "$phrase" at step $step with pool unexhausted');
+        seen.add(phrase);
+        used.add(phrase);
+      }
+    });
+
+    test('an exhausted pool cycles rather than falling silent', () {
+      final used = <String>{};
+      for (var step = 0; step < 40; step++) {
+        used.add(fillerPhrase(step, 1, used: used));
+      }
+      expect(fillerPhrase(41, 1, used: used), isNotEmpty);
+    });
+  });
+
   group('describeActivity', () {
     test('a tool call becomes a spoken phrase with the file name', () {
       final activity = describeActivity(_streaming(parts: [
