@@ -92,12 +92,16 @@ class _SelectedWorkspace extends StateNotifier<Project?> {
 
 final vcsRefreshProvider = StateProvider<int>((ref) => 0);
 
-final vcsProvider = FutureProvider<VcsInfo?>((ref) async {
+/// Branch info per worktree. A single global lookup used to feed every
+/// project tile, so all projects displayed whichever branch the server's
+/// default directory was on.
+final vcsProvider =
+    FutureProvider.family<VcsInfo?, String?>((ref, directory) async {
   ref.watch(vcsRefreshProvider);
   final client = ref.watch(opencodeClientProvider);
   if (client == null) return null;
   try {
-    return await client.getVcsInfo();
+    return await client.getVcsInfo(directory: directory);
   } catch (_) {
     return null;
   }

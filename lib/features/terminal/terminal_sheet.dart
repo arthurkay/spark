@@ -18,7 +18,6 @@ class TerminalSheet extends ConsumerStatefulWidget {
 
 class _TerminalSheetState extends ConsumerState<TerminalSheet> {
   String? _resolvedDirectory;
-  bool _killed = false;
 
   @override
   void initState() {
@@ -26,16 +25,17 @@ class _TerminalSheetState extends ConsumerState<TerminalSheet> {
     _resolveDirectory();
   }
 
-  @override
-  void dispose() {
-    if (!_killed) {
-      _killed = true;
-      final ctrl = _resolvedDirectory != null
-          ? ref.read(terminalProvider(_resolvedDirectory))
-          : null;
-      ctrl?.kill();
-    }
-    super.dispose();
+  // No dispose-time kill: closing the sheet only hides the terminal. The
+  // controller lives in a keep-alive provider, so reopening reattaches to the
+  // same shell with its scrollback. Ending the session is the trash button.
+  Future<void> _endSession() async {
+    final directory = _resolvedDirectory;
+    final ctrl =
+        directory != null ? ref.read(terminalProvider(directory)) : null;
+    await ctrl?.kill();
+    // A fresh open must get a fresh shell, not the dead controller.
+    ref.invalidate(terminalProvider(directory));
+    if (mounted) closeSheet(context);
   }
 
   Future<void> _resolveDirectory() async {
@@ -72,12 +72,18 @@ class _TerminalSheetState extends ConsumerState<TerminalSheet> {
                 children: [
                   Text(state?.session?.title ?? 'Terminal').h4,
                   const Spacer(),
+                  // Ends the shell session for real; the X below only hides.
+                  IconButton.ghost(
+                    icon: Icon(
+                      LucideIcons.trash2,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.destructive,
+                    ),
+                    onPressed: _endSession,
+                  ),
                   IconButton.ghost(
                     icon: const Icon(LucideIcons.x, size: 16),
-                    onPressed: () {
-                      ctrl?.kill();
-                      closeSheet(context);
-                    },
+                    onPressed: () => closeSheet(context),
                   ),
                 ],
               ),
