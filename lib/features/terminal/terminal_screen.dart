@@ -51,21 +51,25 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       headers: [
         AppBar(
           leading: [
+            // Back keeps the shell alive; the provider is keep-alive, so
+            // returning here (or opening the sheet) reattaches with scrollback.
             IconButton.ghost(
               icon: const Icon(LucideIcons.arrowLeft),
-              onPressed: () async {
-                await ctrl?.kill();
-                if (context.mounted) context.pop();
-              },
+              onPressed: () => context.pop(),
             ),
           ],
           title: Text(state?.session?.title ?? 'Terminal'),
           trailing: [
             if (state?.connected == true)
+              // Ends the shell session for real.
               IconButton.ghost(
-                icon: const Icon(LucideIcons.x),
+                icon: Icon(
+                  LucideIcons.trash2,
+                  color: Theme.of(context).colorScheme.destructive,
+                ),
                 onPressed: () async {
                   await ctrl?.kill();
+                  ref.invalidate(terminalProvider(_resolvedDirectory));
                   if (context.mounted) context.pop();
                 },
               ),

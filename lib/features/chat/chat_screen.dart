@@ -436,7 +436,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
     final working = (chrome.working || globalBusy) && !chrome.aborting;
     final agentLabel = currentAgent;
-    final vcs = ref.watch(vcsProvider);
+    final sessionDir =
+        ref.watch(sessionDirectoryProvider(widget.sessionId)).value;
+    final vcs = ref.watch(vcsProvider(sessionDir));
     final branch = vcs.value?.branch;
     final subtitleParts = [
       if (branch != null && branch.isNotEmpty) branch,

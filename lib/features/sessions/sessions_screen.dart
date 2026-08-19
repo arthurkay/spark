@@ -826,7 +826,8 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
         widget.project.worktree;
     final subtitle = widget.project.worktree;
     final count = widget.sessions.length;
-    final vcs = ref.watch(vcsProvider);
+    final vcs = ref.watch(
+        vcsProvider(widget.project.isGlobal ? null : widget.project.worktree));
     final branch = vcs.value?.branch;
     return Container(
       margin: const EdgeInsets.only(bottom: 2),

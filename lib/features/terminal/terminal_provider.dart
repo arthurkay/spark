@@ -248,8 +248,13 @@ class PtyController extends ChangeNotifier {
   }
 }
 
-final terminalProvider = ChangeNotifierProvider.family
-    .autoDispose<PtyController?, String?>((ref, directory) {
+/// Deliberately NOT autoDispose: the controller (terminal buffer, PTY,
+/// websocket) outlives the sheet, so closing the sheet just hides it and
+/// reopening reattaches to the same shell with its scrollback intact. Ending
+/// the session is an explicit action in the sheet, which kills the PTY and
+/// invalidates this provider so the next open starts fresh.
+final terminalProvider =
+    ChangeNotifierProvider.family<PtyController?, String?>((ref, directory) {
   final client = ref.watch(opencodeClientProvider);
   if (client == null) return null;
 
