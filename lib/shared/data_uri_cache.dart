@@ -28,6 +28,19 @@ abstract final class DataUriCache {
     return decoded;
   }
 
+  /// Decoded bytes from a raw base64 string, or null if it can't be decoded.
+  static Uint8List? bytesOfBase64(String raw) {
+    if (_bytes.containsKey(raw)) return _bytes[raw];
+    Uint8List? decoded;
+    try {
+      decoded = base64Decode(raw);
+    } catch (_) {
+      decoded = null;
+    }
+    _put(_bytes, raw, decoded);
+    return decoded;
+  }
+
   /// UTF-8 text of a base64 `data:` URI — used for inline SVG markup.
   static String? textOf(String url) {
     if (_text.containsKey(url)) return _text[url];

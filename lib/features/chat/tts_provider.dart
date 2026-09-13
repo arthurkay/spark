@@ -230,8 +230,11 @@ class TtsController {
     _onStateChange?.call(state);
   }
 
-  Future<void> speak(String text,
-      {OpencodeClient? client, String? messageId}) async {
+  Future<void> speak(
+    String text, {
+    OpencodeClient? client,
+    String? messageId,
+  }) async {
     await init();
     final generation = ++_generation;
     // Once per narration, not per chunk: previews from the settings sheet
@@ -255,12 +258,14 @@ class TtsController {
 
     final needsLlm = client != null && processed.length >= _minTextForLlm;
     if (needsLlm) {
-      _updateState(TtsState(
-        status: TtsStatus.processing,
-        messageId: messageId,
-        text: _preview(text),
-        sourceText: text,
-      ));
+      _updateState(
+        TtsState(
+          status: TtsStatus.processing,
+          messageId: messageId,
+          text: _preview(text),
+          sourceText: text,
+        ),
+      );
       final rewritten = await _llmRewrite(client, processed);
       // The rewrite takes seconds, and the overlay invites the user to cancel
       // during it. Without this check the cancelled utterance would start
@@ -270,8 +275,11 @@ class TtsController {
         processed = rewritten;
         if (messageId != null) {
           // Keyed on the pre-rewrite text, which is what the next lookup has.
-          await NarrationCache.instance
-              .write(messageId, _preprocessForSpeech(text), rewritten);
+          await NarrationCache.instance.write(
+            messageId,
+            _preprocessForSpeech(text),
+            rewritten,
+          );
         }
       }
     }
@@ -280,21 +288,26 @@ class TtsController {
     await _play(processed, messageId: messageId, sourceText: text);
   }
 
-  Future<void> _play(String narration,
-      {String? messageId, String? sourceText}) async {
+  Future<void> _play(
+    String narration, {
+    String? messageId,
+    String? sourceText,
+  }) async {
     _fullText = narration;
     progress.value = null;
     // Starting narration may flush something already speaking — a thinking
     // filler, or a previous narration. The engine reports the flushed
     // utterance as cancelled; without this it would wipe the state just set.
     _expectInterruption = true;
-    _updateState(TtsState(
-      status: TtsStatus.playing,
-      messageId: messageId,
-      text: _preview(narration),
-      fullText: narration,
-      sourceText: sourceText,
-    ));
+    _updateState(
+      TtsState(
+        status: TtsStatus.playing,
+        messageId: messageId,
+        text: _preview(narration),
+        fullText: narration,
+        sourceText: sourceText,
+      ),
+    );
     await _speakFrom(0);
   }
 
@@ -419,7 +432,8 @@ class TtsController {
       );
       final rewritten = response.parts
           .where(
-              (p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
+            (p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false),
+          )
           .map((p) => p.text!)
           .join('\n\n');
       unawaited(client.compactSession(sessionId));
@@ -513,7 +527,9 @@ class TtsStateNotifier extends Notifier<TtsState> {
         .map((p) => p.text!)
         .join('\n\n');
     if (text.isEmpty) return;
-    ref.read(ttsControllerProvider).speak(
+    ref
+        .read(ttsControllerProvider)
+        .speak(
           text,
           client: ref.read(opencodeClientProvider),
           messageId: message.info.id,

@@ -126,10 +126,9 @@ class DiffScreen extends ConsumerWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .muted
-                                  .withAlpha(40),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.muted.withAlpha(40),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(d.file).xSmall.muted,

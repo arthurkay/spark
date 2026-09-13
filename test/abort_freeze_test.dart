@@ -16,11 +16,11 @@ MessageWithParts _msg({
 }
 
 MessagePart _tool(String status) => MessagePart.fromJson({
-      'id': 'part_$status',
-      'type': 'tool',
-      'tool': 'bash',
-      'state': {'status': status, 'output': 'partial'},
-    });
+  'id': 'part_$status',
+  'type': 'tool',
+  'tool': 'bash',
+  'state': {'status': status, 'output': 'partial'},
+});
 
 void main() {
   group('frozenTail', () {
@@ -54,19 +54,17 @@ void main() {
           parts: [_tool('running'), _tool('pending'), _tool('completed')],
         ),
       ], 9999);
-      expect(
-        frozen.last.parts.map((p) => p.state),
-        ['stopped', 'stopped', 'completed'],
-      );
+      expect(frozen.last.parts.map((p) => p.state), [
+        'stopped',
+        'stopped',
+        'completed',
+      ]);
     });
 
     test('freezing a tool part preserves the output already collected', () {
-      final frozen = frozenTail(
-        [
-          _msg(role: 'assistant', parts: [_tool('running')])
-        ],
-        9999,
-      );
+      final frozen = frozenTail([
+        _msg(role: 'assistant', parts: [_tool('running')]),
+      ], 9999);
       final state = frozen.last.parts.single.raw['state'] as Map;
       expect(state['output'], 'partial');
     });

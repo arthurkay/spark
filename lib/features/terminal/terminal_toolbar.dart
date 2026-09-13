@@ -26,9 +26,7 @@ class _TerminalToolbarState extends State<TerminalToolbar> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.card,
         border: Border(
-          top: BorderSide(
-            color: Theme.of(context).colorScheme.border,
-          ),
+          top: BorderSide(color: Theme.of(context).colorScheme.border),
         ),
       ),
       child: Row(
@@ -68,14 +66,8 @@ class _TerminalToolbarState extends State<TerminalToolbar> {
     );
   }
 
-  Widget _buildKey({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return IconButton.ghost(
-      icon: Icon(icon, size: 18),
-      onPressed: onPressed,
-    );
+  Widget _buildKey({required IconData icon, required VoidCallback onPressed}) {
+    return IconButton.ghost(icon: Icon(icon, size: 18), onPressed: onPressed);
   }
 
   Widget _buildTextKey({

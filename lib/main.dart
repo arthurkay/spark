@@ -128,16 +128,11 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
       value: overlayStyle,
       child: ComponentTheme<FocusOutlineTheme>(
         data: FocusOutlineTheme(
-          border: Border.all(
-            color: Colors.transparent,
-            width: 0,
-          ),
+          border: Border.all(color: Colors.transparent, width: 0),
           align: 0,
         ),
         child: ComponentTheme<TextFieldTheme>(
-          data: TextFieldTheme(
-            border: Border.all(color: Colors.transparent),
-          ),
+          data: TextFieldTheme(border: Border.all(color: Colors.transparent)),
           child: ShadcnApp.router(
             title: 'Spark',
             debugShowCheckedModeBanner: false,

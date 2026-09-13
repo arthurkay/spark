@@ -14,7 +14,7 @@ class StoredConnection {
 
 class ConnectionStore {
   ConnectionStore({FlutterSecureStorage? secureStorage})
-      : _secure = secureStorage ?? const FlutterSecureStorage();
+    : _secure = secureStorage ?? const FlutterSecureStorage();
 
   static const _configsKey = 'opencode_servers';
   static const _activeIdKey = 'opencode_active_server';
@@ -57,7 +57,9 @@ class ConnectionStore {
   Future<void> saveAll(List<ServerConfig> configs) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _configsKey, jsonEncode(configs.map((c) => c.toJson()).toList()));
+      _configsKey,
+      jsonEncode(configs.map((c) => c.toJson()).toList()),
+    );
   }
 
   Future<void> setActiveId(String id) async {

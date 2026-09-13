@@ -27,8 +27,10 @@ void main() {
     });
 
     test('no line exceeds the TTY-safe width', () {
-      final wrapped =
-          wrapBase64Lines(base64Encode(utf8.encode('y' * 50000)), width: 76);
+      final wrapped = wrapBase64Lines(
+        base64Encode(utf8.encode('y' * 50000)),
+        width: 76,
+      );
       for (final line in wrapped.split('\n')) {
         expect(line.length, lessThanOrEqualTo(76));
       }
@@ -102,8 +104,10 @@ void main() {
     });
 
     test('relative paths are joined to the directory', () {
-      expect(debugResolveTargetPath('lib/main.dart', '/home/me/app'),
-          '/home/me/app/lib/main.dart');
+      expect(
+        debugResolveTargetPath('lib/main.dart', '/home/me/app'),
+        '/home/me/app/lib/main.dart',
+      );
     });
 
     test('a trailing slash on the directory is not doubled', () {

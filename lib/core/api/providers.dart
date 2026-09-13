@@ -132,8 +132,8 @@ class ServerManagerController extends Notifier<ServerManagerState> {
 
 final serverManagerProvider =
     NotifierProvider<ServerManagerController, ServerManagerState>(
-  ServerManagerController.new,
-);
+      ServerManagerController.new,
+    );
 
 final opencodeClientProvider = Provider<OpencodeClient?>((ref) {
   final state = ref.watch(serverManagerProvider);
@@ -214,5 +214,10 @@ class SessionActivityController extends Notifier<Set<String>> {
 
 final sessionActivityProvider =
     NotifierProvider<SessionActivityController, Set<String>>(
-  SessionActivityController.new,
-);
+      SessionActivityController.new,
+    );
+
+final sessionBusyProvider = Provider.family<bool, String>((ref, sessionId) {
+  final busy = ref.watch(sessionActivityProvider);
+  return busy.contains(sessionId);
+});

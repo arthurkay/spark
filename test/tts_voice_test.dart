@@ -39,10 +39,11 @@ void main() {
         {'name': 'aa', 'locale': 'en-US'},
         {'name': 'mm', 'locale': 'de-DE'},
       ]);
-      expect(
-        voices.map((v) => '${v.locale}/${v.name}').toList(),
-        ['de-DE/mm', 'en-US/aa', 'en-US/zz'],
-      );
+      expect(voices.map((v) => '${v.locale}/${v.name}').toList(), [
+        'de-DE/mm',
+        'en-US/aa',
+        'en-US/zz',
+      ]);
     });
 
     test('garbage input yields an empty list, never a throw', () {
@@ -67,8 +68,10 @@ void main() {
         status: TtsStatus.playing,
         sourceText: '## original markdown',
       );
-      expect(state.copyWith(status: TtsStatus.paused).sourceText,
-          '## original markdown');
+      expect(
+        state.copyWith(status: TtsStatus.paused).sourceText,
+        '## original markdown',
+      );
     });
 
     test('clearText drops sourceText with the rest', () {

@@ -78,8 +78,11 @@ void main() {
       final chunks = walkChunks(text, max: 800);
       expect(chunks.length, greaterThan(1));
       for (final chunk in chunks.sublist(0, chunks.length - 1)) {
-        expect(chunk.trimRight(), endsWith('.'),
-            reason: 'seams should land on sentence ends');
+        expect(
+          chunk.trimRight(),
+          endsWith('.'),
+          reason: 'seams should land on sentence ends',
+        );
       }
       expect(chunks.join(), text);
     });

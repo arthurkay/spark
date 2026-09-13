@@ -70,8 +70,10 @@ class PtyController extends ChangeNotifier {
     if (_disposed) return;
     _setState(connecting: true);
     try {
-      final session =
-          await client.createPty(title: 'Terminal', directory: directory);
+      final session = await client.createPty(
+        title: 'Terminal',
+        directory: directory,
+      );
       _setState(session: session, connecting: false);
       _connectWebSocket(session.id);
     } catch (e) {
@@ -253,22 +255,23 @@ class PtyController extends ChangeNotifier {
 /// reopening reattaches to the same shell with its scrollback intact. Ending
 /// the session is an explicit action in the sheet, which kills the PTY and
 /// invalidates this provider so the next open starts fresh.
-final terminalProvider =
-    ChangeNotifierProvider.family<PtyController?, String?>((ref, directory) {
-  final client = ref.watch(opencodeClientProvider);
-  if (client == null) return null;
+final terminalProvider = ChangeNotifierProvider.family<PtyController?, String?>(
+  (ref, directory) {
+    final client = ref.watch(opencodeClientProvider);
+    if (client == null) return null;
 
-  final terminal = xterm.Terminal();
+    final terminal = xterm.Terminal();
 
-  final controller = PtyController(
-    client: client,
-    directory: directory,
-    terminal: terminal,
-  );
+    final controller = PtyController(
+      client: client,
+      directory: directory,
+      terminal: terminal,
+    );
 
-  ref.onDispose(controller.dispose);
+    ref.onDispose(controller.dispose);
 
-  controller.init();
+    controller.init();
 
-  return controller;
-});
+    return controller;
+  },
+);

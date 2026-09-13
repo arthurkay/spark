@@ -91,12 +91,12 @@ class _TtsPlayerState extends ConsumerState<_TtsPlayer> {
     final bool? up = velocity < -250
         ? true
         : velocity > 250
-            ? false
-            : _dragDelta < -40
-                ? true
-                : _dragDelta > 40
-                    ? false
-                    : null;
+        ? false
+        : _dragDelta < -40
+        ? true
+        : _dragDelta > 40
+        ? false
+        : null;
     _dragDelta = 0;
     if (up != null) _setSize(nextPlayerSize(_size, up: up));
   }
@@ -207,8 +207,10 @@ class _TtsPlayerState extends ConsumerState<_TtsPlayer> {
                       turns: _expanded ? 0.5 : 0,
                       duration: Motion.base,
                       curve: Motion.standard,
-                      child: const Icon(LucideIcons.chevronUp, size: 14)
-                          .iconMutedForeground,
+                      child: const Icon(
+                        LucideIcons.chevronUp,
+                        size: 14,
+                      ).iconMutedForeground,
                     ),
                   ],
                 ),
@@ -408,9 +410,7 @@ class _Transcript extends StatelessWidget {
                 TextSpan(
                   text: text.substring(end),
                   style: TextStyle(
-                    color: theme.colorScheme.foreground.withValues(
-                      alpha: 0.55,
-                    ),
+                    color: theme.colorScheme.foreground.withValues(alpha: 0.55),
                   ),
                 ),
               ],
@@ -478,7 +478,8 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
     return ValueListenableBuilder<TtsProgress?>(
       valueListenable: widget.progress,
       builder: (context, value, _) {
-        final fraction = _dragValue ??
+        final fraction =
+            _dragValue ??
             (widget.length == 0
                 ? 0.0
                 : ((value?.start ?? 0) / widget.length).clamp(0.0, 1.0));
@@ -514,8 +515,9 @@ class _PlayerTab extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
-          color:
-              selected ? theme.colorScheme.foreground : theme.colorScheme.muted,
+          color: selected
+              ? theme.colorScheme.foreground
+              : theme.colorScheme.muted,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(

@@ -61,10 +61,12 @@ class PermissionRequest {
       title: title,
       type: (data['type'] as String?) ?? action,
       metadata: data['metadata'] as Map<String, dynamic>? ?? const {},
-      callID: data['callID'] as String? ??
+      callID:
+          data['callID'] as String? ??
           tool?['callID'] as String? ??
           source?['callID'] as String?,
-      messageID: data['messageID'] as String? ??
+      messageID:
+          data['messageID'] as String? ??
           tool?['messageID'] as String? ??
           source?['messageID'] as String?,
       pattern: pattern,

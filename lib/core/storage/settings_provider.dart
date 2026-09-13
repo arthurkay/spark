@@ -51,26 +51,27 @@ class ThemeModeNotifier extends StateNotifier<String> {
   }
 }
 
-final collapseFilePermissionsProvider =
-    StateNotifierProvider<CollapseFilePermissionsNotifier, bool>((ref) {
-  return CollapseFilePermissionsNotifier(ref);
-});
+final collapseToolWidgetsProvider =
+    StateNotifierProvider<CollapseToolWidgetsNotifier, bool>((ref) {
+      return CollapseToolWidgetsNotifier(ref);
+    });
 
-class CollapseFilePermissionsNotifier extends StateNotifier<bool> {
-  CollapseFilePermissionsNotifier(this.ref) : super(false) {
+class CollapseToolWidgetsNotifier extends StateNotifier<bool> {
+  CollapseToolWidgetsNotifier(this.ref) : super(true) {
     _init();
   }
 
   final Ref ref;
 
   Future<void> _init() async {
-    final stored =
-        await ref.read(settingsStoreProvider).loadCollapseFilePermissions();
+    final stored = await ref
+        .read(settingsStoreProvider)
+        .loadCollapseToolWidgets();
     if (mounted) state = stored;
   }
 
   Future<void> toggle() async {
     state = !state;
-    await ref.read(settingsStoreProvider).saveCollapseFilePermissions(state);
+    await ref.read(settingsStoreProvider).saveCollapseToolWidgets(state);
   }
 }

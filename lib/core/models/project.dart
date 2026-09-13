@@ -14,11 +14,11 @@ class Project {
   final SessionTime? time;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'worktree': worktree,
-        if (vcs != null) 'vcs': vcs,
-        if (time != null) 'time': time!.toJson(),
-      };
+    'id': id,
+    'worktree': worktree,
+    if (vcs != null) 'vcs': vcs,
+    if (time != null) 'time': time!.toJson(),
+  };
 
   factory Project.fromJson(Map<String, dynamic> json) {
     final timeJson = json['time'];

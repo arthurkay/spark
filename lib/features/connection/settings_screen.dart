@@ -62,9 +62,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
               const Gap(12),
-              Text(
-                'Remove "${config.name}" from your saved servers?',
-              ).muted,
+              Text('Remove "${config.name}" from your saved servers?').muted,
               const Gap(20),
               DestructiveButton(
                 onPressed: () {
@@ -139,7 +137,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 child: Text(
                   'No servers saved yet.',
                   style: TextStyle(
-                      color: Theme.of(context).colorScheme.mutedForeground),
+                    color: Theme.of(context).colorScheme.mutedForeground,
+                  ),
                 ),
               ),
             )
@@ -253,18 +252,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Collapse file permissions'),
+                      const Text('Collapse tool widgets'),
                       Text(
-                        'Hide details for glob, read, edit, write until tapped',
+                        'Hide tool output (glob, read, edit, bash, etc.) until tapped',
                       ).xSmall.muted,
                     ],
                   ),
                 ),
                 const Gap(8),
                 Switch(
-                  value: ref.watch(collapseFilePermissionsProvider),
+                  value: ref.watch(collapseToolWidgetsProvider),
                   onChanged: (_) {
-                    ref.read(collapseFilePermissionsProvider.notifier).toggle();
+                    ref.read(collapseToolWidgetsProvider.notifier).toggle();
                   },
                 ),
               ],
@@ -405,8 +404,8 @@ class _NarrationCacheTileState extends State<_NarrationCacheTile> {
                   stats == null
                       ? 'Checking…'
                       : count == 0
-                          ? 'Nothing saved yet'
-                          : '$count message${count == 1 ? '' : 's'} · ${stats.sizeLabel}',
+                      ? 'Nothing saved yet'
+                      : '$count message${count == 1 ? '' : 's'} · ${stats.sizeLabel}',
                 ).xSmall.muted,
               ],
             ),
@@ -447,8 +446,11 @@ class _VoiceTileState extends ConsumerState<_VoiceTile> {
   Future<void> _refresh() async {
     final voice = await SettingsStore().loadTtsVoice();
     if (mounted) {
-      setState(() => _currentLabel =
-          voice == null ? null : '${voice.name} (${voice.locale})');
+      setState(
+        () => _currentLabel = voice == null
+            ? null
+            : '${voice.name} (${voice.locale})',
+      );
     }
   }
 
@@ -492,7 +494,9 @@ class _VoiceTileState extends ConsumerState<_VoiceTile> {
                       // variants, then the rest — an alphabetical list opens
                       // on Arabic with the useful voices pages away.
                       final lang = PlatformDispatcher
-                          .instance.locale.languageCode
+                          .instance
+                          .locale
+                          .languageCode
                           .toLowerCase();
                       int rank(TtsVoice v) {
                         final locale = v.locale.toLowerCase();
@@ -501,7 +505,8 @@ class _VoiceTileState extends ConsumerState<_VoiceTile> {
                         return 2;
                       }
 
-                      final voices = [...snapshot.data!]..sort((a, b) {
+                      final voices = [...snapshot.data!]
+                        ..sort((a, b) {
                           final byRank = rank(a).compareTo(rank(b));
                           if (byRank != 0) return byRank;
                           final byLocale = a.locale.compareTo(b.locale);
@@ -512,10 +517,9 @@ class _VoiceTileState extends ConsumerState<_VoiceTile> {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(
-                            child:
-                                const Text('No voices reported by the engine')
-                                    .muted
-                                    .small,
+                            child: const Text(
+                              'No voices reported by the engine',
+                            ).muted.small,
                           ),
                         );
                       }
@@ -564,8 +568,10 @@ class _VoiceTileState extends ConsumerState<_VoiceTile> {
         if (!sheetContext.mounted) return;
         closeSheet(sheetContext);
         if (!mounted) return;
-        showAppToast(context,
-            title: voice == null ? 'Using system voice' : 'Voice selected');
+        showAppToast(
+          context,
+          title: voice == null ? 'Using system voice' : 'Voice selected',
+        );
         await _refresh();
       },
       child: Padding(

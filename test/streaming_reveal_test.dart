@@ -41,8 +41,11 @@ void main() {
       for (final prefix in walkReveal(text)) {
         if (prefix.length == text.length) continue;
         // A prefix must end at a break, so no half-word is ever on screen.
-        expect(prefix.endsWith(' ') || prefix.endsWith('\n'), isTrue,
-            reason: 'partial word: "$prefix"');
+        expect(
+          prefix.endsWith(' ') || prefix.endsWith('\n'),
+          isTrue,
+          reason: 'partial word: "$prefix"',
+        );
       }
     });
 
@@ -94,26 +97,28 @@ void main() {
 
   group('StreamingText widget', () {
     Widget host(String text, {required bool streaming}) => Directionality(
-          textDirection: TextDirection.ltr,
-          child: StreamingText(
-            text: text,
-            streaming: streaming,
-            builder: (context, shown) => Text(shown),
-          ),
-        );
+      textDirection: TextDirection.ltr,
+      child: StreamingText(
+        text: text,
+        streaming: streaming,
+        builder: (context, shown) => Text(shown),
+      ),
+    );
 
     String shownText(WidgetTester tester) =>
         tester.widget<Text>(find.byType(Text)).data!;
 
-    testWidgets('a completed message renders whole immediately',
-        (tester) async {
+    testWidgets('a completed message renders whole immediately', (
+      tester,
+    ) async {
       const text = 'This turn already finished before it was built.';
       await tester.pumpWidget(host(text, streaming: false));
       expect(shownText(tester), text);
     });
 
-    testWidgets('a live stream reveals progressively, then completes',
-        (tester) async {
+    testWidgets('a live stream reveals progressively, then completes', (
+      tester,
+    ) async {
       const text = 'The handler needs a null check before it dereferences.';
       await tester.pumpWidget(host(text, streaming: true));
       // Nothing revealed on the first frame of a fresh stream.
@@ -122,22 +127,29 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       final first = shownText(tester);
       expect(first, isNotEmpty);
-      expect(first.length, lessThan(text.length),
-          reason: 'must not dump the whole message at once');
+      expect(
+        first.length,
+        lessThan(text.length),
+        reason: 'must not dump the whole message at once',
+      );
       expect(text.startsWith(first), isTrue);
 
       await tester.pump(const Duration(milliseconds: 50));
       final second = shownText(tester);
-      expect(second.length, greaterThan(first.length),
-          reason: 'each tick must reveal more');
+      expect(
+        second.length,
+        greaterThan(first.length),
+        reason: 'each tick must reveal more',
+      );
 
       // Runs to completion rather than stalling part-way.
       await tester.pump(const Duration(seconds: 3));
       expect(shownText(tester), text);
     });
 
-    testWidgets('every revealed prefix ends on a word boundary',
-        (tester) async {
+    testWidgets('every revealed prefix ends on a word boundary', (
+      tester,
+    ) async {
       const text = 'one two three four five six seven eight nine ten eleven';
       await tester.pumpWidget(host(text, streaming: true));
       for (var i = 0; i < 12; i++) {
@@ -158,26 +170,31 @@ void main() {
       expect(shownText(tester), text);
     });
 
-    testWidgets('a long message joined mid-stream is not replayed',
-        (tester) async {
+    testWidgets('a long message joined mid-stream is not replayed', (
+      tester,
+    ) async {
       final text = 'word ' * 100;
       await tester.pumpWidget(host(text, streaming: true));
       // Above the cold-start limit, so it renders whole on the first frame.
       expect(shownText(tester), text);
     });
 
-    testWidgets('appended text keeps animating from where it was',
-        (tester) async {
+    testWidgets('appended text keeps animating from where it was', (
+      tester,
+    ) async {
       await tester.pumpWidget(host('short start here', streaming: true));
       await tester.pump(const Duration(seconds: 2));
       expect(shownText(tester), 'short start here');
       await tester.pumpWidget(
-          host('short start here plus more words', streaming: true));
+        host('short start here plus more words', streaming: true),
+      );
       await tester.pump(const Duration(milliseconds: 50));
       final shown = shownText(tester);
       expect(shown.length, greaterThan('short start here'.length));
-      expect(shown.length,
-          lessThanOrEqualTo('short start here plus more words'.length));
+      expect(
+        shown.length,
+        lessThanOrEqualTo('short start here plus more words'.length),
+      );
     });
   });
 }

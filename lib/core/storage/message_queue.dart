@@ -22,20 +22,21 @@ class QueuedMessage {
   final List<Map<String, dynamic>>? attachmentData;
 
   Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'text': text,
-        'timestamp': timestamp,
-        if (model != null) 'model': model!.toJson(),
-        if (agent != null) 'agent': agent,
-        if (attachmentData != null) 'attachments': attachmentData,
-      };
+    'sessionId': sessionId,
+    'text': text,
+    'timestamp': timestamp,
+    if (model != null) 'model': model!.toJson(),
+    if (agent != null) 'agent': agent,
+    if (attachmentData != null) 'attachments': attachmentData,
+  };
 
   factory QueuedMessage.fromJson(Map<String, dynamic> json) {
     final modelJson = json['model'] as Map<String, dynamic>?;
     return QueuedMessage(
       sessionId: json['sessionId'] as String,
       text: json['text'] as String,
-      timestamp: (json['timestamp'] as num?)?.toInt() ??
+      timestamp:
+          (json['timestamp'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
       model: modelJson != null
           ? ModelSelection(
@@ -72,9 +73,7 @@ class MessageQueue {
 
   Future<void> _save() async {
     final q = _queue ?? [];
-    await _cache.write(_queueKey, {
-      'items': q.map((m) => m.toJson()).toList(),
-    });
+    await _cache.write(_queueKey, {'items': q.map((m) => m.toJson()).toList()});
   }
 
   Future<int> get length async => (await _load()).length;

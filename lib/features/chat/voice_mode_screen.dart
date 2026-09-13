@@ -132,7 +132,8 @@ VoiceActivity? describeActivity(MessageWithParts? tail) {
     // grounded in what is known.
     final thought = speakableThought(rawReasoning ?? '');
     return VoiceActivity(
-      spoken: thought ??
+      spoken:
+          thought ??
           (toolLine == null ? 'Thinking it through now.' : "I'm $toolLine."),
       shown: reasoningTail,
     );
@@ -262,7 +263,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
         ? const Duration(seconds: 5)
         : Duration(
             seconds:
-                math.min(12 + _fillerStep * 6, 35) + math.Random().nextInt(6));
+                math.min(12 + _fillerStep * 6, 35) + math.Random().nextInt(6),
+          );
     _fillerTimer = Timer(delay, () {
       if (!mounted || _closing || _phase != VoicePhase.waiting) return;
       // Prefer what the turn is actually doing; fall back to reassurance. A
@@ -335,9 +337,7 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
           _send(result.recognizedWords.trim());
         }
       },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.dictation,
-      ),
+      listenOptions: SpeechListenOptions(listenMode: ListenMode.dictation),
     );
   }
 
@@ -349,7 +349,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     _scheduleFiller();
     await _speech.stop();
     final model = ref.read(selectedModelProvider(widget.sessionId));
-    final agent = ref.read(selectedAgentProvider) ??
+    final agent =
+        ref.read(selectedAgentProvider) ??
         ref.read(defaultAgentProvider) ??
         'build';
     await ref
@@ -427,8 +428,10 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
   @override
   Widget build(BuildContext context) {
     ref.listen(ttsStateProvider, _onTtsChange);
-    ref.listen(chatControllerProvider(widget.sessionId),
-        (prev, next) => _onChatChange(next));
+    ref.listen(
+      chatControllerProvider(widget.sessionId),
+      (prev, next) => _onChatChange(next),
+    );
     final tts = ref.watch(ttsStateProvider);
     final theme = Theme.of(context);
 
@@ -436,8 +439,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     // from the user's seat the agent is still working until speech starts.
     final effectivePhase =
         _phase == VoicePhase.speaking && tts.status == TtsStatus.processing
-            ? VoicePhase.waiting
-            : _phase;
+        ? VoicePhase.waiting
+        : _phase;
 
     // Loop the pulse only while it is on screen.
     if (effectivePhase == VoicePhase.waiting) {
@@ -481,38 +484,39 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
                       color: theme.colorScheme.primary,
                     )
                   : effectivePhase == VoicePhase.waiting
-                      // Breathing, not static: long turns read as hung
-                      // otherwise.
-                      ? AnimatedBuilder(
-                          animation: _thinkingPulse,
-                          builder: (context, child) {
-                            final t = Curves.easeInOut
-                                .transform(_thinkingPulse.value);
-                            return Transform.scale(
-                              scale: 0.88 + 0.18 * t,
-                              child: Opacity(
-                                opacity: 0.45 + 0.55 * t,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Icon(
-                            LucideIcons.brain,
-                            size: 56,
-                            color: theme.colorScheme.primary,
+                  // Breathing, not static: long turns read as hung
+                  // otherwise.
+                  ? AnimatedBuilder(
+                      animation: _thinkingPulse,
+                      builder: (context, child) {
+                        final t = Curves.easeInOut.transform(
+                          _thinkingPulse.value,
+                        );
+                        return Transform.scale(
+                          scale: 0.88 + 0.18 * t,
+                          child: Opacity(
+                            opacity: 0.45 + 0.55 * t,
+                            child: child,
                           ),
-                        )
-                      : Icon(
-                          effectivePhase == VoicePhase.listening
-                              ? LucideIcons.mic
-                              : effectivePhase == VoicePhase.error
-                                  ? LucideIcons.micOff
-                                  : LucideIcons.brain,
-                          size: 56,
-                          color: effectivePhase == VoicePhase.listening
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.mutedForeground,
-                        ),
+                        );
+                      },
+                      child: Icon(
+                        LucideIcons.brain,
+                        size: 56,
+                        color: theme.colorScheme.primary,
+                      ),
+                    )
+                  : Icon(
+                      effectivePhase == VoicePhase.listening
+                          ? LucideIcons.mic
+                          : effectivePhase == VoicePhase.error
+                          ? LucideIcons.micOff
+                          : LucideIcons.brain,
+                      size: 56,
+                      color: effectivePhase == VoicePhase.listening
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.mutedForeground,
+                    ),
             ),
             const Gap(20),
             Center(child: Text(label).h4),
@@ -533,15 +537,15 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
                           fullText: tts.fullText ?? '',
                         )
                       : effectivePhase == VoicePhase.waiting
-                          ? Text(
-                              _activity?.shown ??
-                                  (_fillerText.isEmpty ? ' ' : _fillerText),
-                              textAlign: TextAlign.center,
-                            ).muted.italic
-                          : Text(
-                              _partial.isEmpty ? ' ' : _partial,
-                              textAlign: TextAlign.center,
-                            ).large,
+                      ? Text(
+                          _activity?.shown ??
+                              (_fillerText.isEmpty ? ' ' : _fillerText),
+                          textAlign: TextAlign.center,
+                        ).muted.italic
+                      : Text(
+                          _partial.isEmpty ? ' ' : _partial,
+                          textAlign: TextAlign.center,
+                        ).large,
                 ),
               ),
             ),
@@ -562,8 +566,8 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
                     effectivePhase == VoicePhase.speaking
                         ? LucideIcons.mic
                         : effectivePhase == VoicePhase.listening
-                            ? LucideIcons.check
-                            : LucideIcons.mic,
+                        ? LucideIcons.check
+                        : LucideIcons.mic,
                     size: 30,
                     color: effectivePhase == VoicePhase.listening
                         ? theme.colorScheme.background

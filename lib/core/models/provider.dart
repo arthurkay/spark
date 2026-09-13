@@ -35,10 +35,10 @@ class ProviderInfo {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'models': {for (final m in models) m.id: m.toJson()},
-      };
+    'id': id,
+    'name': name,
+    'models': {for (final m in models) m.id: m.toJson()},
+  };
 }
 
 class Agent {
@@ -64,11 +64,11 @@ class Agent {
   }
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (description != null) 'description': description,
-        'mode': mode,
-        'hidden': hidden,
-      };
+    'name': name,
+    if (description != null) 'description': description,
+    'mode': mode,
+    'hidden': hidden,
+  };
 }
 
 class ModelSelection {
@@ -78,9 +78,9 @@ class ModelSelection {
   final String modelID;
 
   Map<String, String> toJson() => {
-        'providerID': providerID,
-        'modelID': modelID,
-      };
+    'providerID': providerID,
+    'modelID': modelID,
+  };
 
   // Value equality matters for rebuild scoping: currentModelSelectionProvider
   // derives a fresh instance from the message list on every chat notify. Without

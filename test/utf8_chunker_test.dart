@@ -33,8 +33,11 @@ void main() {
       for (var keep = 1; keep < 4; keep++) {
         final bytes = [...utf8.encode('x'), ...emoji.take(keep)];
         final split = splitTrailingIncompleteUtf8(bytes);
-        expect(utf8.decode(split.complete), 'x',
-            reason: 'with $keep of 4 emoji bytes present');
+        expect(
+          utf8.decode(split.complete),
+          'x',
+          reason: 'with $keep of 4 emoji bytes present',
+        );
         expect(split.incomplete, emoji.take(keep).toList());
       }
     });

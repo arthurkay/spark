@@ -12,9 +12,9 @@ class SessionTime {
   }
 
   Map<String, dynamic> toJson() => {
-        if (created != null) 'created': created,
-        if (updated != null) 'updated': updated,
-      };
+    if (created != null) 'created': created,
+    if (updated != null) 'updated': updated,
+  };
 }
 
 class Session {
@@ -46,10 +46,10 @@ class Session {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        if (title != null) 'title': title,
-        if (parentID != null) 'parentID': parentID,
-        if (directory != null) 'directory': directory,
-        if (time != null) 'time': time!.toJson(),
-      };
+    'id': id,
+    if (title != null) 'title': title,
+    if (parentID != null) 'parentID': parentID,
+    if (directory != null) 'directory': directory,
+    if (time != null) 'time': time!.toJson(),
+  };
 }

@@ -64,10 +64,7 @@ void openModelPicker({
   );
 }
 
-void openAgentPicker({
-  required BuildContext context,
-  required WidgetRef ref,
-}) {
+void openAgentPicker({required BuildContext context, required WidgetRef ref}) {
   FocusManager.instance.primaryFocus?.unfocus();
   openSheetOverlay(
     context: context,
@@ -109,8 +106,11 @@ void openAgentPicker({
                                     alignment: Alignment.centerLeft,
                                     onPressed: () {
                                       ref
-                                          .read(selectedAgentProvider.notifier)
-                                          .state = null;
+                                              .read(
+                                                selectedAgentProvider.notifier,
+                                              )
+                                              .state =
+                                          null;
                                       closeSheet(context);
                                     },
                                     child: const Text('Reset to default'),
@@ -124,7 +124,8 @@ void openAgentPicker({
                                     onPressed: () {
                                       ref
                                           .read(selectedAgentProvider.notifier)
-                                          .state = agent.name;
+                                          .state = agent
+                                          .name;
                                       closeSheet(context);
                                     },
                                     child: Row(
@@ -142,8 +143,10 @@ void openAgentPicker({
                                           ),
                                         ),
                                         if (effectiveAgent == agent.name)
-                                          const Icon(LucideIcons.check,
-                                              size: 16),
+                                          const Icon(
+                                            LucideIcons.check,
+                                            size: 16,
+                                          ),
                                       ],
                                     ),
                                   ),
@@ -245,7 +248,7 @@ class _ModelPickerListState extends State<_ModelPickerList> {
               }
               final selected =
                   widget.selectedModel?.providerID == row.providerID &&
-                      widget.selectedModel?.modelID == model.id;
+                  widget.selectedModel?.modelID == model.id;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: GhostButton(
@@ -290,9 +293,7 @@ class _ModelPickerListState extends State<_ModelPickerList> {
 /// One row of the flattened model picker: either a provider header
 /// ([model] == null) or a selectable model.
 class _PickerRow {
-  const _PickerRow.header(this.label)
-      : providerID = null,
-        model = null;
+  const _PickerRow.header(this.label) : providerID = null, model = null;
 
   const _PickerRow.model(this.providerID, this.model) : label = '';
 

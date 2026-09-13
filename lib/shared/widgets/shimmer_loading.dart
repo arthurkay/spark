@@ -7,11 +7,7 @@ import '../../app/motion.dart';
 /// Colours come from the theme rather than being hardcoded — the previous fixed
 /// light-grey palette was glaring in dark mode.
 class ShimmerLoading extends StatefulWidget {
-  const ShimmerLoading({
-    super.key,
-    required this.child,
-    this.isLoading = true,
-  });
+  const ShimmerLoading({super.key, required this.child, this.isLoading = true});
 
   final Widget child;
   final bool isLoading;

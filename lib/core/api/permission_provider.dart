@@ -12,8 +12,8 @@ import '../notifications/notification_service.dart';
 
 final pendingPermissionsProvider =
     StateProvider<Map<String, PermissionRequest>>(
-  (ref) => const <String, PermissionRequest>{},
-);
+      (ref) => const <String, PermissionRequest>{},
+    );
 
 final autoApprovePermissionsProvider = StateProvider<bool>((ref) => false);
 
@@ -140,5 +140,5 @@ class PermissionListenerController extends Notifier<void> {
 
 final permissionListenerProvider =
     NotifierProvider<PermissionListenerController, void>(
-  PermissionListenerController.new,
-);
+      PermissionListenerController.new,
+    );

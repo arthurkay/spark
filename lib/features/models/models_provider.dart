@@ -7,8 +7,9 @@ import '../../core/models/provider.dart';
 import '../../core/storage/cache_service.dart';
 import '../chat/chat_provider.dart';
 
-final configProvidersProvider =
-    FutureProvider<Map<String, dynamic>>((ref) async {
+final configProvidersProvider = FutureProvider<Map<String, dynamic>>((
+  ref,
+) async {
   final client = ref.watch(opencodeClientProvider);
   if (client == null) return {};
   try {
@@ -67,8 +68,10 @@ final agentsProvider = FutureProvider<List<Agent>>((ref) async {
 
 final _selectedModelOverride = StateProvider<ModelSelection?>((ref) => null);
 
-final selectedModelProvider =
-    Provider.family<ModelSelection?, String>((ref, sessionId) {
+final selectedModelProvider = Provider.family<ModelSelection?, String>((
+  ref,
+  sessionId,
+) {
   final override = ref.watch(_selectedModelOverride);
   if (override != null) return override;
   final fromLastMessage = ref.watch(currentModelSelectionProvider(sessionId));
@@ -127,8 +130,10 @@ final currentModelProvider = Provider.family<String?, String>((ref, sessionId) {
   return null;
 });
 
-final currentModelSelectionProvider =
-    Provider.family<ModelSelection?, String>((ref, sessionId) {
+final currentModelSelectionProvider = Provider.family<ModelSelection?, String>((
+  ref,
+  sessionId,
+) {
   final controller = ref.watch(chatControllerProvider(sessionId));
   final messages = controller.state.messages;
   for (final message in messages.reversed) {
