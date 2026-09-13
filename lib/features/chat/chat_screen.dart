@@ -401,8 +401,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Drive the typing dots off the working flag rather than from build().
     ref.listenManual<bool>(
-      chatControllerProvider(widget.sessionId)
-          .select((c) => c.state.working && !c.state.aborting),
+      chatControllerProvider(widget.sessionId).select((c) => c.state.working),
       (prev, next) {
         if (next && !_workingAnimController.isAnimating) {
           _workingAnimController.repeat();
@@ -434,7 +433,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final globalBusy = ref.watch(
       sessionActivityProvider.select((s) => s.contains(widget.sessionId)),
     );
-    final working = (chrome.working || globalBusy) && !chrome.aborting;
+    final working = chrome.working || globalBusy;
     final agentLabel = currentAgent;
     final sessionDir =
         ref.watch(sessionDirectoryProvider(widget.sessionId)).value;
@@ -523,7 +522,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 controller: _composerController,
                 sending: chrome.sending,
                 working: working,
-                aborting: chrome.aborting,
                 error: chrome.error,
                 errorType: chrome.errorType,
                 statusCode: chrome.statusCode,
@@ -842,7 +840,6 @@ class _Composer extends ConsumerStatefulWidget {
     required this.controller,
     required this.sending,
     required this.working,
-    required this.aborting,
     required this.error,
     required this.errorType,
     required this.statusCode,
@@ -861,7 +858,6 @@ class _Composer extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final bool sending;
   final bool working;
-  final bool aborting;
   final String? error;
   final String? errorType;
   final int? statusCode;
@@ -1116,7 +1112,10 @@ class _ComposerState extends ConsumerState<_Composer> {
                                 child: const Text('Dismiss').xSmall,
                               ),
                               TextButton(
-                                onPressed: widget.onAbort,
+                                onPressed: () {
+                                  Haptics.commit();
+                                  widget.onAbort();
+                                },
                                 child: const Text('Abort session').xSmall,
                               ),
                             ],
@@ -1269,16 +1268,21 @@ class _ComposerState extends ConsumerState<_Composer> {
                           ),
                         ),
                         const Gap(4),
-                        if (widget.working ||
-                            widget.aborting ||
-                            widget.error != null)
+                        if (widget.working || widget.error != null)
                           // Primary, not destructive: this is the send button
                           // changing state while a turn runs, not an alarm.
+                          //
+                          // Stopping reverts it to send on the same tap, so the
+                          // icon flipping back is the receipt — the follow-up
+                          // message needs no second wait.
                           IconButton.primary(
                             icon: const Icon(LucideIcons.square),
                             size: ButtonSize.small,
                             shape: ButtonShape.circle,
-                            onPressed: widget.onAbort,
+                            onPressed: () {
+                              Haptics.commit();
+                              widget.onAbort();
+                            },
                           )
                         else
                           IconButton.primary(
