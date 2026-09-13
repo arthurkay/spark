@@ -61,7 +61,6 @@ class ChatState {
     this.hasMoreOlder = true,
     this.sending = false,
     this.working = false,
-    this.aborting = false,
     this.error,
     this.errorType,
     this.statusCode,
@@ -76,7 +75,6 @@ class ChatState {
   final bool hasMoreOlder;
   final bool sending;
   final bool working;
-  final bool aborting;
   final String? error;
   final String? errorType;
   final int? statusCode;
@@ -91,7 +89,6 @@ class ChatState {
     bool? hasMoreOlder,
     bool? sending,
     bool? working,
-    bool? aborting,
     String? error,
     bool clearError = false,
     String? errorType,
@@ -108,7 +105,6 @@ class ChatState {
       hasMoreOlder: hasMoreOlder ?? this.hasMoreOlder,
       sending: sending ?? this.sending,
       working: working ?? this.working,
-      aborting: aborting ?? this.aborting,
       error: clearError ? null : (error ?? this.error),
       errorType: clearError ? null : (errorType ?? this.errorType),
       statusCode: clearError ? null : (statusCode ?? this.statusCode),
@@ -138,6 +134,48 @@ bool isTailGenerating(List<MessageWithParts> messages) {
   if (info.role != 'assistant') return false;
   if (info.hasError) return false;
   return info.timeCompleted == null;
+}
+
+/// [messages] with its streaming tail marked finished as of [completedAt].
+///
+/// "Still going" is read off the message itself, not off [ChatState]: the
+/// word-by-word reveal keys on `time.completed` being unset and a tool pill on
+/// a `running` status. Clearing `working` alone therefore leaves the text
+/// trickling out and the pills spinning after the user has stopped the turn, so
+/// an abort stamps the tail locally and the next reload replaces it with the
+/// server's own account.
+List<MessageWithParts> frozenTail(
+  List<MessageWithParts> messages,
+  int completedAt,
+) {
+  if (messages.isEmpty) return messages;
+  final tail = messages.last;
+  if (tail.info.role != 'assistant') return messages;
+  final info = tail.info.timeCompleted != null
+      ? tail.info
+      : MessageInfo.fromJson({
+          ...tail.info.toJson(),
+          'time': {...?tail.info.time, 'completed': completedAt},
+        });
+  // 'stopped' is not a server status, so it falls through the tool badge's
+  // switch to a muted label — which is what a tool cut off mid-run was.
+  final parts = [
+    for (final part in tail.parts)
+      if (part.state == 'running' || part.state == 'pending')
+        MessagePart.fromJson({
+          ...part.raw,
+          'state': {
+            ...?(part.raw['state'] as Map<String, dynamic>?),
+            'status': 'stopped',
+          },
+        })
+      else
+        part,
+  ];
+  return [
+    ...messages.sublist(0, messages.length - 1),
+    MessageWithParts(info: info, parts: parts),
+  ];
 }
 
 class ChatController extends ChangeNotifier {
@@ -251,7 +289,6 @@ class ChatController extends ChangeNotifier {
       _clearAbort();
       state = state.copyWith(
         working: false,
-        aborting: false,
         error: 'Session appears unresponsive. You can dismiss this.',
       );
     }
@@ -277,7 +314,12 @@ class ChatController extends ChangeNotifier {
     try {
       final window = _tailWindow;
       final fetched = await client.listMessages(sessionId, limit: window);
-      final merged = _mergeTail(fetched);
+      // A reload mid-abort would hand back the server's still-unfinished tail
+      // and restart the reveal on a turn the user has stopped.
+      final merged = _aborting
+          ? frozenTail(
+              _mergeTail(fetched), DateTime.now().millisecondsSinceEpoch)
+          : _mergeTail(fetched);
       // If the tail message shows the session is idle, any optimistic "busy"
       // flag from send() is stale (no idle event arrived) — clear it.
       if (_optimisticBusy && !_deriveWorking(merged)) {
@@ -398,6 +440,10 @@ class ChatController extends ChangeNotifier {
   }
 
   void _applyPartUpdate(Map<String, dynamic> props, {required bool immediate}) {
+    // The server keeps emitting for a moment after the abort lands, and every
+    // one of those deltas would paint more text under a turn the user has
+    // already stopped. Drop them; the reload after `session.idle` reconciles.
+    if (_aborting) return;
     final partJson = props['part'];
     if (partJson is! Map<String, dynamic>) {
       _debouncedReload();
@@ -492,7 +538,6 @@ class ChatController extends ChangeNotifier {
             _optimisticBusy = false;
             state = state.copyWith(
               working: false,
-              aborting: false,
               clearRetry: true,
             );
             if (forThisSession) load();
@@ -524,7 +569,7 @@ class ChatController extends ChangeNotifier {
         if (forThisSession || sid == null) {
           _clearAbort();
           _optimisticBusy = false;
-          state = state.copyWith(working: false, aborting: false);
+          state = state.copyWith(working: false);
           if (forThisSession) load();
         }
         break;
@@ -537,13 +582,8 @@ class ChatController extends ChangeNotifier {
       case 'step-finish':
       case 'idle':
         if (forThisSession || sid == null) {
-          if (_aborting) {
-            _optimisticBusy = false;
-            state = state.copyWith(working: false, aborting: true);
-          } else {
-            _optimisticBusy = false;
-            state = state.copyWith(working: false);
-          }
+          _optimisticBusy = false;
+          state = state.copyWith(working: false);
           if (forThisSession) load();
         }
         break;
@@ -569,7 +609,6 @@ class ChatController extends ChangeNotifier {
           }
           state = state.copyWith(
             working: false,
-            aborting: false,
             clearRetry: true,
             error: errorMessage,
             errorType: errorType,
@@ -630,7 +669,7 @@ class ChatController extends ChangeNotifier {
     if (messages.isNotEmpty) {
       final last = messages.last;
       if (last.info.role == 'assistant' && last.info.timeCompleted == null) {
-        state = state.copyWith(working: false, aborting: false);
+        state = state.copyWith(working: false);
         final client = _client;
         if (client != null) {
           try {
@@ -685,7 +724,6 @@ class ChatController extends ChangeNotifier {
     state = state.copyWith(
       sending: true,
       working: true,
-      aborting: false,
       clearError: true,
       clearRetry: true,
     );
@@ -722,23 +760,72 @@ class ChatController extends ChangeNotifier {
     _aborting = false;
   }
 
+  /// Stops the turn for the user before the server has been asked to stop it.
+  ///
+  /// The POST is a round trip and the server unwinds on its own schedule, so
+  /// anything sequenced behind either one makes the tap look ignored.
+  /// Everything the user can see or hear is torn down synchronously here; the
+  /// request and the server's `session.idle` only catch up afterwards.
   Future<void> abort() async {
     final client = _client;
     if (client == null) return;
     _aborting = true;
     _optimisticBusy = false;
     _stuck = false;
-    state = state.copyWith(working: false, aborting: true, clearError: true);
+
+    // Work already queued for painting, which would otherwise land one more
+    // chunk of text and one more reload after the tap.
+    _deltaThrottleTimer?.cancel();
+    _deltaThrottleTimer = null;
+    _partApplyTimer?.cancel();
+    _partApplyTimer = null;
+    _pendingPartJson = null;
+    _reloadTimer?.cancel();
+    for (final t in _settlingTimers) {
+      t.cancel();
+    }
+    _settlingTimers.clear();
+
+    // The reply may still be being read aloud, which is the loudest way for a
+    // stopped turn to look like it is running.
+    ref.read(ttsStateProvider.notifier).stop();
+    ref.read(sessionActivityProvider.notifier).setBusy(sessionId, false);
+
+    // Not `aborting: true`: the composer flips straight back to the send
+    // button, so a follow-up message can go out on the very next tap instead
+    // of waiting on a round trip the user has no reason to care about.
+    state = state.copyWith(
+      messages:
+          frozenTail(state.messages, DateTime.now().millisecondsSinceEpoch),
+      working: false,
+      clearError: true,
+      clearRetry: true,
+    );
+
     try {
       await client.abort(sessionId);
-    } catch (_) {}
+    } catch (e) {
+      // A new turn started while this was in flight — send() already cleared
+      // `_aborting` and owns the state now, so a stale failure must not paint
+      // an error over it.
+      if (!_aborting) return;
+      // Never leave it *looking* stopped while the server generates on: the
+      // `_aborting` guard would swallow every busy event that says otherwise.
+      _clearAbort();
+      state = state.copyWith(
+        error: e is OpencodeApiException
+            ? 'Could not stop the session: ${e.message}'
+            : 'Could not stop the session',
+      );
+      return;
+    }
+
+    if (!_aborting) return;
+    // The UI is already idle. `_aborting` stays set until the server reports
+    // idle, which is what keeps the tail of in-flight busy events from
+    // reviving it; this is only the backstop for an idle that never comes.
     _abortTimer?.cancel();
-    _abortTimer = Timer(const Duration(seconds: 30), () {
-      if (_aborting) {
-        _clearAbort();
-        state = state.copyWith(working: false, aborting: false);
-      }
-    });
+    _abortTimer = Timer(const Duration(seconds: 30), _clearAbort);
   }
 
   @override
@@ -854,7 +941,6 @@ typedef ChatChrome = ({
   bool hasMoreOlder,
   bool sending,
   bool working,
-  bool aborting,
   bool hasMessages,
   String? error,
   String? errorType,
@@ -870,7 +956,6 @@ ChatChrome chatChromeOf(ChatState s) => (
       hasMoreOlder: s.hasMoreOlder,
       sending: s.sending,
       working: s.working,
-      aborting: s.aborting,
       hasMessages: s.messages.isNotEmpty,
       error: s.error,
       errorType: s.errorType,
