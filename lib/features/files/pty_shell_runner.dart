@@ -80,10 +80,9 @@ class PtyShellRunner {
           }
           final match = tail.match(doneRe);
           if (match != null) {
-            done.complete(PtyResult(
-              int.parse(match.group(1)!),
-              outputBuffer.toString(),
-            ));
+            done.complete(
+              PtyResult(int.parse(match.group(1)!), outputBuffer.toString()),
+            );
           }
         },
         onError: (Object e) => fail('WebSocket error: $e'),
@@ -101,7 +100,8 @@ class PtyShellRunner {
       // which is why every file operation silently did nothing. The one round
       // of quoting applied to the whole script below is what protects it from
       // the outer login shell.
-      final script = 'p=$_markerPrefix; stty -echo 2>/dev/null; '
+      final script =
+          'p=$_markerPrefix; stty -echo 2>/dev/null; '
           "printf '\\n%s_RDY:$nonce\\n' \"\$p\"; "
           '$command; rc=\$?; '
           "printf '\\n%s_DONE:$nonce:%s\\n' \"\$p\" \"\$rc\"";
@@ -120,9 +120,14 @@ class PtyShellRunner {
 
       return result;
     } finally {
-      unawaited(_teardown(channel, subscription, ptyId, directory)
-          .timeout(_teardownTimeout, onTimeout: () {})
-          .catchError((_) {}));
+      unawaited(
+        _teardown(
+          channel,
+          subscription,
+          ptyId,
+          directory,
+        ).timeout(_teardownTimeout, onTimeout: () {}).catchError((_) {}),
+      );
     }
   }
 

@@ -19,10 +19,7 @@ class _TtsLoadingOverlayState extends ConsumerState<TtsLoadingOverlay>
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: Motion.base,
-    );
+    _fadeController = AnimationController(vsync: this, duration: Motion.base);
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
       curve: Motion.standard,
@@ -63,8 +60,9 @@ class _TtsLoadingOverlayState extends ConsumerState<TtsLoadingOverlay>
                 ref.read(ttsStateProvider.notifier).stop();
               },
               child: Container(
-                color:
-                    Colors.black.withValues(alpha: 0.6 * _fadeAnimation.value),
+                color: Colors.black.withValues(
+                  alpha: 0.6 * _fadeAnimation.value,
+                ),
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

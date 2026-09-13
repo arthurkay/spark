@@ -34,8 +34,9 @@ Uri buildPtyWebSocketUri({
     if (authToken != null) 'auth_token': authToken,
   };
   final query = queryParams.entries
-      .map((e) =>
-          '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+      .map(
+        (e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+      )
       .join('&');
   return Uri.parse('$wsScheme://$host/pty/$ptyId/connect?$query');
 }

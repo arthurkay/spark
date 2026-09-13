@@ -46,8 +46,12 @@ final sessionsProvider = StreamProvider<List<Session>>((ref) async* {
   final cacheKey =
       'sessions/${directory != null ? Uri.encodeComponent(directory) : 'all'}.json';
   yield* cacheFirstThenFetch<Session>(
-    readCache: () async => _decodeCachedSessions(await CacheService.instance
-        .read(cacheKey, maxAge: const Duration(days: 30))),
+    readCache: () async => _decodeCachedSessions(
+      await CacheService.instance.read(
+        cacheKey,
+        maxAge: const Duration(days: 30),
+      ),
+    ),
     fetch: () async {
       final sessions = await client.listSessions(directory: directory);
       sessions.removeWhere(_isHiddenSession);
@@ -69,12 +73,18 @@ final allSessionsProvider = StreamProvider<List<Session>>((ref) async* {
   }
   const cacheKey = 'sessions/all.json';
   yield* cacheFirstThenFetch<Session>(
-    readCache: () async => _decodeCachedSessions(await CacheService.instance
-        .read(cacheKey, maxAge: const Duration(days: 30))),
+    readCache: () async => _decodeCachedSessions(
+      await CacheService.instance.read(
+        cacheKey,
+        maxAge: const Duration(days: 30),
+      ),
+    ),
     fetch: () async {
       final projects = await ref.watch(projectsProvider.future);
-      final directories =
-          projects.where((p) => !p.isGlobal).map((p) => p.worktree).toList();
+      final directories = projects
+          .where((p) => !p.isGlobal)
+          .map((p) => p.worktree)
+          .toList();
       final results = await Future.wait([
         client.listSessions(),
         for (final dir in directories) client.listSessions(directory: dir),
@@ -120,5 +130,5 @@ class SessionLifecycleListener extends Notifier<void> {
 
 final sessionLifecycleProvider =
     NotifierProvider<SessionLifecycleListener, void>(
-  SessionLifecycleListener.new,
-);
+      SessionLifecycleListener.new,
+    );

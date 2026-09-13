@@ -21,8 +21,11 @@ MessageWithParts _msg({
 
 MessageWithParts _streaming({List<Map<String, dynamic>> parts = const []}) {
   return MessageWithParts(
-    info:
-        const MessageInfo(id: 'msg_s', role: 'assistant', time: {'created': 1}),
+    info: const MessageInfo(
+      id: 'msg_s',
+      role: 'assistant',
+      time: {'created': 1},
+    ),
     parts: [
       for (final (i, p) in parts.indexed)
         MessagePart.fromJson({'id': 'p_$i', ...p}),
@@ -59,7 +62,8 @@ void main() {
     test('extracts the last complete sentence', () {
       expect(
         speakableThought(
-            'The handler is wrong. I should add a null check first. Then we'),
+          'The handler is wrong. I should add a null check first. Then we',
+        ),
         'I should add a null check first.',
       );
     });
@@ -82,7 +86,8 @@ void main() {
 
     test('fenced code blocks never leak into speech', () {
       final thought = speakableThought(
-          'The fix is simple. ```dart\nvoid main() {}\n``` Now I apply it.');
+        'The fix is simple. ```dart\nvoid main() {}\n``` Now I apply it.',
+      );
       expect(thought, 'Now I apply it.');
     });
   });
@@ -93,8 +98,11 @@ void main() {
       final seen = <String>{};
       for (var step = 0; step < 9; step++) {
         final phrase = fillerPhrase(step, 3, used: used);
-        expect(seen.contains(phrase), isFalse,
-            reason: 'repeated "$phrase" at step $step with pool unexhausted');
+        expect(
+          seen.contains(phrase),
+          isFalse,
+          reason: 'repeated "$phrase" at step $step with pool unexhausted',
+        );
         seen.add(phrase);
         used.add(phrase);
       }
@@ -111,58 +119,74 @@ void main() {
 
   group('describeActivity', () {
     test('a tool call becomes a spoken phrase with the file name', () {
-      final activity = describeActivity(_streaming(parts: [
-        {
-          'type': 'tool',
-          'tool': 'read',
-          'state': {
-            'input': {'filePath': '/home/a/project/rollback.go'}
-          },
-        },
-      ]));
+      final activity = describeActivity(
+        _streaming(
+          parts: [
+            {
+              'type': 'tool',
+              'tool': 'read',
+              'state': {
+                'input': {'filePath': '/home/a/project/rollback.go'},
+              },
+            },
+          ],
+        ),
+      );
       expect(activity?.spoken, "I'm reading rollback.go.");
       expect(activity?.shown, 'reading rollback.go…');
     });
 
     test('streamed reasoning shows its tail, spoken stays grounded', () {
-      final activity = describeActivity(_streaming(parts: [
-        {'type': 'reasoning', 'text': 'I need to check the handler first.'},
-      ]));
+      final activity = describeActivity(
+        _streaming(
+          parts: [
+            {'type': 'reasoning', 'text': 'I need to check the handler first.'},
+          ],
+        ),
+      );
       expect(activity?.shown, 'I need to check the handler first.');
       expect(activity?.spoken, 'I need to check the handler first.');
     });
 
     test('a streaming answer beats reasoning and tools', () {
-      final activity = describeActivity(_streaming(parts: [
-        {
-          'type': 'tool',
-          'tool': 'bash',
-          'state': {'input': {}},
-        },
-        {'type': 'reasoning', 'text': 'thinking...'},
-        {'type': 'text', 'text': 'The fix is to'},
-      ]));
+      final activity = describeActivity(
+        _streaming(
+          parts: [
+            {
+              'type': 'tool',
+              'tool': 'bash',
+              'state': {'input': {}},
+            },
+            {'type': 'reasoning', 'text': 'thinking...'},
+            {'type': 'text', 'text': 'The fix is to'},
+          ],
+        ),
+      );
       expect(activity?.shown, 'The fix is to');
       expect(activity?.spoken, 'The answer is coming together now.');
     });
 
     test('the newest of several tool calls wins', () {
-      final activity = describeActivity(_streaming(parts: [
-        {
-          'type': 'tool',
-          'tool': 'read',
-          'state': {
-            'input': {'filePath': 'a.go'}
-          },
-        },
-        {
-          'type': 'tool',
-          'tool': 'edit',
-          'state': {
-            'input': {'filePath': 'b.go'}
-          },
-        },
-      ]));
+      final activity = describeActivity(
+        _streaming(
+          parts: [
+            {
+              'type': 'tool',
+              'tool': 'read',
+              'state': {
+                'input': {'filePath': 'a.go'},
+              },
+            },
+            {
+              'type': 'tool',
+              'tool': 'edit',
+              'state': {
+                'input': {'filePath': 'b.go'},
+              },
+            },
+          ],
+        ),
+      );
       expect(activity?.spoken, "I'm editing b.go.");
     });
 
@@ -181,9 +205,13 @@ void main() {
 
     test('long reasoning is tailed from a word boundary', () {
       final text = 'word ' * 100;
-      final activity = describeActivity(_streaming(parts: [
-        {'type': 'reasoning', 'text': text},
-      ]));
+      final activity = describeActivity(
+        _streaming(
+          parts: [
+            {'type': 'reasoning', 'text': text},
+          ],
+        ),
+      );
       expect(activity!.shown.length, lessThanOrEqualTo(141));
       expect(activity.shown, startsWith('…'));
     });
@@ -191,8 +219,9 @@ void main() {
 
   group('replyToNarrate', () {
     test('narrates a fresh completed assistant reply', () {
-      final reply = replyToNarrate(
-          [_msg(id: 'a', role: 'assistant', completed: 2)], null);
+      final reply = replyToNarrate([
+        _msg(id: 'a', role: 'assistant', completed: 2),
+      ], null);
       expect(reply?.info.id, 'a');
     });
 
@@ -204,9 +233,10 @@ void main() {
       expect(
         replyToNarrate([
           _msg(
-              id: 'a',
-              role: 'assistant',
-              error: {'name': 'APIError', 'data': {}})
+            id: 'a',
+            role: 'assistant',
+            error: {'name': 'APIError', 'data': {}},
+          ),
         ], null),
         isNull,
       );
@@ -223,8 +253,9 @@ void main() {
 
     test('ignores a reply with no text parts', () {
       expect(
-        replyToNarrate(
-            [_msg(id: 'a', role: 'assistant', completed: 2, text: '  ')], null),
+        replyToNarrate([
+          _msg(id: 'a', role: 'assistant', completed: 2, text: '  '),
+        ], null),
         isNull,
       );
     });

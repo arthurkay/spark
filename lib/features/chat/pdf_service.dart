@@ -48,7 +48,8 @@ Future<Uint8List> buildMessagePdf(MessageWithParts message) async {
   final role = message.info.role == 'user' ? 'You' : 'Assistant';
   final timestamp = message.info.timeCreated != null
       ? DateFormat.yMMMd().add_jm().format(
-          DateTime.fromMillisecondsSinceEpoch(message.info.timeCreated!))
+          DateTime.fromMillisecondsSinceEpoch(message.info.timeCreated!),
+        )
       : '';
 
   final elements = <pw.Widget>[
@@ -57,14 +58,20 @@ Future<Uint8List> buildMessagePdf(MessageWithParts message) async {
       child: pw.Text(
         'SparkCode Export',
         style: pw.TextStyle(
-            font: boldFont, fontSize: 18, color: PdfColors.grey700),
+          font: boldFont,
+          fontSize: 18,
+          color: PdfColors.grey700,
+        ),
       ),
     ),
     pw.SizedBox(height: 4),
     pw.Text(
       '$role${timestamp.isNotEmpty ? ' · $timestamp' : ''}',
-      style:
-          pw.TextStyle(font: boldFont, fontSize: 12, color: PdfColors.grey500),
+      style: pw.TextStyle(
+        font: boldFont,
+        fontSize: 12,
+        color: PdfColors.grey500,
+      ),
     ),
     pw.Divider(color: PdfColors.grey300),
     pw.SizedBox(height: 12),
@@ -74,8 +81,9 @@ Future<Uint8List> buildMessagePdf(MessageWithParts message) async {
   // export matches what the user was looking at. The default (CommonMark) has
   // no table or strikethrough syntax, which left tables in the PDF as raw
   // `| a | b |` text.
-  final ast =
-      md.Document(extensionSet: md.ExtensionSet.gitHubFlavored).parse(text);
+  final ast = md.Document(
+    extensionSet: md.ExtensionSet.gitHubFlavored,
+  ).parse(text);
   elements.addAll(_renderAst(ast, font, boldFont, italicFont, monoFont));
 
   doc.addPage(
@@ -116,8 +124,9 @@ List<pw.Widget> _renderNode(
   if (node is md.Text) {
     return [
       pw.Paragraph(
-          text: node.textContent,
-          style: pw.TextStyle(font: font, fontSize: 11, lineSpacing: 5))
+        text: node.textContent,
+        style: pw.TextStyle(font: font, fontSize: 11, lineSpacing: 5),
+      ),
     ];
   }
   return [];
@@ -168,16 +177,25 @@ List<pw.Widget> _renderElement(
     case 'img':
       return [
         pw.Paragraph(
-            text: '[image]',
-            style: pw.TextStyle(
-                font: font, fontSize: 11, color: PdfColors.grey500))
+          text: '[image]',
+          style: pw.TextStyle(
+            font: font,
+            fontSize: 11,
+            color: PdfColors.grey500,
+          ),
+        ),
       ];
     case 'br':
       return [pw.SizedBox(height: 8)];
     default:
       if (element.children != null && element.children!.isNotEmpty) {
         return _renderAst(
-            element.children!, font, boldFont, italicFont, monoFont);
+          element.children!,
+          font,
+          boldFont,
+          italicFont,
+          monoFont,
+        );
       }
       return [];
   }
@@ -190,7 +208,10 @@ pw.Widget _heading(md.Element element, double fontSize, pw.Font font) {
     child: pw.Text(
       text,
       style: pw.TextStyle(
-          font: font, fontSize: fontSize, color: PdfColors.grey800),
+        font: font,
+        fontSize: fontSize,
+        color: PdfColors.grey800,
+      ),
     ),
   );
 }
@@ -220,8 +241,11 @@ pw.Widget _codeBlock(md.Element element, pw.Font monoFont) {
     ),
     child: pw.Text(
       code.trimRight(),
-      style:
-          pw.TextStyle(font: monoFont, fontSize: 10, color: PdfColors.grey800),
+      style: pw.TextStyle(
+        font: monoFont,
+        fontSize: 10,
+        color: PdfColors.grey800,
+      ),
     ),
   );
 }
@@ -289,8 +313,9 @@ pw.Widget _blockquote(
     margin: const pw.EdgeInsets.symmetric(vertical: 8),
     padding: const pw.EdgeInsets.only(left: 12),
     decoration: pw.BoxDecoration(
-      border:
-          pw.Border(left: pw.BorderSide(color: PdfColors.grey400, width: 2)),
+      border: pw.Border(
+        left: pw.BorderSide(color: PdfColors.grey400, width: 2),
+      ),
     ),
     child: pw.Text(
       text,
@@ -318,14 +343,16 @@ List<List<String>> tableRows(md.Element table) {
     // thead/tbody wrapper.
     final trs = section.tag == 'tr'
         ? [section]
-        : (section.children ?? const <md.Node>[])
-            .whereType<md.Element>()
-            .where((e) => e.tag == 'tr');
+        : (section.children ?? const <md.Node>[]).whereType<md.Element>().where(
+            (e) => e.tag == 'tr',
+          );
     for (final tr in trs) {
-      rows.add((tr.children ?? const <md.Node>[])
-          .whereType<md.Element>()
-          .map(_extractText)
-          .toList());
+      rows.add(
+        (tr.children ?? const <md.Node>[])
+            .whereType<md.Element>()
+            .map(_extractText)
+            .toList(),
+      );
     }
   }
   return rows;
@@ -362,10 +389,7 @@ pw.Widget _link(md.Element element, pw.Font font) {
 
 pw.Widget _styledText(md.Element element, pw.Font font) {
   final text = _extractText(element);
-  return pw.Text(
-    text,
-    style: pw.TextStyle(font: font, fontSize: 11),
-  );
+  return pw.Text(text, style: pw.TextStyle(font: font, fontSize: 11));
 }
 
 String _extractText(md.Element element) {

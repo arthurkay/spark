@@ -19,21 +19,29 @@ class FileOpsService {
     return _runner!;
   }
 
-  Future<FileOpsResult> createFile(String path,
-      {String? directory, String? content}) async {
+  Future<FileOpsResult> createFile(
+    String path, {
+    String? directory,
+    String? content,
+  }) async {
     try {
       if (content != null && content.isNotEmpty) {
         // Content goes through PtyFileWriter, which streams the payload as
         // stdin of a running `base64 -d`. A single `echo "<base64>"` command
         // line is truncated by the TTY past ~4 KB and mangles non-ASCII text.
-        await PtyFileWriter(client: client)
-            .write(path: path, directory: directory, content: content);
+        await PtyFileWriter(
+          client: client,
+        ).write(path: path, directory: directory, content: content);
       } else {
-        final result =
-            await _pty.run('touch ${shellQuote(path)}', directory: directory);
+        final result = await _pty.run(
+          'touch ${shellQuote(path)}',
+          directory: directory,
+        );
         if (result.exitCode != 0) {
-          return FileOpsResult(false,
-              error: 'Failed to create file (exit code ${result.exitCode})');
+          return FileOpsResult(
+            false,
+            error: 'Failed to create file (exit code ${result.exitCode})',
+          );
         }
       }
       return FileOpsResult(true);
@@ -44,14 +52,20 @@ class FileOpsService {
     }
   }
 
-  Future<FileOpsResult> createDirectory(String path,
-      {String? directory}) async {
+  Future<FileOpsResult> createDirectory(
+    String path, {
+    String? directory,
+  }) async {
     try {
-      final result =
-          await _pty.run('mkdir -p ${shellQuote(path)}', directory: directory);
+      final result = await _pty.run(
+        'mkdir -p ${shellQuote(path)}',
+        directory: directory,
+      );
       if (result.exitCode != 0) {
-        return FileOpsResult(false,
-            error: 'Failed to create directory (exit code ${result.exitCode})');
+        return FileOpsResult(
+          false,
+          error: 'Failed to create directory (exit code ${result.exitCode})',
+        );
       }
       return FileOpsResult(true);
     } catch (e) {
@@ -61,11 +75,15 @@ class FileOpsService {
 
   Future<FileOpsResult> deleteFile(String path, {String? directory}) async {
     try {
-      final result =
-          await _pty.run('rm -f ${shellQuote(path)}', directory: directory);
+      final result = await _pty.run(
+        'rm -f ${shellQuote(path)}',
+        directory: directory,
+      );
       if (result.exitCode != 0) {
-        return FileOpsResult(false,
-            error: 'Failed to delete file (exit code ${result.exitCode})');
+        return FileOpsResult(
+          false,
+          error: 'Failed to delete file (exit code ${result.exitCode})',
+        );
       }
       return FileOpsResult(true);
     } catch (e) {
@@ -73,14 +91,20 @@ class FileOpsService {
     }
   }
 
-  Future<FileOpsResult> deleteDirectory(String path,
-      {String? directory}) async {
+  Future<FileOpsResult> deleteDirectory(
+    String path, {
+    String? directory,
+  }) async {
     try {
-      final result =
-          await _pty.run('rm -rf ${shellQuote(path)}', directory: directory);
+      final result = await _pty.run(
+        'rm -rf ${shellQuote(path)}',
+        directory: directory,
+      );
       if (result.exitCode != 0) {
-        return FileOpsResult(false,
-            error: 'Failed to delete directory (exit code ${result.exitCode})');
+        return FileOpsResult(
+          false,
+          error: 'Failed to delete directory (exit code ${result.exitCode})',
+        );
       }
       return FileOpsResult(true);
     } catch (e) {
@@ -88,14 +112,21 @@ class FileOpsService {
     }
   }
 
-  Future<FileOpsResult> rename(String from, String to,
-      {String? directory}) async {
+  Future<FileOpsResult> rename(
+    String from,
+    String to, {
+    String? directory,
+  }) async {
     try {
-      final result = await _pty.run('mv ${shellQuote(from)} ${shellQuote(to)}',
-          directory: directory);
+      final result = await _pty.run(
+        'mv ${shellQuote(from)} ${shellQuote(to)}',
+        directory: directory,
+      );
       if (result.exitCode != 0) {
-        return FileOpsResult(false,
-            error: 'Failed to rename (exit code ${result.exitCode})');
+        return FileOpsResult(
+          false,
+          error: 'Failed to rename (exit code ${result.exitCode})',
+        );
       }
       return FileOpsResult(true);
     } catch (e) {

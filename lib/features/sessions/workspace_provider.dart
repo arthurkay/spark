@@ -28,8 +28,10 @@ final projectsProvider = StreamProvider<List<Project>>((ref) async* {
   }
   yield* cacheFirstThenFetch<Project>(
     readCache: () async {
-      final cached = await CacheService.instance
-          .read(_projectsCacheKey, maxAge: const Duration(days: 30));
+      final cached = await CacheService.instance.read(
+        _projectsCacheKey,
+        maxAge: const Duration(days: 30),
+      );
       final items = cached?['items'];
       if (items is! List) return null;
       final projects = items
@@ -73,7 +75,8 @@ class _SelectedWorkspace extends StateNotifier<Project?> {
     final dir = prefs.getString(_key);
     if (dir == null) return;
     final projects = await ref.read(projectsProvider.future);
-    state = projects.where((p) => p.worktree == dir).firstOrNull ??
+    state =
+        projects.where((p) => p.worktree == dir).firstOrNull ??
         Project(id: '__custom__', worktree: dir);
   }
 
@@ -95,8 +98,10 @@ final vcsRefreshProvider = StateProvider<int>((ref) => 0);
 /// Branch info per worktree. A single global lookup used to feed every
 /// project tile, so all projects displayed whichever branch the server's
 /// default directory was on.
-final vcsProvider =
-    FutureProvider.family<VcsInfo?, String?>((ref, directory) async {
+final vcsProvider = FutureProvider.family<VcsInfo?, String?>((
+  ref,
+  directory,
+) async {
   ref.watch(vcsRefreshProvider);
   final client = ref.watch(opencodeClientProvider);
   if (client == null) return null;

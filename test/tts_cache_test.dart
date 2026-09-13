@@ -46,7 +46,9 @@ void main() {
   group('NarrationCacheStats.sizeLabel', () {
     test('bytes', () {
       expect(
-          const NarrationCacheStats(count: 1, bytes: 512).sizeLabel, '512 B');
+        const NarrationCacheStats(count: 1, bytes: 512).sizeLabel,
+        '512 B',
+      );
     });
 
     test('kilobytes', () {

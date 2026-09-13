@@ -42,9 +42,9 @@ class ServerConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'connection': connection.toJson(),
-        'lastConnected': lastConnected,
-      };
+    'id': id,
+    'name': name,
+    'connection': connection.toJson(),
+    'lastConnected': lastConnected,
+  };
 }

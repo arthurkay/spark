@@ -13,9 +13,9 @@ import 'code_highlight_view.dart';
 /// `md.Document` accumulates link-reference definitions as it parses, so a
 /// single shared instance leaked references between unrelated messages.
 md.Document _newMarkdownDoc() => md.Document(
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-      encodeHtml: false,
-    );
+  extensionSet: md.ExtensionSet.gitHubFlavored,
+  encodeHtml: false,
+);
 
 class MarkdownView extends StatelessWidget {
   const MarkdownView({super.key, required this.data, this.textStyle});
@@ -31,10 +31,9 @@ class MarkdownView extends StatelessWidget {
     final styleKey =
         '${baseStyle.fontSize}|${baseStyle.height}|${baseStyle.fontFamily}';
     final cacheKey = '$isDark|$styleKey|$devicePixelRatio|$data';
-    final cached = _renderCache[cacheKey];
+    final cached = _renderCache.remove(cacheKey);
     if (cached != null) {
-      _renderCacheOrder.remove(cacheKey);
-      _renderCacheOrder.add(cacheKey);
+      _renderCache[cacheKey] = cached;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: cached,
@@ -48,9 +47,8 @@ class MarkdownView extends StatelessWidget {
     final nodes = _parse(data);
     final widgets = renderer.render(nodes);
     _renderCache[cacheKey] = widgets;
-    _renderCacheOrder.add(cacheKey);
-    while (_renderCacheOrder.length > _renderCacheMax) {
-      _renderCache.remove(_renderCacheOrder.removeAt(0));
+    while (_renderCache.length > _renderCacheMax) {
+      _renderCache.remove(_renderCache.keys.first);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,17 +59,17 @@ class MarkdownView extends StatelessWidget {
 
 const _renderCacheMax = 200;
 final Map<String, List<Widget>> _renderCache = {};
-final List<String> _renderCacheOrder = [];
 
 final Map<String, List<md.Node>> _parseCache = {};
 
 List<md.Node> _parse(String data) {
-  final cached = _parseCache[data];
-  if (cached != null) return cached;
+  final cached = _parseCache.remove(data);
+  if (cached != null) {
+    _parseCache[data] = cached;
+    return cached;
+  }
   final lines = data.replaceAll('\r\n', '\n').split('\n');
   final nodes = _newMarkdownDoc().parseLines(lines);
-  // Evict the oldest entry instead of clearing everything: a wholesale clear
-  // meant periodically re-parsing every message still on screen.
   if (_parseCache.length >= 200) _parseCache.remove(_parseCache.keys.first);
   _parseCache[data] = nodes;
   return nodes;
@@ -170,7 +168,7 @@ class _MarkdownRenderer {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children:
                   element.children?.map(_visit).whereType<Widget>().toList() ??
-                      [],
+                  [],
             ),
           ),
           top: 4,
@@ -196,8 +194,10 @@ class _MarkdownRenderer {
       case 'img':
         return _image(element);
       default:
-        final inner =
-            element.children?.map(_visit).whereType<Widget>().toList();
+        final inner = element.children
+            ?.map(_visit)
+            .whereType<Widget>()
+            .toList();
         if (inner == null || inner.isEmpty) return null;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -280,8 +280,9 @@ class _MarkdownRenderer {
           style: style.copyWith(
             fontFamily: CodeHighlightView.monoFamilies.first,
             fontFamilyFallback: CodeHighlightView.monoFamilies.skip(1).toList(),
-            backgroundColor:
-                isDark ? const Color(0xff2b303b) : const Color(0xffeef1f5),
+            backgroundColor: isDark
+                ? const Color(0xff2b303b)
+                : const Color(0xffeef1f5),
             fontSize: (style.fontSize ?? 14) * 0.92,
           ),
         );
@@ -370,8 +371,8 @@ class _MarkdownRenderer {
     final bodyRows = rawRows.where((r) => !r.isHeader).toList();
     final bodyColumnCount = bodyRows.isNotEmpty
         ? bodyRows
-            .map((r) => r.textCells.length)
-            .reduce((a, b) => a > b ? a : b)
+              .map((r) => r.textCells.length)
+              .reduce((a, b) => a > b ? a : b)
         : headerRow.textCells.length;
 
     List<String> headerLabels = headerRow.textCells;
@@ -394,8 +395,9 @@ class _MarkdownRenderer {
       );
     }
 
-    final headerWidgets =
-        headerLabels.map((t) => makeCell(t, isHeader: true)).toList();
+    final headerWidgets = headerLabels
+        .map((t) => makeCell(t, isHeader: true))
+        .toList();
     while (headerWidgets.length < columnCount) {
       headerWidgets.add(makeCell(''));
     }
@@ -451,8 +453,10 @@ class _MarkdownRenderer {
           .toList();
     }
     if (cells.length == 1) {
-      final words =
-          first.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+      final words = first
+          .split(RegExp(r'\s+'))
+          .where((s) => s.isNotEmpty)
+          .toList();
       if (words.length >= targetCount) return words.sublist(0, targetCount);
       if (words.length > 1) return words;
     }
@@ -469,11 +473,7 @@ class _MarkdownRenderer {
         bottom: 4,
       );
     }
-    return _block(
-      _buildImage(src, alt),
-      top: 4,
-      bottom: 4,
-    );
+    return _block(_buildImage(src, alt), top: 4, bottom: 4);
   }
 
   Widget _buildImage(String src, String alt) {
@@ -613,8 +613,9 @@ class _CopyableCodeState extends State<_CopyableCode> {
               child: Icon(
                 _copied ? LucideIcons.check : LucideIcons.copy,
                 size: 12,
-                color:
-                    isDark ? const Color(0xffa0aec0) : const Color(0xff64748b),
+                color: isDark
+                    ? const Color(0xffa0aec0)
+                    : const Color(0xff64748b),
               ),
             ),
           ),

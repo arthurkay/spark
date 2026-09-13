@@ -30,8 +30,9 @@ class _TerminalSheetState extends ConsumerState<TerminalSheet> {
   // same shell with its scrollback. Ending the session is the trash button.
   Future<void> _endSession() async {
     final directory = _resolvedDirectory;
-    final ctrl =
-        directory != null ? ref.read(terminalProvider(directory)) : null;
+    final ctrl = directory != null
+        ? ref.read(terminalProvider(directory))
+        : null;
     await ctrl?.kill();
     // A fresh open must get a fresh shell, not the dead controller.
     ref.invalidate(terminalProvider(directory));
@@ -165,9 +166,7 @@ void openTerminalSheet(
     context: context,
     position: OverlayPosition.bottom,
     barrierDismissible: true,
-    builder: (sheetContext) => TerminalSheet(
-      directory: directory,
-      sessionId: sessionId,
-    ),
+    builder: (sheetContext) =>
+        TerminalSheet(directory: directory, sessionId: sessionId),
   );
 }

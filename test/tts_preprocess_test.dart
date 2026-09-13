@@ -7,7 +7,8 @@ void main() {
   group('speech preprocessing keeps the words it unwraps', () {
     test('bold, inline code and links survive stripping', () {
       final spoken = debugPreprocessForSpeech(
-          'The **critical** bug is in `parseAll` — see [the docs](http://x.dev).');
+        'The **critical** bug is in `parseAll` — see [the docs](http://x.dev).',
+      );
       expect(spoken, 'The critical bug is in parseAll — see the docs.');
     });
 
@@ -40,8 +41,10 @@ void main() {
     });
 
     test('bare urls become the word "link"', () {
-      expect(debugPreprocessForSpeech('See https://example.com/a/b now'),
-          'See link now');
+      expect(
+        debugPreprocessForSpeech('See https://example.com/a/b now'),
+        'See link now',
+      );
     });
 
     test('plain prose is untouched', () {
@@ -52,8 +55,9 @@ void main() {
 
   group('pdf table extraction', () {
     md.Element parseTable(String source) {
-      final nodes = md.Document(extensionSet: md.ExtensionSet.gitHubFlavored)
-          .parse(source);
+      final nodes = md.Document(
+        extensionSet: md.ExtensionSet.gitHubFlavored,
+      ).parse(source);
       return nodes.whereType<md.Element>().firstWhere((e) => e.tag == 'table');
     }
 

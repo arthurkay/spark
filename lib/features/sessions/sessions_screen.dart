@@ -34,7 +34,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   final _searchController = TextEditingController();
   String _query = '';
   String _filter = 'all';
-  final Set<String> _expanded = {};
 
   final _scrollController = ScrollController();
   final _titleKey = GlobalKey();
@@ -164,8 +163,9 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     WidgetRef ref,
     Project project,
   ) async {
-    final controller =
-        TextEditingController(text: project.worktree.split('/').last);
+    final controller = TextEditingController(
+      text: project.worktree.split('/').last,
+    );
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
@@ -198,8 +198,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       ref.read(projectsRefreshProvider.notifier).state++;
                     } on OpencodeApiException catch (e) {
                       if (!context.mounted) return;
-                      showAppToast(context,
-                          title: 'Failed to rename', description: e.message);
+                      showAppToast(
+                        context,
+                        title: 'Failed to rename',
+                        description: e.message,
+                      );
                     }
                   },
                   child: const Text('Save'),
@@ -286,10 +289,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   List<Session> _filterSessions(List<Session> sessions, Set<String> active) {
     final q = _query.toLowerCase();
     return sessions.where((s) {
-      final matchesQuery = q.isEmpty ||
+      final matchesQuery =
+          q.isEmpty ||
           (s.title?.toLowerCase().contains(q) ?? false) ||
           (s.directory?.toLowerCase().contains(q) ?? false);
-      final matchesFilter = _filter == 'all' ||
+      final matchesFilter =
+          _filter == 'all' ||
           (_filter == 'active' && active.contains(s.id)) ||
           (_filter == 'idle' && !active.contains(s.id));
       return matchesQuery && matchesFilter;
@@ -397,7 +402,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       border: Border.all(color: Colors.transparent),
                       features: const [
                         InputFeature.leading(
-                            Icon(LucideIcons.search, size: 16)),
+                          Icon(LucideIcons.search, size: 16),
+                        ),
                       ],
                       // Debounced: each keystroke re-filters every workspace
                       // and session and rebuilds the whole list.
@@ -440,9 +446,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             const SliverToBoxAdapter(child: Gap(12)),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              sliver: SliverToBoxAdapter(
-                child: const Text('Projects').h4,
-              ),
+              sliver: SliverToBoxAdapter(child: const Text('Projects').h4),
             ),
             projectsAsync.when(
               loading: () => SliverPadding(
@@ -489,9 +493,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               ),
               data: (projects) {
                 if (projects.isEmpty) {
-                  return const SliverToBoxAdapter(
-                    child: _EmptyState(),
-                  );
+                  return const SliverToBoxAdapter(child: _EmptyState());
                 }
                 return sessionsAsync.when(
                   loading: () => _buildProjectTiles(projects, ref),
@@ -516,38 +518,25 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                             final group = workspaces[index];
                             final visible =
                                 _projectMatchesQuery(group.project) ||
-                                    group.sessions.isNotEmpty;
+                                group.sessions.isNotEmpty;
                             if (!visible) {
                               return const SizedBox.shrink();
                             }
                             final name = group.project.isGlobal
                                 ? 'Global'
                                 : (group.project.id == '__other__'
-                                    ? 'Other'
-                                    : group.project.worktree
-                                            .split('/')
-                                            .where((s) => s.isNotEmpty)
-                                            .lastOrNull ??
-                                        group.project.worktree);
+                                      ? 'Other'
+                                      : group.project.worktree
+                                                .split('/')
+                                                .where((s) => s.isNotEmpty)
+                                                .lastOrNull ??
+                                            group.project.worktree);
                             final displaySessions = group.sessions;
                             return _WorkspaceTile(
                               key: ValueKey(group.project.worktree),
                               project: group.project,
                               titleOverride: name,
                               sessions: displaySessions,
-                              initiallyExpanded: _expanded.contains(
-                                group.project.worktree,
-                              ),
-                              onExpansionChanged: (v) {
-                                setState(() {
-                                  final key = group.project.worktree;
-                                  if (v) {
-                                    _expanded.add(key);
-                                  } else {
-                                    _expanded.remove(key);
-                                  }
-                                });
-                              },
                               onCreateSession: (ctx) => _createSession(
                                 ctx,
                                 ref,
@@ -680,8 +669,11 @@ class _SessionTile extends ConsumerWidget {
                       ref.read(sessionsRefreshProvider.notifier).state++;
                     } on OpencodeApiException catch (e) {
                       if (!context.mounted) return;
-                      showAppToast(context,
-                          title: 'Failed to rename', description: e.message);
+                      showAppToast(
+                        context,
+                        title: 'Failed to rename',
+                        description: e.message,
+                      );
                     }
                   },
                   child: const Text('Save'),
@@ -699,7 +691,7 @@ class _SessionTile extends ConsumerWidget {
     final title = session.title?.trim().isNotEmpty == true
         ? session.title!
         : 'Untitled session';
-    final busy = ref.watch(sessionActivityProvider).contains(session.id);
+    final busy = ref.watch(sessionBusyProvider(session.id));
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: () {
@@ -773,8 +765,6 @@ class _WorkspaceTile extends ConsumerStatefulWidget {
     required void Function(BuildContext context) onCreateSession,
     this.onDeleteSession,
     this.onShowProjectMenu,
-    this.initiallyExpanded = false,
-    this.onExpansionChanged,
     this.titleOverride,
   }) : _onCreateSession = onCreateSession;
 
@@ -784,8 +774,6 @@ class _WorkspaceTile extends ConsumerStatefulWidget {
   final void Function(BuildContext context) _onCreateSession;
   final void Function(Session)? onDeleteSession;
   final void Function(BuildContext context)? onShowProjectMenu;
-  final bool initiallyExpanded;
-  final void Function(bool)? onExpansionChanged;
 
   @override
   ConsumerState<_WorkspaceTile> createState() => _WorkspaceTileState();
@@ -797,7 +785,7 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = false;
   }
 
   void _toggle() {
@@ -806,7 +794,6 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
       return;
     }
     setState(() => _expanded = !_expanded);
-    widget.onExpansionChanged?.call(_expanded);
   }
 
   void _openWorkspaceFiles() {
@@ -818,7 +805,8 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final name = widget.titleOverride ??
+    final name =
+        widget.titleOverride ??
         widget.project.worktree
             .split('/')
             .where((s) => s.isNotEmpty)
@@ -827,7 +815,8 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
     final subtitle = widget.project.worktree;
     final count = widget.sessions.length;
     final vcs = ref.watch(
-        vcsProvider(widget.project.isGlobal ? null : widget.project.worktree));
+      vcsProvider(widget.project.isGlobal ? null : widget.project.worktree),
+    );
     final branch = vcs.value?.branch;
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -878,7 +867,9 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
                               const Gap(6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: theme.colorScheme.muted,
                                   borderRadius: BorderRadius.circular(4),
@@ -1001,9 +992,7 @@ class _EmptyState extends StatelessWidget {
           const Gap(16),
           const Text('No workspaces yet').h4,
           const Gap(8),
-          const Text(
-            'Connect to a server to see its workspaces.',
-          ).muted,
+          const Text('Connect to a server to see its workspaces.').muted,
         ],
       ),
     );

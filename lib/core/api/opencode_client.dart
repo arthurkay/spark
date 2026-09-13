@@ -27,7 +27,7 @@ class OpencodeApiException implements Exception {
 
 class OpencodeClient {
   OpencodeClient({required this.connection, this.password, Dio? dio})
-      : _dio = dio ?? Dio() {
+    : _dio = dio ?? Dio() {
     _dio.options
       ..baseUrl = connection.baseUrl
       ..connectTimeout = const Duration(seconds: 15)
@@ -493,9 +493,7 @@ class OpencodeClient {
     try {
       await _dio.post<dynamic>(
         Endpoints.questionReply(requestId),
-        queryParameters: {
-          if (directory != null) 'directory': directory,
-        },
+        queryParameters: {if (directory != null) 'directory': directory},
         data: {'answers': answers},
       );
     } on DioException catch (e) {
@@ -510,9 +508,7 @@ class OpencodeClient {
     try {
       await _dio.post<dynamic>(
         Endpoints.questionReject(requestId),
-        queryParameters: {
-          if (directory != null) 'directory': directory,
-        },
+        queryParameters: {if (directory != null) 'directory': directory},
       );
     } on DioException catch (e) {
       _rethrow(e);
@@ -594,7 +590,7 @@ class OpencodeClient {
         Endpoints.ptyById(id),
         queryParameters: {if (directory != null) 'directory': directory},
         data: {
-          'size': {'cols': cols, 'rows': rows}
+          'size': {'cols': cols, 'rows': rows},
         },
       );
     } on DioException catch (e) {

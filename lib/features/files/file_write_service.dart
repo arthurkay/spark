@@ -80,8 +80,10 @@ class PtyFileWriter {
     _directory = directory;
     final target = _resolveTargetPath(path, directory);
     final expectedBytes = utf8.encode(content).length;
-    final payload = wrapBase64Lines(base64Encode(utf8.encode(content)),
-        width: _base64LineWidth);
+    final payload = wrapBase64Lines(
+      base64Encode(utf8.encode(content)),
+      width: _base64LineWidth,
+    );
 
     final session = await client.createPty(
       title: 'file-write',
@@ -144,10 +146,12 @@ class PtyFileWriter {
           }
           final match = tail.match(doneRe);
           if (match != null) {
-            done.complete(_WriteResult(
-              int.parse(match.group(1)!),
-              int.parse(match.group(2)!),
-            ));
+            done.complete(
+              _WriteResult(
+                int.parse(match.group(1)!),
+                int.parse(match.group(2)!),
+              ),
+            );
           }
         },
         onError: (Object e) => fail('WebSocket error: $e'),
@@ -228,7 +232,8 @@ class PtyFileWriter {
   /// before `base64` was reading.
   String _buildCommand(String target, String nonce) {
     final quotedTarget = _shellQuote(target);
-    final script = 'p=$_markerPrefix; stty -echo 2>/dev/null; '
+    final script =
+        'p=$_markerPrefix; stty -echo 2>/dev/null; '
         "printf '\\n%s_RDY:$nonce\\n' \"\$p\"; "
         'base64 -d > $quotedTarget; rc=\$?; '
         "sz=\$(wc -c < $quotedTarget 2>/dev/null | tr -d ' \\n'); "
@@ -236,9 +241,8 @@ class PtyFileWriter {
     return 'sh -c ${_shellQuote(script)}';
   }
 
-  static Duration _writeTimeoutFor(int payloadBytes) => Duration(
-        seconds: math.min(60, math.max(20, payloadBytes ~/ 8192)),
-      );
+  static Duration _writeTimeoutFor(int payloadBytes) =>
+      Duration(seconds: math.min(60, math.max(20, payloadBytes ~/ 8192)));
 
   String _diagnostics(MarkerTail tail) {
     final snippet = tail.snippet().trim();

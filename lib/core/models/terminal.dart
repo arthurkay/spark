@@ -28,7 +28,7 @@ class PtySession {
       command: (json['command'] ?? '').toString(),
       args:
           (json['args'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-              const [],
+          const [],
       cwd: (json['cwd'] ?? '').toString(),
       status: (json['status'] ?? '').toString(),
       pid: json['pid'] != null ? int.tryParse(json['pid'].toString()) : null,
@@ -39,13 +39,13 @@ class PtySession {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'command': command,
-        'args': args,
-        'cwd': cwd,
-        'status': status,
-        if (pid != null) 'pid': pid,
-        if (exitCode != null) 'exitCode': exitCode,
-      };
+    'id': id,
+    'title': title,
+    'command': command,
+    'args': args,
+    'cwd': cwd,
+    'status': status,
+    if (pid != null) 'pid': pid,
+    if (exitCode != null) 'exitCode': exitCode,
+  };
 }

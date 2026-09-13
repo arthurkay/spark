@@ -82,9 +82,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   Widget _buildBody(PtyController? ctrl, PtyConnectionState? state) {
     if (ctrl == null || state == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (state.connecting) {

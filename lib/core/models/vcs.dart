@@ -4,8 +4,6 @@ class VcsInfo {
   final String branch;
 
   factory VcsInfo.fromJson(Map<String, dynamic> json) {
-    return VcsInfo(
-      branch: (json['branch'] ?? '').toString(),
-    );
+    return VcsInfo(branch: (json['branch'] ?? '').toString());
   }
 }

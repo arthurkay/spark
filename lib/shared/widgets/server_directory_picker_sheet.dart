@@ -128,10 +128,7 @@ class _ServerDirectoryPickerSheetState
   Future<void> _loadDirectory(OpencodeClient client) async {
     final scope = _directoryScope;
     try {
-      final files = await client.listFiles(
-        _currentPath,
-        directory: scope,
-      );
+      final files = await client.listFiles(_currentPath, directory: scope);
       if (!mounted) return;
       setState(() {
         _entries = files.where((f) => f.isDirectory).toList()
@@ -285,9 +282,7 @@ class _ServerDirectoryPickerSheetState
                           children: [
                             const Icon(LucideIcons.folder, size: 16),
                             const Gap(10),
-                            Expanded(
-                              child: Text(entry.name).small.semiBold,
-                            ),
+                            Expanded(child: Text(entry.name).small.semiBold),
                             const Icon(
                               LucideIcons.chevronRight,
                               size: 14,

@@ -20,10 +20,15 @@ void main() {
       final diff = unifiedEditDiff('a\nc\n', 'a\nb\nc\n');
       expect(diff, contains('+b'));
       // Check body lines only — the hunk header legitimately contains '-'.
-      final deletions =
-          diff.split('\n').where((l) => l.startsWith('-')).toList();
-      expect(deletions, isEmpty,
-          reason: 'an insertion should not report deletions');
+      final deletions = diff
+          .split('\n')
+          .where((l) => l.startsWith('-'))
+          .toList();
+      expect(
+        deletions,
+        isEmpty,
+        reason: 'an insertion should not report deletions',
+      );
     });
 
     test('marks a pure deletion', () {
@@ -81,8 +86,11 @@ void main() {
 
       expect(diff, contains('-old line 0'));
       expect(diff, contains('+new line 0'));
-      expect(sw.elapsedMilliseconds, lessThan(500),
-          reason: 'large diffs must not block the UI thread');
+      expect(
+        sw.elapsedMilliseconds,
+        lessThan(500),
+        reason: 'large diffs must not block the UI thread',
+      );
     });
 
     test('caches repeated calls', () {
@@ -91,8 +99,11 @@ void main() {
 
       final first = unifiedEditDiff(oldText, newText);
       final second = unifiedEditDiff(oldText, newText);
-      expect(second, same(first),
-          reason: 'a cache hit should return the identical string instance');
+      expect(
+        second,
+        same(first),
+        reason: 'a cache hit should return the identical string instance',
+      );
     });
   });
 }

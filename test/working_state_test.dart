@@ -34,7 +34,9 @@ void main() {
 
     test('a completed assistant message is not', () {
       expect(
-          isTailGenerating([_msg(role: 'assistant', completed: 2)]), isFalse);
+        isTailGenerating([_msg(role: 'assistant', completed: 2)]),
+        isFalse,
+      );
     });
 
     test('an empty transcript is not', () {

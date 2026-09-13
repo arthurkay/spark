@@ -44,8 +44,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
     _logoController.forward();
     if (_isEditing) {
       final state = ref.read(serverManagerProvider);
-      final config =
-          state.configs.where((c) => c.id == widget.serverId).firstOrNull;
+      final config = state.configs
+          .where((c) => c.id == widget.serverId)
+          .firstOrNull;
       if (config != null) {
         _nameController.text = config.name;
         _hostController.text = config.connection.host;
@@ -94,8 +95,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
       return;
     }
     final config = _buildConfig();
-    final password =
-        _passwordController.text.isEmpty ? null : _passwordController.text;
+    final password = _passwordController.text.isEmpty
+        ? null
+        : _passwordController.text;
 
     setState(() => _connecting = true);
     final client = OpencodeClient(
@@ -181,7 +183,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
                   child: Text(
                     _isEditing ? 'Edit server' : 'Connect to server',
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const Gap(4),
@@ -189,7 +193,8 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
                   child: Text(
                     'Point this app at a running SparkCode server.',
                     style: TextStyle(
-                        color: Theme.of(context).colorScheme.mutedForeground),
+                      color: Theme.of(context).colorScheme.mutedForeground,
+                    ),
                   ),
                 ),
                 const Gap(24),

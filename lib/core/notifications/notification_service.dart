@@ -54,8 +54,10 @@ class NotificationService {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle != AppLifecycleState.resumed) return;
     try {
-      final android = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       await android?.requestNotificationsPermission();
     } on Object catch (_) {
       _available = false;
@@ -109,8 +111,8 @@ class NotificationService {
         permission.title ?? permission.type ?? 'Confirmation required';
     final body = permission.metadata.isNotEmpty
         ? permission.metadata.entries
-            .map((e) => '${e.key}: ${e.value}')
-            .join('\n')
+              .map((e) => '${e.key}: ${e.value}')
+              .join('\n')
         : 'Tap to review and respond.';
     await _plugin.show(
       _permissionNotificationId,
@@ -148,8 +150,9 @@ class NotificationService {
       android: androidDetails,
       iOS: iosDetails,
     );
-    final firstQuestion =
-        question.questions.isNotEmpty ? question.questions.first : null;
+    final firstQuestion = question.questions.isNotEmpty
+        ? question.questions.first
+        : null;
     final title = firstQuestion?.header ?? 'Question from assistant';
     final body = firstQuestion?.question ?? 'Tap to respond.';
     await _plugin.show(

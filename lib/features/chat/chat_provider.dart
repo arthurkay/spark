@@ -16,8 +16,10 @@ import '../../core/storage/cache_service.dart';
 import '../../core/storage/message_queue.dart';
 import 'tts_provider.dart';
 
-final sessionDirectoryProvider =
-    FutureProvider.family<String?, String>((ref, sessionId) async {
+final sessionDirectoryProvider = FutureProvider.family<String?, String>((
+  ref,
+  sessionId,
+) async {
   final client = ref.watch(opencodeClientProvider);
   if (client == null) return null;
   final session = await client.getSession(sessionId);
@@ -199,7 +201,11 @@ class ChatController extends ChangeNotifier {
   bool _aborting = false;
   bool _optimisticBusy = false;
   bool _stuck = false;
+
+  bool get aborting => _aborting;
   DateTime? _lastSseActivity;
+  Map<String, int> _messageIndex = {};
+  String? _lastCacheKey;
 
   static const Duration _stuckThreshold = Duration(seconds: 60);
   static const Duration _stuckCheckInterval = Duration(seconds: 10);
@@ -229,8 +235,10 @@ class ChatController extends ChangeNotifier {
   /// `working` stays false: the cache is a snapshot, and a stale streaming
   /// tail must not pin the header to "working" while offline.
   Future<void> _hydrateFromCache() async {
-    final cached = await CacheService.instance
-        .read(_cacheKey, maxAge: const Duration(days: 30));
+    final cached = await CacheService.instance.read(
+      _cacheKey,
+      maxAge: const Duration(days: 30),
+    );
     if (cached == null || state.messages.isNotEmpty || !state.loading) return;
     final items = cached['items'] as List<dynamic>? ?? [];
     final messages = items
@@ -238,11 +246,7 @@ class ChatController extends ChangeNotifier {
         .map(MessageWithParts.fromJson)
         .toList();
     if (messages.isEmpty) return;
-    state = state.copyWith(
-      messages: messages,
-      loading: false,
-      working: false,
-    );
+    state = state.copyWith(messages: messages, loading: false, working: false);
   }
 
   Future<void> _init() async {
@@ -271,7 +275,8 @@ class ChatController extends ChangeNotifier {
     _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       if (_paused) return;
       final last = _lastSseActivity;
-      final sseIsQuiet = last == null ||
+      final sseIsQuiet =
+          last == null ||
           DateTime.now().difference(last) > const Duration(seconds: 8);
       if (sseIsQuiet) load();
     });
@@ -298,11 +303,7 @@ class ChatController extends ChangeNotifier {
     if (!_stuck && state.error == null) return;
     _stuck = false;
     _lastSseActivity = DateTime.now();
-    state = state.copyWith(
-      working: false,
-      clearError: true,
-      clearRetry: true,
-    );
+    state = state.copyWith(working: false, clearError: true, clearRetry: true);
   }
 
   Future<void> load() async {
@@ -318,7 +319,9 @@ class ChatController extends ChangeNotifier {
       // and restart the reveal on a turn the user has stopped.
       final merged = _aborting
           ? frozenTail(
-              _mergeTail(fetched), DateTime.now().millisecondsSinceEpoch)
+              _mergeTail(fetched),
+              DateTime.now().millisecondsSinceEpoch,
+            )
           : _mergeTail(fetched);
       // If the tail message shows the session is idle, any optimistic "busy"
       // flag from send() is stale (no idle event arrived) — clear it.
@@ -337,9 +340,15 @@ class ChatController extends ChangeNotifier {
         errorType: tailError?.errorName,
         working: working,
       );
-      await CacheService.instance.write(_cacheKey, {
-        'items': merged.map((m) => m.toJson()).toList(),
-      });
+      final cacheKey = merged.isEmpty
+          ? ''
+          : '${merged.length}|${merged.last.info.id}';
+      if (cacheKey != _lastCacheKey) {
+        _lastCacheKey = cacheKey;
+        await CacheService.instance.write(_cacheKey, {
+          'items': merged.map((m) => m.toJson()).toList(),
+        });
+      }
     } on OpencodeApiException catch (e) {
       // Stale transcript already on screen (the cache hydrate ran before the
       // first load): fail quietly — the offline banner explains the situation,
@@ -359,16 +368,18 @@ class ChatController extends ChangeNotifier {
     _loadingOlder = true;
     state = state.copyWith(loadingOlder: true);
     try {
-      final oldestId =
-          state.messages.isNotEmpty ? state.messages.first.info.id : null;
+      final oldestId = state.messages.isNotEmpty
+          ? state.messages.first.info.id
+          : null;
       final fetched = await client.listMessages(
         sessionId,
         limit: olderChunkSize,
         before: oldestId,
       );
       final existingIds = {for (final m in state.messages) m.info.id};
-      final newOnes =
-          fetched.where((m) => !existingIds.contains(m.info.id)).toList();
+      final newOnes = fetched
+          .where((m) => !existingIds.contains(m.info.id))
+          .toList();
       if (newOnes.isEmpty) {
         state = state.copyWith(loadingOlder: false, hasMoreOlder: false);
         return;
@@ -401,14 +412,16 @@ class ChatController extends ChangeNotifier {
   List<MessageWithParts> _mergeTail(List<MessageWithParts> incoming) {
     final prev = state.messages;
     if (prev.isEmpty) {
-      _tailWindow =
-          incoming.length > initialLimit ? incoming.length : initialLimit;
+      _tailWindow = incoming.length > initialLimit
+          ? incoming.length
+          : initialLimit;
       return incoming;
     }
-    final byId = {for (final m in prev) m.info.id: m};
+    final incomingIds = {for (final m in incoming) m.info.id};
     final keptOlder = prev
-        .where((m) => !incoming.any((i) => i.info.id == m.info.id))
+        .where((m) => !incomingIds.contains(m.info.id))
         .toList();
+    final byId = {for (final m in prev) m.info.id: m};
     final merged = <MessageWithParts>[];
     for (final m in incoming) {
       final old = byId[m.info.id];
@@ -419,7 +432,14 @@ class ChatController extends ChangeNotifier {
       }
     }
     final result = [...keptOlder, ...merged];
+    _rebuildMessageIndex(result);
     return result;
+  }
+
+  void _rebuildMessageIndex(List<MessageWithParts> messages) {
+    _messageIndex = {
+      for (var i = 0; i < messages.length; i++) messages[i].info.id: i,
+    };
   }
 
   void setPaused(bool paused) {
@@ -459,8 +479,8 @@ class ChatController extends ChangeNotifier {
       final targetJson = _pendingPartJson ?? partJson;
       _pendingPartJson = null;
       final messages = state.messages;
-      final index = messages.indexWhere((m) => m.info.id == messageID);
-      if (index == -1) {
+      final index = _messageIndex[messageID];
+      if (index == null || index >= messages.length) {
         load();
         return;
       }
@@ -479,6 +499,7 @@ class ChatController extends ChangeNotifier {
       );
       final newMessages = List<MessageWithParts>.from(messages);
       newMessages[index] = updatedMessage;
+      _rebuildMessageIndex(newMessages);
       state = state.copyWith(messages: newMessages);
     };
     if (immediate) {
@@ -536,10 +557,7 @@ class ChatController extends ChangeNotifier {
           if (isIdle) {
             _clearAbort();
             _optimisticBusy = false;
-            state = state.copyWith(
-              working: false,
-              clearRetry: true,
-            );
+            state = state.copyWith(working: false, clearRetry: true);
             if (forThisSession) load();
           } else if (isRetry) {
             if (!_aborting) {
@@ -698,24 +716,26 @@ class ChatController extends ChangeNotifier {
     final connected = ref.read(connectivityProvider);
     if (!connected) {
       final attachmentData = attachments
-          .map((a) => {
-                'name': a.name,
-                'path': a.path,
-                'mime': a.mime,
-                'bytes': base64Encode(a.bytes),
-              })
+          .map(
+            (a) => {
+              'name': a.name,
+              'path': a.path,
+              'mime': a.mime,
+              'bytes': base64Encode(a.bytes),
+            },
+          )
           .toList();
-      await _messageQueue.enqueue(QueuedMessage(
-        sessionId: sessionId,
-        text: text.trim(),
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-        model: model,
-        agent: agent,
-        attachmentData: attachmentData.isNotEmpty ? attachmentData : null,
-      ));
-      state = state.copyWith(
-        error: 'Offline — message queued for later',
+      await _messageQueue.enqueue(
+        QueuedMessage(
+          sessionId: sessionId,
+          text: text.trim(),
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          model: model,
+          agent: agent,
+          attachmentData: attachmentData.isNotEmpty ? attachmentData : null,
+        ),
       );
+      state = state.copyWith(error: 'Offline — message queued for later');
       return;
     }
     _aborting = false;
@@ -747,10 +767,12 @@ class ChatController extends ChangeNotifier {
   }
 
   void _scheduleSettlingReloads() {
-    for (final delay in const [400, 1200, 2500, 4500]) {
-      _settlingTimers.add(Timer(Duration(milliseconds: delay), () {
-        if (!_aborting) load();
-      }));
+    for (final delay in const [500, 2000]) {
+      _settlingTimers.add(
+        Timer(Duration(milliseconds: delay), () {
+          if (!_aborting) load();
+        }),
+      );
     }
   }
 
@@ -795,8 +817,10 @@ class ChatController extends ChangeNotifier {
     // button, so a follow-up message can go out on the very next tap instead
     // of waiting on a round trip the user has no reason to care about.
     state = state.copyWith(
-      messages:
-          frozenTail(state.messages, DateTime.now().millisecondsSinceEpoch),
+      messages: frozenTail(
+        state.messages,
+        DateTime.now().millisecondsSinceEpoch,
+      ),
       working: false,
       clearError: true,
       clearRetry: true,
@@ -846,8 +870,8 @@ class ChatController extends ChangeNotifier {
 
 final chatControllerProvider = ChangeNotifierProvider.family
     .autoDispose<ChatController, String>((ref, sessionId) {
-  return ChatController(ref, sessionId);
-});
+      return ChatController(ref, sessionId);
+    });
 
 /// Whether a message renders anything at all. Messages with no visible parts
 /// are hidden from the transcript.
@@ -888,14 +912,14 @@ class VisibleMessageIds {
   int get hashCode => Object.hashAll(ids);
 }
 
-final visibleMessageIdsProvider =
-    Provider.family.autoDispose<VisibleMessageIds, String>((ref, sessionId) {
-  final controller = ref.watch(chatControllerProvider(sessionId));
-  return VisibleMessageIds([
-    for (final m in controller.state.messages)
-      if (messageHasVisibleContent(m)) m.info.id,
-  ]);
-});
+final visibleMessageIdsProvider = Provider.family
+    .autoDispose<VisibleMessageIds, String>((ref, sessionId) {
+      final controller = ref.watch(chatControllerProvider(sessionId));
+      return VisibleMessageIds([
+        for (final m in controller.state.messages)
+          if (messageHasVisibleContent(m)) m.info.id,
+      ]);
+    });
 
 /// A single message by id.
 ///
@@ -903,14 +927,14 @@ final visibleMessageIdsProvider =
 /// controller preserves the identity of every message it did not touch when
 /// applying a delta. That makes this provider notify exactly one bubble: the
 /// one whose content actually changed.
-final chatMessageProvider =
-    Provider.family.autoDispose<MessageWithParts?, ChatMessageRef>((ref, key) {
-  final controller = ref.watch(chatControllerProvider(key.sessionId));
-  for (final m in controller.state.messages) {
-    if (m.info.id == key.messageId) return m;
-  }
-  return null;
-});
+final chatMessageProvider = Provider.family
+    .autoDispose<MessageWithParts?, ChatMessageRef>((ref, key) {
+      final controller = ref.watch(chatControllerProvider(key.sessionId));
+      for (final m in controller.state.messages) {
+        if (m.info.id == key.messageId) return m;
+      }
+      return null;
+    });
 
 /// Family key for [chatMessageProvider].
 class ChatMessageRef {
@@ -951,16 +975,16 @@ typedef ChatChrome = ({
 });
 
 ChatChrome chatChromeOf(ChatState s) => (
-      loading: s.loading,
-      loadingOlder: s.loadingOlder,
-      hasMoreOlder: s.hasMoreOlder,
-      sending: s.sending,
-      working: s.working,
-      hasMessages: s.messages.isNotEmpty,
-      error: s.error,
-      errorType: s.errorType,
-      statusCode: s.statusCode,
-      retryMessage: s.retryMessage,
-      retryAction: s.retryAction,
-      retryNext: s.retryNext,
-    );
+  loading: s.loading,
+  loadingOlder: s.loadingOlder,
+  hasMoreOlder: s.hasMoreOlder,
+  sending: s.sending,
+  working: s.working,
+  hasMessages: s.messages.isNotEmpty,
+  error: s.error,
+  errorType: s.errorType,
+  statusCode: s.statusCode,
+  retryMessage: s.retryMessage,
+  retryAction: s.retryAction,
+  retryNext: s.retryNext,
+);

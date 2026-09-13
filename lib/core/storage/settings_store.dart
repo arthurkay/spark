@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsStore {
   static const _themeModeKey = 'opencode_theme_mode';
-  static const _collapseFilePermissionsKey =
+  static const _collapseToolWidgetsKey = 'opencode_collapse_tool_widgets';
+  static const _legacyCollapseFilePermissionsKey =
       'opencode_collapse_file_permissions';
   static const _lastRouteKey = 'opencode_last_route';
   static const _scrollPositionPrefix = 'opencode_scroll_';
@@ -20,14 +21,22 @@ class SettingsStore {
     await prefs.setString(_themeModeKey, mode);
   }
 
-  Future<bool> loadCollapseFilePermissions() async {
+  Future<bool> loadCollapseToolWidgets() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_collapseFilePermissionsKey) ?? false;
+    // Migrate from old key if present.
+    if (!prefs.containsKey(_collapseToolWidgetsKey) &&
+        prefs.containsKey(_legacyCollapseFilePermissionsKey)) {
+      final old = prefs.getBool(_legacyCollapseFilePermissionsKey) ?? false;
+      await prefs.setBool(_collapseToolWidgetsKey, old);
+      await prefs.remove(_legacyCollapseFilePermissionsKey);
+      return old;
+    }
+    return prefs.getBool(_collapseToolWidgetsKey) ?? true;
   }
 
-  Future<void> saveCollapseFilePermissions(bool value) async {
+  Future<void> saveCollapseToolWidgets(bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_collapseFilePermissionsKey, value);
+    await prefs.setBool(_collapseToolWidgetsKey, value);
   }
 
   Future<String?> loadLastRoute() async {

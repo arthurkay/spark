@@ -48,7 +48,7 @@ class _PermissionSheetContentState
   @override
   void initState() {
     super.initState();
-    final collapsed = ref.read(collapseFilePermissionsProvider);
+    final collapsed = ref.read(collapseToolWidgetsProvider);
     final isFile = filePermissionTypes.contains(widget.permission.type);
     _expanded = isFile ? !collapsed : true;
   }
@@ -75,9 +75,7 @@ class _PermissionSheetContentState
                 ],
               ),
               const Gap(12),
-              Text(
-                permission.title ?? permission.type ?? 'Allow this action?',
-              ),
+              Text(permission.title ?? permission.type ?? 'Allow this action?'),
               if (hasMetadata) ...[
                 const Gap(12),
                 GestureDetector(
@@ -85,9 +83,7 @@ class _PermissionSheetContentState
                   behavior: HitTestBehavior.opaque,
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Text('Details').muted.small.semiBold,
-                      ),
+                      Expanded(child: Text('Details').muted.small.semiBold),
                       Icon(
                         _expanded
                             ? LucideIcons.chevronDown
@@ -112,9 +108,7 @@ class _PermissionSheetContentState
                               constraints: const BoxConstraints(maxHeight: 200),
                             ),
                           ] else
-                            SelectableText(
-                              '${e.key}: ${e.value}',
-                            ).mono.small,
+                            SelectableText('${e.key}: ${e.value}').mono.small,
                           const Gap(6),
                         ],
                       ],
@@ -128,9 +122,7 @@ class _PermissionSheetContentState
                 const Gap(4),
                 Card(
                   padding: const EdgeInsets.all(12),
-                  child: SelectableText(
-                    patterns.join('\n'),
-                  ).mono.small,
+                  child: SelectableText(patterns.join('\n')).mono.small,
                 ),
               ],
               const Gap(20),

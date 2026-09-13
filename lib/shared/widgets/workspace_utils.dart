@@ -12,7 +12,8 @@ List<WorkspaceGroup> buildWorkspaceGroups(
   List<Session> sessions,
   List<Project> projects,
 ) {
-  final sortedProjects = [...projects]..sort((a, b) {
+  final sortedProjects = [...projects]
+    ..sort((a, b) {
       if (a.isGlobal != b.isGlobal) return a.isGlobal ? 1 : -1;
       return a.worktree.compareTo(b.worktree);
     });

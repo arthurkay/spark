@@ -125,5 +125,5 @@ class QuestionListenerController extends Notifier<void> {
 
 final questionListenerProvider =
     NotifierProvider<QuestionListenerController, void>(
-  QuestionListenerController.new,
-);
+      QuestionListenerController.new,
+    );

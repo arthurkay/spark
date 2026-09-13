@@ -344,7 +344,8 @@ class MessageBubble extends StatelessWidget {
               Consumer(
                 builder: (context, ref, _) {
                   final tts = ref.watch(ttsStateProvider);
-                  final isSpeaking = tts.status != TtsStatus.idle &&
+                  final isSpeaking =
+                      tts.status != TtsStatus.idle &&
                       tts.messageId == message.info.id;
                   final isPaused = tts.status == TtsStatus.paused && isSpeaking;
                   return GhostButton(
@@ -366,9 +367,7 @@ class MessageBubble extends StatelessWidget {
                           Icon(LucideIcons.volume2, size: 16),
                           const Gap(10),
                         ],
-                        Text(
-                          isSpeaking ? 'Stop speaking' : 'Read aloud',
-                        ),
+                        Text(isSpeaking ? 'Stop speaking' : 'Read aloud'),
                       ],
                     ),
                   );
@@ -638,10 +637,7 @@ class _TodoPriorityBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(5),
         border: Border.all(color: color.withAlpha(60)),
       ),
-      child: Text(
-        priority,
-        style: TextStyle(color: color),
-      ).xSmall.semiBold,
+      child: Text(priority, style: TextStyle(color: color)).xSmall.semiBold,
     );
   }
 }
@@ -723,10 +719,9 @@ class _ReasoningBlockState extends State<_ReasoningBlock> {
                   Expanded(
                     child: ShimmerLoading(
                       isLoading: widget.streaming,
-                      child: Text(widget.streaming ? 'Thinking…' : 'Thought')
-                          .muted
-                          .small
-                          .semiBold,
+                      child: Text(
+                        widget.streaming ? 'Thinking…' : 'Thought',
+                      ).muted.small.semiBold,
                     ),
                   ),
                   const Gap(6),
@@ -736,8 +731,10 @@ class _ReasoningBlockState extends State<_ReasoningBlock> {
                     turns: _expanded ? 0.25 : 0,
                     duration: Motion.base,
                     curve: Motion.standard,
-                    child: const Icon(LucideIcons.chevronRight, size: 12)
-                        .iconMutedForeground,
+                    child: const Icon(
+                      LucideIcons.chevronRight,
+                      size: 12,
+                    ).iconMutedForeground,
                   ),
                 ],
               ),
@@ -792,7 +789,8 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     // command, so a collapsed chip stays informative. Two exceptions stay
     // open: the todo list and edit diffs are the turn's actual substance,
     // not noise to fold away.
-    final collapse = ref.read(collapseFilePermissionsProvider) &&
+    final collapse =
+        ref.read(collapseToolWidgetsProvider) &&
         widget.part.toolName != 'todowrite' &&
         widget.part.toolName != 'edit';
     _expanded =
@@ -953,10 +951,12 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
       case 'edit':
         final filePath =
             input?['filePath'] as String? ?? input?['path'] as String? ?? '';
-        final oldString = input?['oldString'] as String? ??
+        final oldString =
+            input?['oldString'] as String? ??
             input?['old_string'] as String? ??
             '';
-        final newString = input?['newString'] as String? ??
+        final newString =
+            input?['newString'] as String? ??
             input?['new_string'] as String? ??
             '';
         final hasBoth = oldString.isNotEmpty && newString.isNotEmpty;
@@ -1019,7 +1019,8 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
           ],
         );
       case 'todowrite':
-        final todoContent = input?['content'] as String? ??
+        final todoContent =
+            input?['content'] as String? ??
             input?['todo'] as String? ??
             input?['text'] as String? ??
             output;
@@ -1043,9 +1044,9 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
               children: [
                 _contentLabel('Tasks'),
                 const Gap(6),
-                Text('${todos.where((t) => t.status == 'completed').length}/${todos.length}')
-                    .xSmall
-                    .muted,
+                Text(
+                  '${todos.where((t) => t.status == 'completed').length}/${todos.length}',
+                ).xSmall.muted,
               ],
             ),
             const Gap(8),
@@ -1191,23 +1192,21 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     if (text.startsWith('{')) text = '[$text]';
     try {
       final decoded = jsonDecode(text);
-      final list =
-          decoded is List ? decoded : (decoded is Map ? [decoded] : null);
+      final list = decoded is List
+          ? decoded
+          : (decoded is Map ? [decoded] : null);
       if (list == null) return const [];
       return list.whereType<Map<String, dynamic>>().map((m) {
         final status = (m['status'] as String? ?? 'pending').toLowerCase();
         final priority = (m['priority'] as String? ?? '').toLowerCase();
-        final content = (m['content'] as String? ??
-                m['todo'] as String? ??
-                m['text'] as String? ??
-                m['title'] as String? ??
-                '')
-            .toString();
-        return _TodoItem(
-          content: content,
-          status: status,
-          priority: priority,
-        );
+        final content =
+            (m['content'] as String? ??
+                    m['todo'] as String? ??
+                    m['text'] as String? ??
+                    m['title'] as String? ??
+                    '')
+                .toString();
+        return _TodoItem(content: content, status: status, priority: priority);
       }).toList();
     } on FormatException {
       return const [];
@@ -1226,9 +1225,7 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
       decoration: BoxDecoration(
         color: theme.colorScheme.background,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: theme.colorScheme.border.withAlpha(120),
-        ),
+        border: Border.all(color: theme.colorScheme.border.withAlpha(120)),
       ),
       child: SingleChildScrollView(
         child: SelectableText(
@@ -1250,10 +1247,12 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     required bool isRemoved,
   }) {
     final theme = Theme.of(context);
-    final bg =
-        isRemoved ? Colors.red.withAlpha(15) : Colors.green.withAlpha(15);
-    final border =
-        isRemoved ? Colors.red.withAlpha(60) : Colors.green.withAlpha(60);
+    final bg = isRemoved
+        ? Colors.red.withAlpha(15)
+        : Colors.green.withAlpha(15);
+    final border = isRemoved
+        ? Colors.red.withAlpha(60)
+        : Colors.green.withAlpha(60);
     return Container(
       constraints: const BoxConstraints(maxHeight: 116),
       padding: const EdgeInsets.all(10),
@@ -1297,10 +1296,10 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
             onTap: hasContent
                 ? () => setState(() => _expanded = !_expanded)
                 : (_isTappable
-                    ? () => _isQuestion
-                        ? _showQuestionSheet(context)
-                        : _showBashSheet(context)
-                    : null),
+                      ? () => _isQuestion
+                            ? _showQuestionSheet(context)
+                            : _showBashSheet(context)
+                      : null),
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1345,8 +1344,10 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
                       turns: _expanded || !_isTappable ? 0.25 : 0,
                       duration: Motion.base,
                       curve: Motion.standard,
-                      child: const Icon(LucideIcons.chevronRight, size: 12)
-                          .iconMutedForeground,
+                      child: const Icon(
+                        LucideIcons.chevronRight,
+                        size: 12,
+                      ).iconMutedForeground,
                     ),
                   ],
                 ],
@@ -1386,7 +1387,8 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     final rawState = widget.part.raw['state'];
     final stateMap = rawState is Map<String, dynamic> ? rawState : null;
     final output = stateMap?['output'] as String?;
-    final isCompleted = widget.part.state == 'completed' ||
+    final isCompleted =
+        widget.part.state == 'completed' ||
         widget.part.state == 'error' ||
         widget.part.state == 'timeout';
 
@@ -1395,20 +1397,24 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     final pendingQuestions = container.read(pendingQuestionsProvider);
     final question = pendingQuestions[messageID] ?? pendingQuestions[callID];
 
-    final questions = question?.questions
-            .map((q) => {
-                  if (q.header != null) 'header': q.header,
-                  'question': q.question,
-                  'options': q.options
-                      .map((o) => {
-                            'label': o.label,
-                            if (o.description != null)
-                              'description': o.description,
-                          })
-                      .toList(),
-                  'multiple': q.multiple,
-                  'custom': q.custom,
-                })
+    final questions =
+        question?.questions
+            .map(
+              (q) => {
+                if (q.header != null) 'header': q.header,
+                'question': q.question,
+                'options': q.options
+                    .map(
+                      (o) => {
+                        'label': o.label,
+                        if (o.description != null) 'description': o.description,
+                      },
+                    )
+                    .toList(),
+                'multiple': q.multiple,
+                'custom': q.custom,
+              },
+            )
             .toList() ??
         _extractQuestions();
 
@@ -1579,10 +1585,7 @@ List<String> buildQuestionAnswer({
   required String customText,
 }) {
   final trimmed = customText.trim();
-  return [
-    ...selectedLabels,
-    if (customSelected && trimmed.isNotEmpty) trimmed,
-  ];
+  return [...selectedLabels, if (customSelected && trimmed.isNotEmpty) trimmed];
 }
 
 class _QuestionOptionTile extends StatelessWidget {
@@ -1601,8 +1604,9 @@ class _QuestionOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color =
-        selected ? theme.colorScheme.primary : theme.colorScheme.border;
+    final color = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.border;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1696,8 +1700,10 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     );
     // A question that arrives with no options at all is free-form by
     // definition, so its field shows immediately with no tile to tick.
-    _customSelected =
-        List.generate(widget.questions.length, (i) => !_hasOptionsAt(i));
+    _customSelected = List.generate(
+      widget.questions.length,
+      (i) => !_hasOptionsAt(i),
+    );
   }
 
   bool _hasOptionsAt(int qi) {
@@ -1729,10 +1735,10 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
   }
 
   List<String> _answerAt(int qi) => buildQuestionAnswer(
-        selectedLabels: qi < _selections.length ? _selections[qi] : const [],
-        customSelected: qi < _customSelected.length && _customSelected[qi],
-        customText: _customTextAt(qi),
-      );
+    selectedLabels: qi < _selections.length ? _selections[qi] : const [],
+    customSelected: qi < _customSelected.length && _customSelected[qi],
+    customText: _customTextAt(qi),
+  );
 
   bool get _canSubmit {
     if (widget.questions.isEmpty) return _customTextAt(0).isNotEmpty;
@@ -1804,8 +1810,9 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
       for (final project in projects) {
         if (project.isGlobal) continue;
         try {
-          for (final r
-              in await client.listQuestions(directory: project.worktree)) {
+          for (final r in await client.listQuestions(
+            directory: project.worktree,
+          )) {
             if (r.messageID == widget.messageKey ||
                 r.callID == widget.callKey ||
                 r.id == widget.requestId) {
@@ -1825,19 +1832,19 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     final requestId = await _resolveRequestIdWithFetch();
     if (requestId.isEmpty) {
       if (mounted) {
-        showAppToast(context,
-            title: 'Question not received from server. Try again.');
+        showAppToast(
+          context,
+          title: 'Question not received from server. Try again.',
+        );
       }
       return;
     }
     final client = ref.read(opencodeClientProvider);
     final answers = widget.questions.isEmpty
         ? [
-            [_customTextAt(0)]
+            [_customTextAt(0)],
           ]
-        : [
-            for (var i = 0; i < widget.questions.length; i++) _answerAt(i),
-          ];
+        : [for (var i = 0; i < widget.questions.length; i++) _answerAt(i)];
     try {
       await client?.replyQuestion(
         requestId: requestId,
@@ -1856,8 +1863,10 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
     final requestId = await _resolveRequestIdWithFetch();
     if (requestId.isEmpty) {
       if (mounted) {
-        showAppToast(context,
-            title: 'Question not received from server. Try again.');
+        showAppToast(
+          context,
+          title: 'Question not received from server. Try again.',
+        );
       }
       return;
     }
@@ -1905,8 +1914,8 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
         final label = opt is Map<String, dynamic>
             ? (opt['label'] as String?) ?? ''
             : opt is String
-                ? opt
-                : null;
+            ? opt
+            : null;
         if (label == null) continue;
         children.add(
           _QuestionOptionTile(
@@ -2040,15 +2049,14 @@ class _QuestionSheetBodyState extends ConsumerState<_QuestionSheetBody> {
           else ...[
             PrimaryButton(
               onPressed: _canSubmit ? _submit : null,
-              child: Text(resolvedId.isNotEmpty
-                  ? 'Submit'
-                  : 'Submit (waiting for server…)'),
+              child: Text(
+                resolvedId.isNotEmpty
+                    ? 'Submit'
+                    : 'Submit (waiting for server…)',
+              ),
             ),
             const Gap(8),
-            DestructiveButton(
-              onPressed: _reject,
-              child: const Text('Reject'),
-            ),
+            DestructiveButton(onPressed: _reject, child: const Text('Reject')),
           ],
         ],
       ),
@@ -2104,11 +2112,8 @@ class _FilePartWidget extends StatelessWidget {
             fit: BoxFit.contain,
             width: _imageWidth,
             cacheWidth: cacheWidth,
-            errorBuilder: (context, error, stack) => _FileChip(
-              filename: filename,
-              mime: mime,
-              theme: theme,
-            ),
+            errorBuilder: (context, error, stack) =>
+                _FileChip(filename: filename, mime: mime, theme: theme),
           ),
         ),
       );
@@ -2122,7 +2127,10 @@ class _FilePartWidget extends StatelessWidget {
       final decoded = DataUriCache.textOf(url);
       if (decoded == null) {
         return _FileChip(
-            filename: filename, mime: 'image/svg+xml', theme: theme);
+          filename: filename,
+          mime: 'image/svg+xml',
+          theme: theme,
+        );
       }
       return SvgPicture.string(
         decoded,
@@ -2157,11 +2165,8 @@ class _FilePartWidget extends StatelessWidget {
       fit: BoxFit.contain,
       width: _imageWidth,
       cacheWidth: cacheWidth,
-      errorBuilder: (_, __, ___) => _FileChip(
-        filename: filename,
-        mime: mime,
-        theme: theme,
-      ),
+      errorBuilder: (_, __, ___) =>
+          _FileChip(filename: filename, mime: mime, theme: theme),
     );
   }
 }

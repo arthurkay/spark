@@ -15,9 +15,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     vsync: this,
     duration: const Duration(milliseconds: 600),
   );
-  late final _logoScale = Tween<double>(begin: 0.8, end: 1.0).animate(
-    CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-  );
+  late final _logoScale = Tween<double>(
+    begin: 0.8,
+    end: 1.0,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   late final _logoFade = CurvedAnimation(
     parent: _controller,
     curve: const Interval(0, 0.6, curve: Curves.easeOut),
@@ -75,10 +76,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   opacity: _textFade,
                   child: const Text(
                     'Spark',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const Gap(8),

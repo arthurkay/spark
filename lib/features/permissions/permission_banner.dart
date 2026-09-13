@@ -79,7 +79,7 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
   @override
   void initState() {
     super.initState();
-    final collapsed = ref.read(collapseFilePermissionsProvider);
+    final collapsed = ref.read(collapseToolWidgetsProvider);
     final isFile = filePermissionTypes.contains(widget.permission.type);
     _expanded = isFile ? !collapsed : true;
   }
@@ -117,12 +117,16 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
                           turns: _expanded ? 0.25 : 0,
                           duration: Motion.base,
                           curve: Motion.standard,
-                          child: const Icon(LucideIcons.chevronRight, size: 14)
-                              .iconMutedForeground,
+                          child: const Icon(
+                            LucideIcons.chevronRight,
+                            size: 14,
+                          ).iconMutedForeground,
                         )
                       else
-                        const Icon(LucideIcons.chevronRight, size: 14)
-                            .iconMutedForeground,
+                        const Icon(
+                          LucideIcons.chevronRight,
+                          size: 14,
+                        ).iconMutedForeground,
                     ],
                   ),
                   if (hasMetadata && _expanded) ...[
@@ -196,8 +200,9 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
       onRespond: (response) {
         final map = {...ref.read(pendingPermissionsProvider)};
         if (map.remove(permission.id) != null) {
-          ref.read(pendingPermissionsProvider.notifier).state =
-              map.isEmpty ? const {} : map;
+          ref.read(pendingPermissionsProvider.notifier).state = map.isEmpty
+              ? const {}
+              : map;
           if (map.isEmpty) NotificationService.instance.cancelPermission();
         }
         client
@@ -231,8 +236,9 @@ class _PermissionCardState extends ConsumerState<_PermissionCard> {
   ) {
     final map = {...ref.read(pendingPermissionsProvider)};
     if (map.remove(permission.id) != null) {
-      ref.read(pendingPermissionsProvider.notifier).state =
-          map.isEmpty ? const {} : map;
+      ref.read(pendingPermissionsProvider.notifier).state = map.isEmpty
+          ? const {}
+          : map;
       if (map.isEmpty) NotificationService.instance.cancelPermission();
     }
     if (client != null && client is OpencodeClient) {

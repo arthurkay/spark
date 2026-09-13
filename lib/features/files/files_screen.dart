@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -52,8 +49,10 @@ class _FileQuery {
 
 class FilesScreen extends ConsumerStatefulWidget {
   const FilesScreen({super.key, this.sessionId, this.directory})
-      : assert(sessionId != null || directory != null,
-            'Either sessionId or directory must be provided');
+    : assert(
+        sessionId != null || directory != null,
+        'Either sessionId or directory must be provided',
+      );
 
   final String? sessionId;
   final String? directory;
@@ -82,8 +81,9 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   Future<String> _resolveBrowseDirectory() async {
     var base = _directory ?? '';
     if (base.isEmpty && widget.sessionId != null) {
-      final sessionDir =
-          await ref.read(sessionDirectoryProvider(widget.sessionId!).future);
+      final sessionDir = await ref.read(
+        sessionDirectoryProvider(widget.sessionId!).future,
+      );
       base = sessionDir ?? '';
     }
     if (_path.isEmpty) return base;
@@ -105,12 +105,18 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       context.push('/session/${newSession.id}');
     } on OpencodeApiException catch (e) {
       if (!mounted) return;
-      showAppToast(context,
-          title: 'Failed to create project', description: e.message);
+      showAppToast(
+        context,
+        title: 'Failed to create project',
+        description: e.message,
+      );
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context,
-          title: 'Failed to create project', description: e.toString());
+      showAppToast(
+        context,
+        title: 'Failed to create project',
+        description: e.toString(),
+      );
     }
   }
 
@@ -121,9 +127,8 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     if (sessionId != null) {
       final directoryAsync = ref.watch(sessionDirectoryProvider(sessionId));
       return directoryAsync.when(
-        loading: () => const Scaffold(
-          child: Center(child: CircularProgressIndicator()),
-        ),
+        loading: () =>
+            const Scaffold(child: Center(child: CircularProgressIndicator())),
         error: (e, _) => Scaffold(
           child: Center(
             child: Text(e is OpencodeApiException ? e.message : '$e').muted,
@@ -137,9 +142,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   }
 
   Widget _buildBody(WidgetRef ref, String? directory) {
-    final filesAsync = ref.watch(
-      _filesProvider(_FileQuery(_path, directory)),
-    );
+    final filesAsync = ref.watch(_filesProvider(_FileQuery(_path, directory)));
 
     return Scaffold(
       headers: [
@@ -199,8 +202,9 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                 );
               }
               final node = nodes[hasUp ? index - 1 : index];
-              final ext =
-                  node.isDirectory ? null : extensionFromPath(node.path);
+              final ext = node.isDirectory
+                  ? null
+                  : extensionFromPath(node.path);
               final isImage =
                   ext != null && isSupportedImageExtension(node.path);
               return GestureDetector(
@@ -224,8 +228,8 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                         node.isDirectory
                             ? LucideIcons.folder
                             : isImage
-                                ? LucideIcons.image
-                                : LucideIcons.file,
+                            ? LucideIcons.image
+                            : LucideIcons.file,
                       ),
                       const Gap(8),
                       Expanded(
@@ -243,10 +247,9 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .muted
-                                .withAlpha(40),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.muted.withAlpha(40),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text('.$ext').xSmall.muted,
@@ -270,7 +273,10 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   /// make a folder. Labelled rows say what each one does and leave room for the
   /// third action on a phone-width bar.
   void _showNewItemMenu(
-      BuildContext context, WidgetRef ref, String? directory) {
+    BuildContext context,
+    WidgetRef ref,
+    String? directory,
+  ) {
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
@@ -290,8 +296,12 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                 alignment: Alignment.centerLeft,
                 onPressed: () {
                   closeSheet(sheetContext);
-                  _showCreateDialog(context, ref, directory,
-                      isDirectory: false);
+                  _showCreateDialog(
+                    context,
+                    ref,
+                    directory,
+                    isDirectory: false,
+                  );
                 },
                 child: const Row(
                   children: [
@@ -382,7 +392,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   }
 
   void _showFileActions(
-      BuildContext context, WidgetRef ref, FileNode node, String? directory) {
+    BuildContext context,
+    WidgetRef ref,
+    FileNode node,
+    String? directory,
+  ) {
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
@@ -419,13 +433,18 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                 },
                 child: Row(
                   children: [
-                    Icon(LucideIcons.trash2,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.destructive),
+                    Icon(
+                      LucideIcons.trash2,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.destructive,
+                    ),
                     const Gap(10),
-                    Text('Delete',
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.destructive)),
+                    Text(
+                      'Delete',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.destructive,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -436,8 +455,12 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     );
   }
 
-  Future<void> _renameItem(BuildContext context, WidgetRef ref, FileNode node,
-      String? directory) async {
+  Future<void> _renameItem(
+    BuildContext context,
+    WidgetRef ref,
+    FileNode node,
+    String? directory,
+  ) async {
     final controller = TextEditingController(text: node.name);
     String? result;
     // Awaited: openSheetOverlay returns as soon as the sheet is *shown*, so
@@ -492,8 +515,9 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     // A file at the project root has no '/' in its path — substring(0, -1)
     // used to throw instead of renaming it.
     final slash = node.path.lastIndexOf('/');
-    final newPath =
-        slash < 0 ? newName : '${node.path.substring(0, slash)}/$newName';
+    final newPath = slash < 0
+        ? newName
+        : '${node.path.substring(0, slash)}/$newName';
 
     final service = FileOpsService(client: client);
     final opResult = await service.rename(node.path, newPath, directory: dir);
@@ -503,13 +527,20 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       ref.invalidate(_filesProvider);
       showAppToast(context, title: 'Renamed to $newName');
     } else {
-      showAppToast(context,
-          title: 'Failed to rename', description: opResult.error);
+      showAppToast(
+        context,
+        title: 'Failed to rename',
+        description: opResult.error,
+      );
     }
   }
 
-  Future<void> _deleteItem(BuildContext context, WidgetRef ref, FileNode node,
-      String? directory) async {
+  Future<void> _deleteItem(
+    BuildContext context,
+    WidgetRef ref,
+    FileNode node,
+    String? directory,
+  ) async {
     bool confirmed = false;
     await openSheetOverlay(
       context: context,
@@ -559,8 +590,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       ref.invalidate(_filesProvider);
       showAppToast(context, title: 'Deleted ${node.name}');
     } else {
-      showAppToast(context,
-          title: 'Failed to delete', description: result.error);
+      showAppToast(
+        context,
+        title: 'Failed to delete',
+        description: result.error,
+      );
     }
   }
 
@@ -571,8 +605,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   }
 
   Future<void> _showCreateDialog(
-      BuildContext context, WidgetRef ref, String? directory,
-      {required bool isDirectory}) async {
+    BuildContext context,
+    WidgetRef ref,
+    String? directory, {
+    required bool isDirectory,
+  }) async {
     final controller = TextEditingController();
     String? nameResult;
     await openSheetOverlay(
@@ -633,8 +670,11 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       ref.invalidate(_filesProvider);
       showAppToast(context, title: 'Created $name');
     } else {
-      showAppToast(context,
-          title: 'Failed to create', description: opResult.error);
+      showAppToast(
+        context,
+        title: 'Failed to create',
+        description: opResult.error,
+      );
     }
   }
 
@@ -751,7 +791,8 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
         child: FutureBuilder<FileContent>(
           future: _contentFuture,
           builder: (context, snapshot) {
-            final loaded = snapshot.connectionState == ConnectionState.done &&
+            final loaded =
+                snapshot.connectionState == ConnectionState.done &&
                 !snapshot.hasError;
             final fileContent = snapshot.data;
             final content = fileContent?.content ?? '';
@@ -790,8 +831,9 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                             ? const SizedBox(
                                 width: 14,
                                 height: 14,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(LucideIcons.check, size: 16),
                         child: const Text('Save').small,
@@ -817,42 +859,39 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                 Flexible(
                   child: !loaded
                       ? (snapshot.hasError
-                          ? Text(
-                              snapshot.error is OpencodeApiException
-                                  ? (snapshot.error as OpencodeApiException)
-                                      .message
-                                  : '${snapshot.error}',
-                            ).muted
-                          : const Center(child: CircularProgressIndicator()))
+                            ? Text(
+                                snapshot.error is OpencodeApiException
+                                    ? (snapshot.error as OpencodeApiException)
+                                          .message
+                                    : '${snapshot.error}',
+                              ).muted
+                            : const Center(child: CircularProgressIndicator()))
                       : isImage
-                          ? _buildImageView(content, mimeType)
-                          : isBinary
-                              ? _buildBinaryPlaceholder(mimeType)
-                              : _editing
-                                  ? TextArea(
-                                      controller: _editController,
-                                      enabled: !_saving,
-                                      expandableHeight: true,
-                                      initialHeight: 420,
-                                      minHeight: 200,
-                                      maxHeight: 520,
-                                      style: TextStyle(
-                                        fontFamily: CodeHighlightView
-                                            .monoFamilies.first,
-                                        fontFamilyFallback: CodeHighlightView
-                                            .monoFamilies
-                                            .skip(1)
-                                            .toList(),
-                                        fontSize: 13,
-                                      ),
-                                    )
-                                  : CodeHighlightView(
-                                      code: content,
-                                      path: widget.path,
-                                      lineNumbers: true,
-                                      constraints:
-                                          const BoxConstraints(maxHeight: 460),
-                                    ),
+                      ? _buildImageView(content, mimeType)
+                      : isBinary
+                      ? _buildBinaryPlaceholder(mimeType)
+                      : _editing
+                      ? TextArea(
+                          controller: _editController,
+                          enabled: !_saving,
+                          expandableHeight: true,
+                          initialHeight: 420,
+                          minHeight: 200,
+                          maxHeight: 520,
+                          style: TextStyle(
+                            fontFamily: CodeHighlightView.monoFamilies.first,
+                            fontFamilyFallback: CodeHighlightView.monoFamilies
+                                .skip(1)
+                                .toList(),
+                            fontSize: 13,
+                          ),
+                        )
+                      : CodeHighlightView(
+                          code: content,
+                          path: widget.path,
+                          lineNumbers: true,
+                          constraints: const BoxConstraints(maxHeight: 460),
+                        ),
                 ),
               ],
             );
@@ -863,10 +902,7 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
   }
 
   Widget _buildImageView(String base64Content, String? mimeType) {
-    Uint8List? bytes;
-    try {
-      bytes = base64Decode(base64Content);
-    } catch (_) {}
+    final bytes = DataUriCache.bytesOfBase64(base64Content);
     if (bytes == null) {
       return _buildBinaryPlaceholder(mimeType);
     }
@@ -885,9 +921,8 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                 bytes,
                 fit: BoxFit.contain,
                 cacheWidth: cacheWidth,
-                errorBuilder: (_, _, _) => _buildBinaryPlaceholder(
-                  mimeType ?? 'image/*',
-                ),
+                errorBuilder: (_, _, _) =>
+                    _buildBinaryPlaceholder(mimeType ?? 'image/*'),
               ),
             ),
             if (mimeType != null) ...[
@@ -909,9 +944,7 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
           const Gap(12),
           const Text('Binary file').muted,
           const Gap(4),
-          Text(
-            'This file type cannot be displayed',
-          ).muted.xSmall,
+          Text('This file type cannot be displayed').muted.xSmall,
           if (mimeType != null) ...[
             const Gap(8),
             Container(

@@ -8,7 +8,6 @@ final _highlighter = Highlight()..registerLanguages(langs.builtinAllLanguages);
 
 const _spanCacheMax = 300;
 final _spanCache = <String, TextSpan>{};
-final _spanCacheOrder = <String>[];
 
 /// Returns a highlighted, font-applied span for [code].
 ///
@@ -24,12 +23,12 @@ TextSpan _cachedHighlight({
   required Brightness brightness,
   required double fontSize,
 }) {
-  final key = '$brightness|${followTheme ? 1 : 0}|$fontSize|'
+  final key =
+      '$brightness|${followTheme ? 1 : 0}|$fontSize|'
       '${language ?? ''}|${path ?? ''}|$code';
-  final cached = _spanCache[key];
+  final cached = _spanCache.remove(key);
   if (cached != null) {
-    _spanCacheOrder.remove(key);
-    _spanCacheOrder.add(key);
+    _spanCache[key] = cached;
     return cached;
   }
   final span = _applyFont(
@@ -43,10 +42,8 @@ TextSpan _cachedHighlight({
     CodeHighlightView._monoStyle(fontSize),
   );
   _spanCache[key] = span;
-  _spanCacheOrder.add(key);
-  while (_spanCacheOrder.length > _spanCacheMax) {
-    final evicted = _spanCacheOrder.removeAt(0);
-    _spanCache.remove(evicted);
+  while (_spanCache.length > _spanCacheMax) {
+    _spanCache.remove(_spanCache.keys.first);
   }
   return span;
 }
@@ -74,8 +71,8 @@ TextSpan _computeHighlight({
 }) {
   final themeMap = followTheme
       ? (brightness == Brightness.dark
-          ? dark.atomOneDarkTheme
-          : light.atomOneLightTheme)
+            ? dark.atomOneDarkTheme
+            : light.atomOneLightTheme)
       : dark.atomOneDarkTheme;
   final baseStyle = themeMap['root'] ?? const TextStyle();
   final lang = CodeHighlightView.detectLanguage(language, path);
@@ -150,8 +147,8 @@ class CodeHighlightView extends StatelessWidget {
     final brightness = MediaQuery.platformBrightnessOf(context);
     final themeMap = followTheme
         ? (brightness == Brightness.dark
-            ? dark.atomOneDarkTheme
-            : light.atomOneLightTheme)
+              ? dark.atomOneDarkTheme
+              : light.atomOneLightTheme)
         : dark.atomOneDarkTheme;
     final baseStyle = themeMap['root'] ?? const TextStyle();
     final span = _cachedHighlight(
@@ -175,7 +172,8 @@ class CodeHighlightView extends StatelessWidget {
       constraints: constraints,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: baseStyle.backgroundColor ??
+        color:
+            baseStyle.backgroundColor ??
             (brightness == Brightness.dark
                 ? const Color(0xff282c34)
                 : const Color(0xfffafafa)),
@@ -203,11 +201,11 @@ class CodeHighlightView extends StatelessWidget {
   }
 
   static TextStyle _monoStyle(double fontSize) => TextStyle(
-        fontFamily: monoFamilies.first,
-        fontFamilyFallback: monoFamilies.skip(1).toList(),
-        fontSize: fontSize,
-        height: 1.5,
-      );
+    fontFamily: monoFamilies.first,
+    fontFamilyFallback: monoFamilies.skip(1).toList(),
+    fontSize: fontSize,
+    height: 1.5,
+  );
 }
 
 class _LineNumberedCode extends StatelessWidget {
@@ -243,8 +241,9 @@ class _LineNumberedCode extends StatelessWidget {
                   '${i + 1}'.padLeft(gutterWidth),
                   style: TextStyle(
                     fontFamily: CodeHighlightView.monoFamilies.first,
-                    fontFamilyFallback:
-                        CodeHighlightView.monoFamilies.skip(1).toList(),
+                    fontFamilyFallback: CodeHighlightView.monoFamilies
+                        .skip(1)
+                        .toList(),
                     fontSize: fontSize,
                     height: 1.5,
                     color: muted,

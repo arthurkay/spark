@@ -89,16 +89,16 @@ class MessageInfo {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'role': role,
-        if (sessionID != null) 'sessionID': sessionID,
-        if (modelID != null) 'modelID': modelID,
-        if (providerID != null) 'providerID': providerID,
-        if (agent != null) 'agent': agent,
-        if (mode != null) 'mode': mode,
-        if (time != null) 'time': time,
-        if (error != null) 'error': error,
-      };
+    'id': id,
+    'role': role,
+    if (sessionID != null) 'sessionID': sessionID,
+    if (modelID != null) 'modelID': modelID,
+    if (providerID != null) 'providerID': providerID,
+    if (agent != null) 'agent': agent,
+    if (mode != null) 'mode': mode,
+    if (time != null) 'time': time,
+    if (error != null) 'error': error,
+  };
 }
 
 class MessagePart {
@@ -157,7 +157,7 @@ class MessageWithParts {
   }
 
   Map<String, dynamic> toJson() => {
-        'info': info.toJson(),
-        'parts': parts.map((p) => p.toJson()).toList(),
-      };
+    'info': info.toJson(),
+    'parts': parts.map((p) => p.toJson()).toList(),
+  };
 }
