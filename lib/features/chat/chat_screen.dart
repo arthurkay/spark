@@ -667,27 +667,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
       ],
       resizeToAvoidBottomInset: true,
-      child: Column(
+      child: Stack(
         children: [
-          Expanded(child: _buildBody(chrome, working: working)),
-          const PermissionBanner(),
-          _Composer(
-            sessionId: widget.sessionId,
-            controller: _composerController,
-            sending: chrome.sending,
-            working: working,
-            aborting: controller.aborting,
-            error: chrome.error,
-            retryMessage: chrome.retryMessage,
-            retryAction: chrome.retryAction,
-            retryNext: chrome.retryNext,
-            attachments: _attachments,
-            onPickFiles: _pickFiles,
-            onTakePicture: _takePicture,
-            onRemoveAttachment: _removeAttachment,
-            onSend: _send,
-            onAbort: controller.abort,
-            onDismiss: controller.dismissStuck,
+          _buildBody(chrome, working: working),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const PermissionBanner(),
+                _Composer(
+                  sessionId: widget.sessionId,
+                  controller: _composerController,
+                  sending: chrome.sending,
+                  working: working,
+                  aborting: controller.aborting,
+                  error: chrome.error,
+                  retryMessage: chrome.retryMessage,
+                  retryAction: chrome.retryAction,
+                  retryNext: chrome.retryNext,
+                  attachments: _attachments,
+                  onPickFiles: _pickFiles,
+                  onTakePicture: _takePicture,
+                  onRemoveAttachment: _removeAttachment,
+                  onSend: _send,
+                  onAbort: controller.abort,
+                  onDismiss: controller.dismissStuck,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -852,7 +862,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView.separated(
               controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 20, bottom: 120),
               itemCount: itemCount,
               separatorBuilder: (context, index) => const Gap(24),
               itemBuilder: (context, index) {
@@ -893,10 +903,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ValueListenableBuilder<bool>(
           valueListenable: _showScrollToBottom,
           builder: (context, show, _) {
-            if (!show || _restoringScroll) return const SizedBox.shrink();
+            if (!show) return const SizedBox.shrink();
             return Positioned(
               right: 16,
-              bottom: 16,
+              bottom: 110,
               child: GestureDetector(
                 onTap: () => _scrollToBottom(),
                 child: Container(
