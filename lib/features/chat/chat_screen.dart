@@ -12,6 +12,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
 import '../permissions/permission_banner.dart';
+import '../permissions/permission_sheet.dart';
+import '../../core/models/permission.dart';
 import '../sessions/workspace_provider.dart';
 import '../../core/api/connectivity_provider.dart';
 import '../../core/api/permission_provider.dart';
@@ -22,6 +24,27 @@ import '../../core/storage/settings_store.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
+
+const _scrollNearBottomThreshold = 120.0;
+
+String scrollKey(String sessionId) => 'chat_$sessionId';
+
+bool isNearBottom(double pixels, double maxScrollExtent) {
+  return maxScrollExtent - pixels < _scrollNearBottomThreshold;
+}
+
+enum ScrollRestoreDecision { jumpToPosition, scrollToBottom, waitForLayout }
+
+ScrollRestoreDecision decideScrollRestore({
+  required double? savedPosition,
+  required double maxScrollExtent,
+}) {
+  if (maxScrollExtent <= 0) return ScrollRestoreDecision.waitForLayout;
+  if (savedPosition != null && savedPosition > 0) {
+    return ScrollRestoreDecision.jumpToPosition;
+  }
+  return ScrollRestoreDecision.scrollToBottom;
+}
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.sessionId});
@@ -41,6 +64,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   late final AnimationController _workingAnimController;
   Timer? _scrollSaveTimer;
   bool _scrollPositionRestored = false;
+  bool _restoringScroll = false;
+  double? _pendingScrollPosition;
 
   bool _listenersInitialized = false;
 
@@ -60,6 +85,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (_listenersInitialized) return;
     _listenersInitialized = true;
     _setupListeners();
+    // ref.listen only fires on changes — if messages are already loaded from
+    // cache before the listener was set up, the initial load never triggers it.
+    if (!_initialScrollDone && !_scrollPositionRestored) {
+      final visibleIds = ref.read(visibleMessageIdsProvider(widget.sessionId));
+      if (visibleIds.length > 0) {
+        _initialScrollDone = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startScrollRestore();
+        });
+      }
+    }
     // Sync animation with current state (ref.listen only fires on changes).
     final chrome = ref.read(
       chatControllerProvider(
@@ -125,8 +161,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       if (nextCount != prevCount) {
         if (!_initialScrollDone && nextCount > 0) {
           _initialScrollDone = true;
-          _restoreScrollPosition();
-        } else if (_isNearBottom) {
+          _startScrollRestore();
+        } else if (_restoringScroll) {
+          // Messages arrived while we're waiting for layout — try again.
+          _attemptScrollRestore();
+        } else if (_initialScrollDone && !_restoringScroll && _isNearBottom) {
           _scrollToBottom();
         }
       }
@@ -212,39 +251,79 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     await prefs.remove(_draftKey(widget.sessionId));
   }
 
-  static String _scrollKey(String sessionId) => 'chat_$sessionId';
-
   void _saveScrollPosition() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    final atBottom = position.maxScrollExtent - position.pixels < 120;
+    final atBottom = isNearBottom(position.pixels, position.maxScrollExtent);
     if (atBottom) {
-      SettingsStore().saveScrollPosition(_scrollKey(widget.sessionId), -1);
+      SettingsStore().saveScrollPosition(scrollKey(widget.sessionId), -1);
     } else {
       SettingsStore().saveScrollPosition(
-        _scrollKey(widget.sessionId),
+        scrollKey(widget.sessionId),
         _scrollController.offset,
       );
     }
   }
 
-  void _restoreScrollPosition() {
+  void _startScrollRestore() {
     if (_scrollPositionRestored) return;
-    SettingsStore().loadScrollPosition(_scrollKey(widget.sessionId)).then((
-      saved,
-    ) {
-      if (saved != null &&
-          saved > 0 &&
-          mounted &&
-          _scrollController.hasClients) {
-        final max = _scrollController.position.maxScrollExtent;
-        _scrollController.jumpTo(saved.clamp(0.0, max));
-        _initialScrollDone = true;
-      } else {
+    _restoringScroll = true;
+    Timer(const Duration(seconds: 3), () {
+      if (mounted && _restoringScroll) {
+        _restoringScroll = false;
+        _scrollPositionRestored = true;
         _scrollToBottom(animate: false);
       }
-      _scrollPositionRestored = true;
     });
+    SettingsStore().loadScrollPosition(scrollKey(widget.sessionId)).then((
+      saved,
+    ) {
+      if (!mounted) return;
+      _pendingScrollPosition = saved;
+      _attemptScrollRestore();
+    });
+  }
+
+  void _attemptScrollRestore() {
+    if (!mounted || _scrollPositionRestored) return;
+
+    if (!_scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _attemptScrollRestore();
+      });
+      return;
+    }
+
+    final saved = _pendingScrollPosition;
+    if (saved == null) {
+      // SharedPreferences hasn't returned yet — wait for next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _attemptScrollRestore();
+      });
+      return;
+    }
+
+    final max = _scrollController.position.maxScrollExtent;
+    final decision = decideScrollRestore(savedPosition: saved, maxScrollExtent: max);
+    switch (decision) {
+      case ScrollRestoreDecision.waitForLayout:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _attemptScrollRestore();
+        });
+        return;
+      case ScrollRestoreDecision.jumpToPosition:
+        break;
+      case ScrollRestoreDecision.scrollToBottom:
+        break;
+    }
+
+    _restoringScroll = false;
+    _scrollPositionRestored = true;
+    if (decision == ScrollRestoreDecision.jumpToPosition) {
+      _scrollController.jumpTo(saved.clamp(0.0, max));
+    } else {
+      _scrollToBottom(animate: false);
+    }
   }
 
   void _scrollToBottom({bool animate = true}) {
@@ -494,7 +573,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   bool get _isNearBottom {
     if (!_scrollController.hasClients) return true;
     final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels < 120;
+    return isNearBottom(position.pixels, position.maxScrollExtent);
   }
 
   @override
@@ -616,6 +695,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   Widget _buildWorkingIndicator() {
+    final pending = ref.watch(pendingPermissionsProvider);
+    final sessionPerms = pending.values
+        .where((p) => p.sessionID == widget.sessionId)
+        .toList();
+    if (sessionPerms.isNotEmpty) {
+      final perm = sessionPerms.first;
+      return GestureDetector(
+        onTap: () {
+          final client = ref.read(opencodeClientProvider);
+          showPermissionSheet(
+            context: context,
+            permission: perm,
+            onRespond: (response) {
+              final map = {...ref.read(pendingPermissionsProvider)};
+              if (map.remove(perm.id) != null) {
+                ref.read(pendingPermissionsProvider.notifier).state =
+                    map.isEmpty ? const {} : map;
+                if (map.isEmpty) {
+                  NotificationService.instance.cancelPermission();
+                }
+              }
+              client
+                  ?.respondPermission(
+                    sessionId: perm.sessionID,
+                    permissionId: perm.id,
+                    reply: response,
+                    directory: perm.directory,
+                  )
+                  .catchError((_) {});
+            },
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(permissionIcon(perm.type), size: 14, color: Colors.orange),
+              const Gap(8),
+              Expanded(
+                child: Text(
+                  'Waiting for permission: ${perm.title ?? perm.type ?? "approval"}',
+                ).small.muted,
+              ),
+              const Icon(LucideIcons.chevronRight, size: 12).iconMutedForeground,
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -745,10 +873,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ),
           ),
         ),
+        if (_restoringScroll)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.muted,
+                shape: BoxShape.circle,
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(10),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
         ValueListenableBuilder<bool>(
           valueListenable: _showScrollToBottom,
           builder: (context, show, _) {
-            if (!show) return const SizedBox.shrink();
+            if (!show || _restoringScroll) return const SizedBox.shrink();
             return Positioned(
               right: 16,
               bottom: 16,
