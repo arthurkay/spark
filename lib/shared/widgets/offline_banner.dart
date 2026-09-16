@@ -29,7 +29,7 @@ class OfflineBanner extends ConsumerWidget {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
+              padding: const EdgeInsets.only(top: 56, bottom: 3),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
