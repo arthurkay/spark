@@ -204,10 +204,12 @@ class ChatController extends ChangeNotifier {
 
   bool get aborting => _aborting;
   DateTime? _lastSseActivity;
+  DateTime? _lastContentChange;
   Map<String, int> _messageIndex = {};
   String? _lastCacheKey;
 
   static const Duration _stuckThreshold = Duration(seconds: 60);
+  static const Duration _contentIdleThreshold = Duration(minutes: 5);
   static const Duration _stuckCheckInterval = Duration(seconds: 10);
 
   static const int initialLimit = 40;
@@ -296,6 +298,20 @@ class ChatController extends ChangeNotifier {
         working: false,
         error: 'Session appears unresponsive. You can dismiss this.',
       );
+      return;
+    }
+    final contentLast = _lastContentChange;
+    final contentIdle = contentLast == null
+        ? const Duration(days: 365)
+        : DateTime.now().difference(contentLast);
+    if (contentIdle >= _contentIdleThreshold && state.working) {
+      _stuck = true;
+      _optimisticBusy = false;
+      _clearAbort();
+      state = state.copyWith(
+        working: false,
+        error: 'No output for 5 minutes. The session may be waiting for input.',
+      );
     }
   }
 
@@ -330,6 +346,9 @@ class ChatController extends ChangeNotifier {
       }
       final working = _computeWorking(merged);
       if (!working) _stuck = false;
+      if (merged.isNotEmpty && merged != state.messages) {
+        _lastContentChange = DateTime.now();
+      }
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
       final tailError = _tailErrorInfo(merged);
       state = state.copyWith(
@@ -500,6 +519,7 @@ class ChatController extends ChangeNotifier {
       final newMessages = List<MessageWithParts>.from(messages);
       newMessages[index] = updatedMessage;
       _rebuildMessageIndex(newMessages);
+      _lastContentChange = DateTime.now();
       state = state.copyWith(messages: newMessages);
     };
     if (immediate) {

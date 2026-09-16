@@ -33,6 +33,9 @@ class PermissionListenerController extends Notifier<void> {
 
   Timer? _timer;
 
+  static const Duration _staleThreshold = Duration(hours: 1);
+  final Map<String, DateTime> _firstSeen = {};
+
   void _onEvent(OpencodeEvent event) {
     final props = event.properties;
     switch (event.type) {
@@ -77,6 +80,25 @@ class PermissionListenerController extends Notifier<void> {
           // Ignore per-project errors; keep other results.
         }
       }
+
+      final now = DateTime.now();
+      for (final id in seen.keys) {
+        _firstSeen.putIfAbsent(id, () => now);
+      }
+      _firstSeen.removeWhere((id, _) => !seen.containsKey(id));
+
+      final stale = <String>[];
+      for (final entry in _firstSeen.entries) {
+        if (now.difference(entry.value) >= _staleThreshold) {
+          stale.add(entry.key);
+        }
+      }
+      for (final id in stale) {
+        final p = seen.remove(id);
+        if (p != null) _rejectStale(p);
+        _firstSeen.remove(id);
+      }
+
       final autoApprove = ref.read(autoApprovePermissionsProvider);
       if (autoApprove) {
         for (final p in seen.values) {
@@ -99,6 +121,7 @@ class PermissionListenerController extends Notifier<void> {
   }
 
   void _add(PermissionRequest permission) {
+    _firstSeen.putIfAbsent(permission.id, () => DateTime.now());
     final autoApprove = ref.read(autoApprovePermissionsProvider);
     if (autoApprove) {
       _respondAuto(permission);
@@ -124,6 +147,24 @@ class PermissionListenerController extends Notifier<void> {
     if (map.remove(permission.id) != null) {
       ref.read(pendingPermissionsProvider.notifier).state = map;
     }
+    _firstSeen.remove(permission.id);
+  }
+
+  void _rejectStale(PermissionRequest permission) {
+    final client = ref.read(opencodeClientProvider);
+    client
+        ?.respondPermission(
+          sessionId: permission.sessionID,
+          permissionId: permission.id,
+          reply: 'reject',
+          directory: permission.directory,
+        )
+        .catchError((_) {});
+    final map = {...ref.read(pendingPermissionsProvider)};
+    if (map.remove(permission.id) != null) {
+      ref.read(pendingPermissionsProvider.notifier).state = map;
+      if (map.isEmpty) NotificationService.instance.cancelPermission();
+    }
   }
 
   void _resolve(Map<String, dynamic> props) {
@@ -134,6 +175,7 @@ class PermissionListenerController extends Notifier<void> {
     final map = {...ref.read(pendingPermissionsProvider)};
     map.remove(requestID);
     ref.read(pendingPermissionsProvider.notifier).state = map;
+    _firstSeen.remove(requestID);
     if (map.isEmpty) NotificationService.instance.cancelPermission();
   }
 }
