@@ -193,7 +193,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             .fold(0, (int sum, p) => sum + p.text!.length);
         if (tailTextLen != _lastStreamContentLength && _isNearBottom) {
           _lastStreamContentLength = tailTextLen;
-          _scrollToBottom();
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(
+              _scrollController.position.maxScrollExtent,
+            );
+          }
         }
       },
     );
