@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart' show CupertinoPage;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,17 +17,52 @@ import 'motion.dart';
 
 /// A page pushed onto the navigation stack.
 ///
-/// Uses [CupertinoPage] rather than a hand-rolled `CustomTransitionPage` for
-/// three reasons the custom builders didn't provide:
-///
-///  * it animates the *outgoing* page too (parallax + dim). The previous
-///    builders accepted `secondaryAnimation` and ignored it, so the page being
-///    covered sat perfectly still — the main reason navigation felt flat.
-///  * it comes with the edge swipe-back gesture, which the app had nowhere.
-///  * its duration and curve are the platform's, instead of go_router's
-///    unspecified 300ms default.
+/// Cupertino-style slide from right, but snappier (~200ms) than the platform
+/// default (~400ms). Animates both the incoming and outgoing pages.
 Page<void> _stackPage(GoRouterState state, Widget child) {
-  return CupertinoPage<void>(key: state.pageKey, child: child);
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: Motion.base,
+    reverseTransitionDuration: Motion.fast,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Motion.standard));
+      final reverseSlide = Tween<Offset>(
+        begin: Offset.zero,
+        end: const Offset(-0.3, 0),
+      ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard));
+      final fade = Tween<double>(
+        begin: 0.0,
+        end: 1.0,
+      ).animate(CurvedAnimation(parent: animation, curve: Motion.standard));
+      final reverseFade = Tween<double>(
+        begin: 1.0,
+        end: 0.6,
+      ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard));
+
+      return AnimatedBuilder(
+        animation: Listenable.merge([animation, secondaryAnimation]),
+        builder: (context, _) {
+          return SlideTransition(
+            position: reverseSlide,
+            child: FadeTransition(
+              opacity: reverseFade,
+              child: SlideTransition(
+                position: slide,
+                child: FadeTransition(
+                  opacity: fade,
+                  child: child,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
 }
 
 /// The root page. Not part of the push stack — it cross-fades, since there is
