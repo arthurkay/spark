@@ -91,8 +91,7 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _busySessionsBeforePause =
-            Set.of(ref.read(sessionActivityProvider));
+        _busySessionsBeforePause = Set.of(ref.read(sessionActivityProvider));
         ref.read(appPausedProvider.notifier).state = false;
         ref.invalidate(eventStreamProvider);
         ref.invalidate(sessionsProvider);

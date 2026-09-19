@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
+import '../../app/motion.dart';
 import '../permissions/permission_banner.dart';
 import '../permissions/permission_sheet.dart';
 import '../../core/models/permission.dart';
@@ -25,6 +26,7 @@ import '../../core/storage/settings_store.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
+import '../../shared/widgets/chat_loading_skeleton.dart';
 
 const _scrollNearBottomThreshold = 120.0;
 
@@ -86,8 +88,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (_listenersInitialized) return;
     _listenersInitialized = true;
     _setupListeners();
-    // ref.listen only fires on changes — if messages are already loaded from
-    // cache before the listener was set up, the initial load never triggers it.
     if (!_initialScrollDone && !_scrollPositionRestored) {
       final visibleIds = ref.read(visibleMessageIdsProvider(widget.sessionId));
       if (visibleIds.length > 0) {
@@ -99,9 +99,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
     // Sync animation with current state (ref.listen only fires on changes).
     final chrome = ref.read(
-      chatControllerProvider(
-        widget.sessionId,
-      ).select((c) => chatChromeOf(c.state)),
+      chatControllerProvider(widget.sessionId).select(
+        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+      ),
     );
     final globalBusy = ref
         .read(sessionActivityProvider)
@@ -117,9 +117,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _setupListeners() {
     // Working animation: only reacts to working/aborting changes.
     ref.listen(
-      chatControllerProvider(
-        widget.sessionId,
-      ).select((c) => chatChromeOf(c.state)),
+      chatControllerProvider(widget.sessionId).select(
+        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+      ),
       (prev, next) {
         final globalBusy = ref
             .read(sessionActivityProvider)
@@ -140,9 +140,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     // Session activity: also drive working animation.
     ref.listen(sessionActivityProvider, (prev, next) {
       final chrome = ref.read(
-        chatControllerProvider(
-          widget.sessionId,
-        ).select((c) => chatChromeOf(c.state)),
+        chatControllerProvider(widget.sessionId).select(
+          (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+        ),
       );
       final globalBusy = next.contains(widget.sessionId);
       final working =
@@ -164,8 +164,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           _initialScrollDone = true;
           _startScrollRestore();
         } else if (_restoringScroll) {
-          // Messages arrived while we're waiting for layout — try again.
-          _attemptScrollRestore();
+          if (_pendingScrollPosition == null) {
+            _scrollToBottomNoSave();
+          } else {
+            _attemptScrollRestore();
+          }
         } else if (_initialScrollDone && !_restoringScroll && _isNearBottom) {
           _scrollToBottom();
         }
@@ -174,9 +177,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Streaming: scroll while text is growing.
     ref.listen(
-      chatControllerProvider(
-        widget.sessionId,
-      ).select((c) => chatChromeOf(c.state)),
+      chatControllerProvider(widget.sessionId).select(
+        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+      ),
       (prev, next) {
         if (!next.working) {
           _lastStreamContentLength = 0;
@@ -274,18 +277,136 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (_scrollPositionRestored) return;
     _restoringScroll = true;
     Timer(const Duration(seconds: 3), () {
-      if (mounted && _restoringScroll) {
-        _restoringScroll = false;
-        _scrollPositionRestored = true;
-        _scrollToBottom(animate: false);
+      if (mounted && _restoringScroll && !_scrollPositionRestored) {
+        _pinToBottom(
+          finishRestore: true,
+          requireLoaded: true,
+          budget: 300,
+          stableNeeded: 5,
+        );
       }
     });
     SettingsStore().loadScrollPosition(scrollKey(widget.sessionId)).then((
       saved,
     ) {
       if (!mounted) return;
+      if (saved == null) {
+        _scrollToBottomNoSave();
+        return;
+      }
       _pendingScrollPosition = saved;
       _attemptScrollRestore();
+    });
+  }
+
+  int _pinGeneration = 0;
+  int _pinStableFrames = 0;
+  double _pinLastMax = -1;
+
+  void _scrollToBottomNoSave() {
+    _pinToBottom(
+      finishRestore: true,
+      requireLoaded: true,
+      budget: 120,
+      stableNeeded: 5,
+    );
+  }
+
+  /// Keeps jumping to the end of the list until the layout settles.
+  ///
+  /// A single jumpTo is not enough: ListView.builder lays out lazily, so the
+  /// first maxScrollExtent only covers the items built so far, and the network
+  /// load() can prepend older messages afterwards and shift everything down.
+  /// This re-pins every frame until the viewport sits at the bottom and
+  /// maxScrollExtent stops growing.
+  void _pinToBottom({
+    required bool finishRestore,
+    bool requireLoaded = false,
+    int budget = 60,
+    int stableNeeded = 3,
+  }) {
+    _pinGeneration++;
+    _pinStableFrames = 0;
+    _pinLastMax = -1;
+    _pinFrame(
+      generation: _pinGeneration,
+      finishRestore: finishRestore,
+      requireLoaded: requireLoaded,
+      remaining: budget,
+      stableNeeded: stableNeeded,
+    );
+  }
+
+  void _finishPin(bool finishRestore) {
+    if (finishRestore) _markRestored();
+  }
+
+  void _markRestored() {
+    if (_scrollPositionRestored && !_restoringScroll) return;
+    _restoringScroll = false;
+    _scrollPositionRestored = true;
+    if (mounted) setState(() {});
+  }
+
+  void _pinFrame({
+    required int generation,
+    required bool finishRestore,
+    required bool requireLoaded,
+    required int remaining,
+    required int stableNeeded,
+  }) {
+    if (remaining <= 0 || !mounted) {
+      _finishPin(finishRestore);
+      return;
+    }
+    void next() => _pinFrame(
+      generation: generation,
+      finishRestore: finishRestore,
+      requireLoaded: requireLoaded,
+      remaining: remaining - 1,
+      stableNeeded: stableNeeded,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _pinGeneration) return;
+      if (!_scrollController.hasClients) {
+        next();
+        return;
+      }
+      final position = _scrollController.position;
+      final max = position.maxScrollExtent;
+      if (max <= 0) {
+        _pinStableFrames = 0;
+        next();
+        return;
+      }
+      if (position.pixels < max - 0.5) {
+        _scrollController.jumpTo(max);
+        _pinStableFrames = 0;
+        _pinLastMax = max;
+        next();
+        return;
+      }
+      if ((max - _pinLastMax).abs() < 0.5) {
+        _pinStableFrames++;
+      } else {
+        _pinStableFrames = 0;
+        _pinLastMax = max;
+      }
+      if (_pinStableFrames >= stableNeeded) {
+        if (requireLoaded) {
+          final notifier = ref.read(
+            chatControllerProvider(widget.sessionId).notifier,
+          );
+          if (notifier.state.loading || !notifier.initialLoadDone) {
+            _pinStableFrames = 0;
+            next();
+            return;
+          }
+        }
+        _finishPin(finishRestore);
+        return;
+      }
+      next();
     });
   }
 
@@ -309,7 +430,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
 
     final max = _scrollController.position.maxScrollExtent;
-    final decision = decideScrollRestore(savedPosition: saved, maxScrollExtent: max);
+    final decision = decideScrollRestore(
+      savedPosition: saved,
+      maxScrollExtent: max,
+    );
     switch (decision) {
       case ScrollRestoreDecision.waitForLayout:
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -322,8 +446,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         break;
     }
 
-    _restoringScroll = false;
-    _scrollPositionRestored = true;
+    _markRestored();
     if (decision == ScrollRestoreDecision.jumpToPosition) {
       _scrollController.jumpTo(saved.clamp(0.0, max));
     } else {
@@ -332,18 +455,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   void _scrollToBottom({bool animate = true}) {
+    if (!animate) {
+      _pinToBottom(finishRestore: false, budget: 45, stableNeeded: 4);
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final position = _scrollController.position.maxScrollExtent;
-      if (animate) {
-        _scrollController.animateTo(
-          position,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      } else {
-        _scrollController.jumpTo(position);
+      if (!mounted || !_scrollController.hasClients) return;
+      final target = _scrollController.position.maxScrollExtent;
+      if (target <= 0) {
+        _pinToBottom(finishRestore: false, budget: 30, stableNeeded: 3);
+        return;
       }
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+      Future.delayed(const Duration(milliseconds: 260), () {
+        if (!mounted || !_scrollController.hasClients) return;
+        final pos = _scrollController.position;
+        if (pos.pixels < pos.maxScrollExtent - 0.5) {
+          _pinToBottom(finishRestore: false, budget: 30, stableNeeded: 3);
+        }
+      });
     });
   }
 
@@ -585,9 +719,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Widget build(BuildContext context) {
     _setupListenersIfNeeded();
     final chrome = ref.watch(
-      chatControllerProvider(
-        widget.sessionId,
-      ).select((c) => chatChromeOf(c.state)),
+      chatControllerProvider(widget.sessionId).select(
+        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+      ),
     );
     final controller = ref.read(
       chatControllerProvider(widget.sessionId).notifier,
@@ -691,7 +825,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Theme.of(context).colorScheme.background.withValues(alpha: 0.0),
+                          Theme.of(
+                            context,
+                          ).colorScheme.background.withValues(alpha: 0.0),
                           Theme.of(context).colorScheme.background,
                         ],
                       ),
@@ -779,7 +915,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   'Waiting for permission: ${perm.title ?? perm.type ?? "approval"}',
                 ).small.muted,
               ),
-              const Icon(LucideIcons.chevronRight, size: 12).iconMutedForeground,
+              const Icon(
+                LucideIcons.chevronRight,
+                size: 12,
+              ).iconMutedForeground,
             ],
           ),
         ),
@@ -815,9 +954,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   Widget _buildBody(ChatChrome chrome, {required bool working}) {
-    if (chrome.loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
     if (chrome.error != null && !chrome.hasMessages) {
       return Center(
         child: Padding(
@@ -846,7 +982,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
     final visibleIds = ref.watch(visibleMessageIdsProvider(widget.sessionId));
     final visible = visibleIds.ids;
-    if (visible.isEmpty) {
+
+    if (!_initialScrollDone && !_scrollPositionRestored && visible.isNotEmpty) {
+      _initialScrollDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startScrollRestore();
+      });
+    }
+
+    final showEmptyHint =
+        visible.isEmpty && (chrome.initialLoadDone || !chrome.loading);
+    if (showEmptyHint) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -886,34 +1032,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       chatControllerProvider(widget.sessionId).notifier,
     );
     final messages = controller.state.messages;
+    // While the initial scroll restore is still pinning to the bottom, keep
+    // the list laid out but invisible behind the skeleton: presenting even
+    // one frame of the top of a half-loaded transcript reads as "opened at
+    // the top". The reveal fades in once the pin settles on the full content.
+    final revealed = _scrollPositionRestored;
     return Stack(
       children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: ListView.separated(
-              controller: _scrollController,
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 20, bottom: 120),
-              itemCount: itemCount,
-              separatorBuilder: (context, index) => const Gap(24),
-              itemBuilder: (context, index) {
-                if (hasHeader && index == 0) return header!;
-                final messageIndex = hasHeader ? index - 1 : index;
-                if (working && index == itemCount - 1) {
-                  return _buildWorkingIndicator();
-                }
-                final msgId = visible[messageIndex];
-                final msg = messages.firstWhere(
-                  (m) => m.info.id == msgId,
-                  orElse: () => messages.last,
-                );
-                return RepaintBoundary(
-                  child: MessageBubble(key: ValueKey(msgId), message: msg),
-                );
-              },
+        IgnorePointer(
+          ignoring: !revealed,
+          child: AnimatedOpacity(
+            opacity: revealed ? 1.0 : 0.0,
+            duration: Motion.base,
+            curve: Motion.standard,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: ListView.separated(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 20,
+                    bottom: 120,
+                  ),
+                  itemCount: itemCount,
+                  separatorBuilder: (context, index) => const Gap(24),
+                  itemBuilder: (context, index) {
+                    if (hasHeader && index == 0) return header!;
+                    final messageIndex = hasHeader ? index - 1 : index;
+                    if (working && index == itemCount - 1) {
+                      return _buildWorkingIndicator();
+                    }
+                    final msgId = visible[messageIndex];
+                    final msg = messages.firstWhere(
+                      (m) => m.info.id == msgId,
+                      orElse: () => messages.last,
+                    );
+                    return RepaintBoundary(
+                      child: MessageBubble(key: ValueKey(msgId), message: msg),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
+        if (!revealed) const Positioned.fill(child: ChatLoadingSkeleton()),
         if (_restoringScroll)
           Positioned(
             right: 16,

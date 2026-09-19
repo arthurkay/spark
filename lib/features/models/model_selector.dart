@@ -186,6 +186,24 @@ class _ModelPickerListState extends State<_ModelPickerList> {
   final _searchController = TextEditingController();
   final _searchDebouncer = Debouncer();
   String _query = '';
+  String? _expandedProviderId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selectedModel != null) {
+      _expandedProviderId = widget.selectedModel!.providerID;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ModelPickerList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedModel != null &&
+        widget.selectedModel!.providerID != _expandedProviderId) {
+      _expandedProviderId = widget.selectedModel!.providerID;
+    }
+  }
 
   @override
   void dispose() {
@@ -194,28 +212,22 @@ class _ModelPickerListState extends State<_ModelPickerList> {
     super.dispose();
   }
 
-  /// Flattened, filtered rows for the list. Building this first lets the list be
-  /// lazy: the previous nested provider×model loops inside a
-  /// `ListView(shrinkWrap: true)` constructed every row of every provider on
-  /// each keystroke.
-  List<_PickerRow> _rows(String q) {
-    final rows = <_PickerRow>[];
-    for (final provider in widget.providers) {
-      if (!_providerHasMatch(provider, q)) continue;
-      rows.add(_PickerRow.header(provider.name));
-      for (final model in provider.models) {
-        if (_modelMatches(model, q)) {
-          rows.add(_PickerRow.model(provider.id, model));
-        }
-      }
-    }
-    return rows;
+  bool _modelMatches(ModelInfo model, String q) {
+    if (q.isEmpty) return true;
+    return model.name.toLowerCase().contains(q) ||
+        model.id.toLowerCase().contains(q);
+  }
+
+  bool _providerHasMatch(ProviderInfo provider, String q) {
+    if (q.isEmpty) return true;
+    if (provider.name.toLowerCase().contains(q)) return true;
+    return provider.models.any((m) => _modelMatches(m, q));
   }
 
   @override
   Widget build(BuildContext context) {
     final q = _query.toLowerCase();
-    final rows = _rows(q);
+    final searching = q.isNotEmpty;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -236,40 +248,9 @@ class _ModelPickerListState extends State<_ModelPickerList> {
         Flexible(
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: rows.length,
+            itemCount: _visibleProviderCount(q, searching),
             itemBuilder: (context, index) {
-              final row = rows[index];
-              final model = row.model;
-              if (model == null) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text(row.label).muted.small.semiBold,
-                );
-              }
-              final selected =
-                  widget.selectedModel?.providerID == row.providerID &&
-                  widget.selectedModel?.modelID == model.id;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: GhostButton(
-                  alignment: Alignment.centerLeft,
-                  onPressed: () {
-                    Haptics.selection();
-                    widget.onSelect(
-                      ModelSelection(
-                        providerID: row.providerID!,
-                        modelID: model.id,
-                      ),
-                    );
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(model.name)),
-                      if (selected) const Icon(LucideIcons.check, size: 16),
-                    ],
-                  ),
-                ),
-              );
+              return _buildProviderTile(index, q, searching);
             },
           ),
         ),
@@ -277,27 +258,86 @@ class _ModelPickerListState extends State<_ModelPickerList> {
     );
   }
 
-  bool _providerHasMatch(ProviderInfo provider, String q) {
-    if (q.isEmpty) return true;
-    if (provider.name.toLowerCase().contains(q)) return true;
-    return provider.models.any((m) => _modelMatches(m, q));
+  int _visibleProviderCount(String q, bool searching) {
+    if (searching) {
+      return widget.providers.where((p) => _providerHasMatch(p, q)).length;
+    }
+    return widget.providers.length;
   }
 
-  bool _modelMatches(ModelInfo model, String q) {
-    if (q.isEmpty) return true;
-    return model.name.toLowerCase().contains(q) ||
-        model.id.toLowerCase().contains(q);
+  Widget _buildProviderTile(int index, String q, bool searching) {
+    final provider = searching
+        ? widget.providers
+              .where((p) => _providerHasMatch(p, q))
+              .elementAt(index)
+        : widget.providers[index];
+    final expanded = _expandedProviderId == provider.id;
+    final models = searching
+        ? provider.models.where((m) => _modelMatches(m, q)).toList()
+        : provider.models;
+    final hasModels = models.isNotEmpty;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GhostButton(
+          alignment: Alignment.centerLeft,
+          onPressed: hasModels
+              ? () {
+                  Haptics.tap();
+                  setState(() {
+                    _expandedProviderId = expanded ? null : provider.id;
+                  });
+                }
+              : null,
+          child: Row(
+            children: [
+              Expanded(child: Text(provider.name).semiBold),
+              if (hasModels)
+                Icon(
+                  expanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 16,
+                ),
+            ],
+          ),
+        ),
+        if (expanded && hasModels)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, top: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final model in models) _buildModelTile(provider, model),
+              ],
+            ),
+          ),
+      ],
+    );
   }
-}
 
-/// One row of the flattened model picker: either a provider header
-/// ([model] == null) or a selectable model.
-class _PickerRow {
-  const _PickerRow.header(this.label) : providerID = null, model = null;
-
-  const _PickerRow.model(this.providerID, this.model) : label = '';
-
-  final String label;
-  final String? providerID;
-  final ModelInfo? model;
+  Widget _buildModelTile(ProviderInfo provider, ModelInfo model) {
+    final selected =
+        widget.selectedModel?.providerID == provider.id &&
+        widget.selectedModel?.modelID == model.id;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: GhostButton(
+        alignment: Alignment.centerLeft,
+        onPressed: () {
+          Haptics.selection();
+          widget.onSelect(
+            ModelSelection(providerID: provider.id, modelID: model.id),
+          );
+        },
+        child: Row(
+          children: [
+            Expanded(child: Text(model.name)),
+            if (selected) const Icon(LucideIcons.check, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
 }

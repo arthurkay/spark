@@ -30,18 +30,17 @@ Page<void> _stackPage(GoRouterState state, Widget child) {
         begin: const Offset(1, 0),
         end: Offset.zero,
       ).animate(CurvedAnimation(parent: animation, curve: Motion.standard));
-      final reverseSlide = Tween<Offset>(
-        begin: Offset.zero,
-        end: const Offset(-0.3, 0),
-      ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard));
+      final reverseSlide =
+          Tween<Offset>(begin: Offset.zero, end: const Offset(-0.3, 0)).animate(
+            CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard),
+          );
       final fade = Tween<double>(
         begin: 0.0,
         end: 1.0,
       ).animate(CurvedAnimation(parent: animation, curve: Motion.standard));
-      final reverseFade = Tween<double>(
-        begin: 1.0,
-        end: 0.6,
-      ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard));
+      final reverseFade = Tween<double>(begin: 1.0, end: 0.6).animate(
+        CurvedAnimation(parent: secondaryAnimation, curve: Motion.standard),
+      );
 
       return AnimatedBuilder(
         animation: Listenable.merge([animation, secondaryAnimation]),
@@ -52,10 +51,7 @@ Page<void> _stackPage(GoRouterState state, Widget child) {
               opacity: reverseFade,
               child: SlideTransition(
                 position: slide,
-                child: FadeTransition(
-                  opacity: fade,
-                  child: child,
-                ),
+                child: FadeTransition(opacity: fade, child: child),
               ),
             ),
           );
