@@ -65,6 +65,8 @@ class OpencodeCompanionApp extends ConsumerStatefulWidget {
 
 class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
     with WidgetsBindingObserver {
+  Set<String> _busySessionsBeforePause = {};
+
   @override
   void initState() {
     super.initState();
@@ -89,11 +91,17 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        _busySessionsBeforePause =
+            Set.of(ref.read(sessionActivityProvider));
         ref.read(appPausedProvider.notifier).state = false;
         ref.invalidate(eventStreamProvider);
         ref.invalidate(sessionsProvider);
         ref.invalidate(allSessionsProvider);
         _drainQueue();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _checkCompletedSessions();
+        });
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         ref.read(appPausedProvider.notifier).state = true;
@@ -101,6 +109,19 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         break;
+    }
+  }
+
+  void _checkCompletedSessions() {
+    final nowBusy = ref.read(sessionActivityProvider);
+    final completed = _busySessionsBeforePause.difference(nowBusy);
+    _busySessionsBeforePause = {};
+    for (final sessionId in completed) {
+      NotificationService.instance.showSessionComplete(
+        sessionId,
+        'Session completed',
+        'Your session has finished. Tap to view.',
+      );
     }
   }
 

@@ -187,10 +187,9 @@ class SessionActivityController extends Notifier<Set<String>> {
         if (sid != null) state = {...state}..remove(sid);
       case 'session.updated':
       case 'session.deleted':
+        break;
       case 'server.reconnected':
-        if (event.type == 'server.reconnected') {
-          state = const <String>{};
-        }
+        break;
     }
   }
 
