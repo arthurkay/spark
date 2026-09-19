@@ -16,6 +16,14 @@ import '../../core/storage/cache_service.dart';
 import '../../core/storage/message_queue.dart';
 import 'tts_provider.dart';
 
+List<MessageWithParts> parseMessagesFromCache(Map<String, dynamic> cached) {
+  final items = cached['items'] as List<dynamic>? ?? [];
+  return items
+      .whereType<Map<String, dynamic>>()
+      .map(MessageWithParts.fromJson)
+      .toList();
+}
+
 final sessionDirectoryProvider = FutureProvider.family<String?, String>((
   ref,
   sessionId,
@@ -138,6 +146,39 @@ bool isTailGenerating(List<MessageWithParts> messages) {
   return info.timeCompleted == null;
 }
 
+/// Whether two messages have identical content (parts text, type, state).
+///
+/// Used by `_mergeTail` to decide whether a server-fetched message is the
+/// same object we already hold (reuse for identity equality / one-bubble
+/// rebuilds) or has been updated and must replace the cached version.
+@visibleForTesting
+bool sameMessages(MessageWithParts a, MessageWithParts b) {
+  if (a.parts.length != b.parts.length) return false;
+  for (var i = 0; i < a.parts.length; i++) {
+    if (a.parts[i].text != b.parts[i].text ||
+        a.parts[i].type != b.parts[i].type ||
+        a.parts[i].state != b.parts[i].state) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The working-state logic extracted for testability.
+///
+/// `ChatController._computeWorking` delegates to this once the two local
+/// flags (`_aborting`, `_optimisticBusy`) are accounted for.
+@visibleForTesting
+bool computeWorkingState({
+  required bool aborting,
+  required bool optimisticBusy,
+  required List<MessageWithParts> messages,
+}) {
+  if (aborting) return false;
+  if (optimisticBusy) return true;
+  return isTailGenerating(messages);
+}
+
 /// [messages] with its streaming tail marked finished as of [completedAt].
 ///
 /// "Still going" is read off the message itself, not off [ChatState]: the
@@ -217,6 +258,16 @@ class ChatController extends ChangeNotifier {
   int _tailWindow = initialLimit;
   bool _loadingOlder = false;
 
+  /// Latched when the first [load] round-trip settles, whatever the outcome.
+  ///
+  /// The cache hydrate clears `loading` immediately, so `loading == false`
+  /// does not mean the transcript is complete — the network merge can still
+  /// prepend older messages and shift everything down. The chat screen waits
+  /// on this before revealing the list so it never presents a half-loaded
+  /// transcript.
+  bool _initialLoadDone = false;
+  bool get initialLoadDone => _initialLoadDone;
+
   ChatState _state = const ChatState();
   ChatState get state => _state;
   set state(ChatState value) {
@@ -242,11 +293,10 @@ class ChatController extends ChangeNotifier {
       maxAge: const Duration(days: 30),
     );
     if (cached == null || state.messages.isNotEmpty || !state.loading) return;
-    final items = cached['items'] as List<dynamic>? ?? [];
-    final messages = items
-        .whereType<Map<String, dynamic>>()
-        .map(MessageWithParts.fromJson)
-        .toList();
+    // Runs on this isolate: compute() cannot transfer custom objects back,
+    // so message construction stays here. The raw JSON decode already happens
+    // off-thread inside CacheService.read.
+    final messages = parseMessagesFromCache(cached);
     if (messages.isEmpty) return;
     state = state.copyWith(messages: messages, loading: false, working: false);
   }
@@ -256,7 +306,12 @@ class ChatController extends ChangeNotifier {
     ref.listen<bool>(appPausedProvider, (prev, next) {
       setPaused(next);
     });
-    await _hydrateFromCache();
+    // A corrupt cache must never prevent the network load below: if hydrate
+    // throws, loading would stick true and the chat would show a spinner
+    // forever.
+    try {
+      await _hydrateFromCache();
+    } catch (_) {}
     await load();
     _subscribeEvents();
     _startPolling();
@@ -326,6 +381,7 @@ class ChatController extends ChangeNotifier {
     final client = _client;
     if (client == null) {
       state = state.copyWith(loading: false, error: 'Not connected');
+      _initialLoadDone = true;
       return;
     }
     try {
@@ -374,9 +430,20 @@ class ChatController extends ChangeNotifier {
       // and re-raising an error toast on every 8s poll would be noise.
       if (state.messages.isNotEmpty) {
         state = state.copyWith(loading: false, working: false);
-        return;
+      } else {
+        state = state.copyWith(
+          loading: false,
+          error: e.message,
+          working: false,
+        );
       }
-      state = state.copyWith(loading: false, error: e.message, working: false);
+    } catch (_) {
+      // Any other failure (bad payload shape, serialization surprise) must
+      // still clear loading: a stuck spinner is worse than a quiet retry on
+      // the next poll.
+      state = state.copyWith(loading: false, working: false);
+    } finally {
+      _initialLoadDone = true;
     }
   }
 
@@ -466,17 +533,8 @@ class ChatController extends ChangeNotifier {
     if (!paused) load();
   }
 
-  bool _sameMessages(MessageWithParts a, MessageWithParts b) {
-    if (a.parts.length != b.parts.length) return false;
-    for (var i = 0; i < a.parts.length; i++) {
-      if (a.parts[i].text != b.parts[i].text ||
-          a.parts[i].type != b.parts[i].type ||
-          a.parts[i].state != b.parts[i].state) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool _sameMessages(MessageWithParts a, MessageWithParts b) =>
+      sameMessages(a, b);
 
   void _applyPartUpdate(Map<String, dynamic> props, {required bool immediate}) {
     // The server keeps emitting for a moment after the abort lands, and every
@@ -681,9 +739,11 @@ class ChatController extends ChangeNotifier {
   }
 
   bool _computeWorking(List<MessageWithParts> messages) {
-    if (_aborting) return false;
-    if (_optimisticBusy) return true;
-    return _deriveWorking(messages);
+    return computeWorkingState(
+      aborting: _aborting,
+      optimisticBusy: _optimisticBusy,
+      messages: messages,
+    );
   }
 
   String? _sessionIdFromProps(Map<String, dynamic> props) {
@@ -700,6 +760,7 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> _verifySessionStatus() async {
+    _clearAbort();
     _stuck = false;
     _optimisticBusy = false;
     _lastSseActivity = DateTime.now();
@@ -974,6 +1035,7 @@ typedef ChatChrome = ({
   bool sending,
   bool working,
   bool hasMessages,
+  bool initialLoadDone,
   String? error,
   String? errorType,
   int? statusCode,
@@ -982,13 +1044,14 @@ typedef ChatChrome = ({
   int? retryNext,
 });
 
-ChatChrome chatChromeOf(ChatState s) => (
+ChatChrome chatChromeOf(ChatState s, {required bool initialLoadDone}) => (
   loading: s.loading,
   loadingOlder: s.loadingOlder,
   hasMoreOlder: s.hasMoreOlder,
   sending: s.sending,
   working: s.working,
   hasMessages: s.messages.isNotEmpty,
+  initialLoadDone: initialLoadDone,
   error: s.error,
   errorType: s.errorType,
   statusCode: s.statusCode,
