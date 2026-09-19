@@ -8,8 +8,11 @@ import '../../core/models/question.dart';
 
 const String _channelId = 'opencode_permission';
 const String _channelName = 'Permission requests';
+const String _sessionChannelId = 'opencode_session';
+const String _sessionChannelName = 'Session updates';
 const int _permissionNotificationId = 1;
 const int _questionNotificationId = 2;
+const int _sessionNotificationId = 3;
 
 class NotificationService {
   NotificationService._();
@@ -170,5 +173,45 @@ class NotificationService {
   Future<void> cancelQuestion() async {
     if (!_available) return;
     await _plugin.cancel(_questionNotificationId);
+  }
+
+  Future<void> showSessionComplete(
+    String sessionId,
+    String title,
+    String body,
+  ) async {
+    if (!_available) return;
+    final androidDetails = AndroidNotificationDetails(
+      _sessionChannelId,
+      _sessionChannelName,
+      channelDescription: 'Session activity updates',
+      importance: Importance.high,
+      priority: Priority.high,
+      ticker: title,
+      icon: '@mipmap/ic_notification',
+    );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    );
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+    await _plugin.show(
+      _sessionNotificationId,
+      title,
+      body,
+      details,
+      payload: jsonEncode({
+        'route': '/session/$sessionId',
+        'sessionID': sessionId,
+      }),
+    );
+  }
+
+  Future<void> cancelSession() async {
+    if (!_available) return;
+    await _plugin.cancel(_sessionNotificationId);
   }
 }

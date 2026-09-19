@@ -702,20 +702,8 @@ class ChatController extends ChangeNotifier {
   Future<void> _verifySessionStatus() async {
     _stuck = false;
     _optimisticBusy = false;
-    _lastSseActivity = null;
-    final messages = state.messages;
-    if (messages.isNotEmpty) {
-      final last = messages.last;
-      if (last.info.role == 'assistant' && last.info.timeCompleted == null) {
-        state = state.copyWith(working: false);
-        final client = _client;
-        if (client != null) {
-          try {
-            await client.abort(sessionId);
-          } catch (_) {}
-        }
-      }
-    }
+    _lastSseActivity = DateTime.now();
+    _lastContentChange = DateTime.now();
     load();
   }
 
