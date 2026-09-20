@@ -856,7 +856,7 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         if (command.isEmpty) return null;
         final line = command.split('\n').first.trim();
         final display = line.length > 50 ? '${line.substring(0, 50)}…' : line;
-        return '>_\u00a0\u00a0$display';
+        return display;
       case 'edit':
         final filePath =
             input['filePath'] as String? ?? input['path'] as String? ?? '';

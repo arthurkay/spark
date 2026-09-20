@@ -225,8 +225,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Switch(
                   value: ref.watch(autoApprovePermissionsProvider),
                   onChanged: (value) {
-                    ref.read(autoApprovePermissionsProvider.notifier).state =
-                        value;
+                    ref
+                        .read(autoApprovePermissionsProvider.notifier)
+                        .setValue(value);
                     if (value) {
                       ref.read(pendingPermissionsProvider.notifier).state =
                           const {};

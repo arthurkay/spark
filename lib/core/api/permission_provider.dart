@@ -9,13 +9,12 @@ import '../api/providers.dart';
 import '../api/sse_client.dart';
 import '../models/permission.dart';
 import '../notifications/notification_service.dart';
+import '../storage/settings_provider.dart';
 
 final pendingPermissionsProvider =
     StateProvider<Map<String, PermissionRequest>>(
       (ref) => const <String, PermissionRequest>{},
     );
-
-final autoApprovePermissionsProvider = StateProvider<bool>((ref) => false);
 
 class PermissionListenerController extends Notifier<void> {
   @override

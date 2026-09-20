@@ -11,6 +11,7 @@ class SettingsStore {
   static const _ttsVoiceNameKey = 'opencode_tts_voice_name';
   static const _ttsVoiceLocaleKey = 'opencode_tts_voice_locale';
   static const _rabbitHoleKey = 'opencode_rabbit_hole';
+  static const _autoApprovePermissionsKey = 'opencode_auto_approve_permissions';
 
   Future<String> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -91,6 +92,16 @@ class SettingsStore {
   Future<void> saveRabbitHole(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rabbitHoleKey, value);
+  }
+
+  Future<bool> loadAutoApprovePermissions() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoApprovePermissionsKey) ?? false;
+  }
+
+  Future<void> saveAutoApprovePermissions(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoApprovePermissionsKey, value);
   }
 }
 
