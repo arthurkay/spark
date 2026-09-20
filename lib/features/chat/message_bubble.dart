@@ -519,6 +519,27 @@ String _clipToLines(String text, int maxLines) {
   return text;
 }
 
+String _stripReadXml(String output) {
+  if (output.isEmpty) return output;
+  final contentStart = output.indexOf('<content>');
+  if (contentStart != -1) {
+    final afterTag = output.substring(contentStart + '<content>'.length);
+    final contentEnd = afterTag.indexOf('</content>');
+    if (contentEnd != -1) return afterTag.substring(0, contentEnd).trim();
+    return afterTag.trim();
+  }
+  final pathEnd = output.indexOf('</path>');
+  final typeEnd = output.indexOf('</type>');
+  var start = 0;
+  if (pathEnd != -1) start = pathEnd + '</path>'.length;
+  if (typeEnd != -1 && typeEnd > start) start = typeEnd + '</type>'.length;
+  if (start > 0) {
+    final rest = output.substring(start).trimLeft();
+    if (rest.isNotEmpty) return rest;
+  }
+  return output;
+}
+
 const _expandableToolTypes = {
   'glob',
   'read',
@@ -774,13 +795,11 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     super.initState();
     // "Collapse file permissions" applies to these chips too: with it on,
     // tool results start collapsed — the header still names the file or
-    // command, so a collapsed chip stays informative. Two exceptions stay
-    // open: the todo list and edit diffs are the turn's actual substance,
-    // not noise to fold away.
+    // command, so a collapsed chip stays informative. The todo list stays
+    // open as the turn's actual substance, not noise to fold away.
     final collapse =
         ref.read(collapseToolWidgetsProvider) &&
-        widget.part.toolName != 'todowrite' &&
-        widget.part.toolName != 'edit';
+        widget.part.toolName != 'todowrite';
     _expanded =
         !collapse && _isExpandable && _output.length <= _autoExpandLimit;
   }
@@ -876,10 +895,22 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     final newString =
         input['newString'] as String? ?? input['new_string'] as String? ?? '';
     if (oldString.isEmpty && newString.isEmpty) return null;
-    final oldLines = oldString.isEmpty ? 0 : oldString.split('\n').length;
-    final newLines = newString.isEmpty ? 0 : newString.split('\n').length;
-    final added = newLines > oldLines ? newLines - oldLines : 0;
-    final removed = oldLines > newLines ? oldLines - newLines : 0;
+    if (oldString.isEmpty || newString.isEmpty) {
+      final oldCount = oldString.isEmpty ? 0 : oldString.split('\n').length;
+      final newCount = newString.isEmpty ? 0 : newString.split('\n').length;
+      final parts = <String>[];
+      if (newCount > 0) parts.add('+$newCount');
+      if (oldCount > 0) parts.add('-$oldCount');
+      if (parts.isEmpty) return null;
+      return '${parts.join('\u00a0')}\u00a0modified';
+    }
+    final diff = unifiedEditDiff(oldString, newString);
+    var added = 0;
+    var removed = 0;
+    for (final line in diff.split('\n')) {
+      if (line.startsWith('+') && !line.startsWith('+++')) added++;
+      if (line.startsWith('-') && !line.startsWith('---')) removed++;
+    }
     final parts = <String>[];
     if (added > 0) parts.add('+$added');
     if (removed > 0) parts.add('-$removed');
@@ -928,7 +959,6 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
   }
 
   Widget _buildContentPreview(BuildContext context) {
-    final theme = Theme.of(context);
     final input = _input;
     final output = _output;
     final name = widget.part.toolName ?? '';
@@ -940,12 +970,8 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _contentLabel('Pattern'),
-            const Gap(4),
             _codeBlock(context, pattern),
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Results'),
               const Gap(4),
               _codeBlock(context, output, maxLines: 8),
             ],
@@ -961,20 +987,12 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (pattern.isNotEmpty) ...[
-              _contentLabel('Pattern'),
-              const Gap(4),
-              _codeBlock(context, pattern),
-            ],
+            if (pattern.isNotEmpty) _codeBlock(context, pattern),
             if (path.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Path'),
-              const Gap(4),
+              if (pattern.isNotEmpty) const Gap(4),
               _codeBlock(context, path),
             ],
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Results'),
               const Gap(4),
               _codeBlock(context, output, maxLines: 8),
             ],
@@ -984,23 +1002,10 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         final filePath =
             input?['filePath'] as String? ?? input?['path'] as String? ?? '';
         if (filePath.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _contentLabel('File'),
-            const Gap(4),
-            _codeBlock(context, filePath),
-            if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Content'),
-              const Gap(4),
-              _codeBlock(context, output, maxLines: 12),
-            ],
-          ],
-        );
+        final stripped = _stripReadXml(output);
+        if (stripped.isEmpty) return const SizedBox.shrink();
+        return _codeBlock(context, stripped, maxLines: 12);
       case 'edit':
-        final filePath =
-            input?['filePath'] as String? ?? input?['path'] as String? ?? '';
         final oldString =
             input?['oldString'] as String? ??
             input?['old_string'] as String? ??
@@ -1010,76 +1015,26 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
             input?['new_string'] as String? ??
             '';
         final hasBoth = oldString.isNotEmpty && newString.isNotEmpty;
-        final oldLines = oldString.isEmpty ? 0 : oldString.split('\n').length;
-        final newLines = newString.isEmpty ? 0 : newString.split('\n').length;
-        final added = newLines > oldLines ? newLines - oldLines : 0;
-        final removed = oldLines > newLines ? oldLines - newLines : 0;
+        if (hasBoth) {
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: SingleChildScrollView(
+              child: CodeHighlightView(
+                code: unifiedEditDiff(oldString, newString),
+                language: 'diff',
+                fontSize: 12,
+              ),
+            ),
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (filePath.isNotEmpty)
-              Row(
-                children: [
-                  _contentLabel(filePath.split('/').last),
-                  const Spacer(),
-                  if (added > 0)
-                    Text(
-                      '+$added',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green,
-                      ),
-                    ),
-                  if (added > 0 && removed > 0) const Gap(4),
-                  if (removed > 0)
-                    Text(
-                      '-$removed',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.red,
-                      ),
-                    ),
-                  if (added > 0 || removed > 0) ...[
-                    const Gap(4),
-                    Text(
-                      'modified',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.mutedForeground,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            if (hasBoth) ...[
-              const Gap(8),
-              _contentLabel('Diff'),
-              const Gap(4),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 300),
-                child: SingleChildScrollView(
-                  child: CodeHighlightView(
-                    code: unifiedEditDiff(oldString, newString),
-                    language: 'diff',
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ] else ...[
-              if (oldString.isNotEmpty) ...[
-                const Gap(8),
-                _contentLabel('Removed'),
-                const Gap(4),
-                _diffBlock(context, oldString, isRemoved: true),
-              ],
-              if (newString.isNotEmpty) ...[
-                const Gap(8),
-                _contentLabel('Added'),
-                const Gap(4),
-                _diffBlock(context, newString, isRemoved: false),
-              ],
+            if (oldString.isNotEmpty)
+              _diffBlock(context, oldString, isRemoved: true),
+            if (newString.isNotEmpty) ...[
+              if (oldString.isNotEmpty) const Gap(4),
+              _diffBlock(context, newString, isRemoved: false),
             ],
           ],
         );
@@ -1090,15 +1045,9 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (filePath.isNotEmpty) ...[
-              _contentLabel('File'),
-              const Gap(4),
-              _codeBlock(context, filePath),
-            ],
+            if (filePath.isNotEmpty) _codeBlock(context, filePath),
             if (content.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Content'),
-              const Gap(4),
+              if (filePath.isNotEmpty) const Gap(4),
               _codeBlock(context, content, maxLines: 12),
             ],
           ],
@@ -1110,50 +1059,18 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
             input?['text'] as String? ??
             output;
         if (todoContent.isEmpty) return const SizedBox.shrink();
-        final theme = Theme.of(context);
         final todos = _parseTodos(todoContent);
         if (todos.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _contentLabel('Tasks'),
-              const Gap(4),
-              _codeBlock(context, todoContent, maxLines: 8),
-            ],
-          );
+          return _codeBlock(context, todoContent, maxLines: 8);
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                _contentLabel('Tasks'),
-                const Gap(6),
-                Text(
-                  '${todos.where((t) => t.status == 'completed').length}/${todos.length}',
-                ).xSmall.muted,
-              ],
-            ),
-            const Gap(8),
-            Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.background,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: theme.colorScheme.border.withAlpha(120),
-                ),
-              ),
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < todos.length; i++) ...[
-                    if (i > 0) const Gap(8),
-                    _TodoRow(todo: todos[i]),
-                  ],
-                ],
-              ),
-            ),
+            Text(
+              '${todos.where((t) => t.status == 'completed').length}/${todos.length}',
+            ).xSmall.muted,
+            const Gap(4),
+            ...todos.map((todo) => _TodoRow(todo: todo)),
           ],
         );
       case 'bash':
@@ -1163,15 +1080,9 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (command.isNotEmpty) ...[
-              _contentLabel('Command'),
-              const Gap(4),
-              _codeBlock(context, command),
-            ],
+            if (command.isNotEmpty) _codeBlock(context, command),
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Output'),
-              const Gap(4),
+              if (command.isNotEmpty) const Gap(4),
               _codeBlock(context, output, maxLines: 12),
             ],
           ],
@@ -1185,21 +1096,13 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (description.isNotEmpty) ...[
-              _contentLabel('Description'),
-              const Gap(4),
-              _codeBlock(context, description),
-            ],
+            if (description.isNotEmpty) _codeBlock(context, description),
             if (prompt.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Prompt'),
-              const Gap(4),
+              if (description.isNotEmpty) const Gap(4),
               _codeBlock(context, prompt, maxLines: 8),
             ],
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Result'),
-              const Gap(4),
+              if (description.isNotEmpty || prompt.isNotEmpty) const Gap(4),
               _codeBlock(context, output, maxLines: 12),
             ],
           ],
@@ -1210,15 +1113,9 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (query.isNotEmpty) ...[
-              _contentLabel('Query'),
-              const Gap(4),
-              _codeBlock(context, query),
-            ],
+            if (query.isNotEmpty) _codeBlock(context, query),
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Results'),
-              const Gap(4),
+              if (query.isNotEmpty) const Gap(4),
               _codeBlock(context, output, maxLines: 12),
             ],
           ],
@@ -1230,21 +1127,13 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (url.isNotEmpty) ...[
-              _contentLabel('URL'),
-              const Gap(4),
-              _codeBlock(context, url),
-            ],
+            if (url.isNotEmpty) _codeBlock(context, url),
             if (format.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Format'),
-              const Gap(4),
+              if (url.isNotEmpty) const Gap(4),
               _codeBlock(context, format),
             ],
             if (output.isNotEmpty) ...[
-              const Gap(8),
-              _contentLabel('Content'),
-              const Gap(4),
+              if (url.isNotEmpty || format.isNotEmpty) const Gap(4),
               _codeBlock(context, output, maxLines: 12),
             ],
           ],
@@ -1252,10 +1141,6 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
       default:
         return const SizedBox.shrink();
     }
-  }
-
-  Widget _contentLabel(String text) {
-    return Text(text).xSmall.semiBold.muted;
   }
 
   List<_TodoItem>? _todoCache;
@@ -1299,26 +1184,17 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
   }
 
   Widget _codeBlock(BuildContext context, String code, {int maxLines = 6}) {
-    final theme = Theme.of(context);
-    // maxHeight only clips what is *painted*; the full string is still laid
-    // out. Cut the string so a 200KB command output doesn't cost a full text
-    // layout on every build.
     final display = _clipToLines(code, maxLines * _visibleLineAllowance);
     return Container(
       constraints: BoxConstraints(maxHeight: 16.0 * maxLines + 20),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.background,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.border.withAlpha(120)),
-      ),
       child: SingleChildScrollView(
         child: SelectableText(
           display,
           style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 12,
-            color: theme.colorScheme.foreground,
+            color: Theme.of(context).colorScheme.foreground,
             height: 1.5,
           ),
         ),
@@ -1335,16 +1211,12 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     final bg = isRemoved
         ? Colors.red.withAlpha(15)
         : Colors.green.withAlpha(15);
-    final border = isRemoved
-        ? Colors.red.withAlpha(60)
-        : Colors.green.withAlpha(60);
     return Container(
       constraints: const BoxConstraints(maxHeight: 116),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: SingleChildScrollView(
         child: SelectableText(
@@ -1442,22 +1314,51 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
 
   Widget _chipLabelText(String name, String? label) {
     if (label == null) return Text(name).small.semiBold;
+    final spans = _parseDiffHighlights(label);
     return Row(
       children: [
         Flexible(
-          child: Text(
-            label,
+          child: RichText(
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: name == 'bash' ? 'monospace' : null,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+            text: TextSpan(
+              children: spans,
+              style: TextStyle(
+                fontFamily: name == 'bash' ? 'monospace' : null,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.foreground,
+              ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  List<TextSpan> _parseDiffHighlights(String label) {
+    final regex = RegExp(r'([+-]\d+)');
+    final spans = <TextSpan>[];
+    var lastEnd = 0;
+    for (final match in regex.allMatches(label)) {
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(text: label.substring(lastEnd, match.start)));
+      }
+      final text = match.group(0)!;
+      spans.add(
+        TextSpan(
+          text: text,
+          style: TextStyle(
+            color: text.startsWith('+') ? Colors.green : Colors.red,
+          ),
+        ),
+      );
+      lastEnd = match.end;
+    }
+    if (lastEnd < label.length) {
+      spans.add(TextSpan(text: label.substring(lastEnd)));
+    }
+    return spans.isEmpty ? [TextSpan(text: label)] : spans;
   }
 
   void _showQuestionSheet(BuildContext context) {
