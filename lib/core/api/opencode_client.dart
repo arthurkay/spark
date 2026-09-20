@@ -13,6 +13,7 @@ import '../models/server_connection.dart';
 import '../models/session.dart';
 import '../models/terminal.dart';
 import '../models/vcs.dart';
+import '../../shared/chunked_async.dart';
 import 'endpoints.dart';
 
 class OpencodeApiException implements Exception {
@@ -176,10 +177,10 @@ class OpencodeClient {
           if (before != null) 'before': before,
         },
       );
-      return (res.data ?? [])
+      final rawList = (res.data ?? [])
           .whereType<Map<String, dynamic>>()
-          .map(MessageWithParts.fromJson)
           .toList();
+      return await chunkedMap(rawList, MessageWithParts.fromJson);
     } on DioException catch (e) {
       _rethrow(e);
     }
@@ -190,6 +191,7 @@ class OpencodeClient {
     required String text,
     ModelSelection? model,
     String? agent,
+    String? system,
     List<Attachment> attachments = const [],
   }) async {
     try {
@@ -209,6 +211,7 @@ class OpencodeClient {
         data: {
           if (model != null) 'model': model.toJson(),
           if (agent != null) 'agent': agent,
+          if (system != null) 'system': system,
           'parts': parts,
         },
       );

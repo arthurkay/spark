@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
+import '../../shared/debouncer.dart';
 import '../../shared/haptics.dart';
 import '../../shared/file_type_utils.dart';
 import '../../core/api/opencode_client.dart';
@@ -682,8 +683,13 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,
-      builder: (context) =>
-          _FileViewer(path: node.path, name: node.name, directory: directory),
+      builder: (context) => SheetKeyboardPadding(
+        child: _FileViewer(
+          path: node.path,
+          name: node.name,
+          directory: directory,
+        ),
+      ),
     );
   }
 }
@@ -704,7 +710,12 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
   TextEditingController? _editController;
   bool _editing = false;
   bool _saving = false;
+  bool _dirty = false;
+  String _lastSavedContent = '';
   PtyFileWriter? _writer;
+  final _autoSaveDebouncer = Debouncer(
+    delay: const Duration(milliseconds: 2000),
+  );
 
   @override
   void initState() {
@@ -723,22 +734,58 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
   void _startEdit(String content) {
     setState(() {
       _editController = TextEditingController(text: content);
+      _lastSavedContent = content;
+      _dirty = false;
       _editing = true;
     });
   }
 
   void _cancelEdit() {
+    _autoSaveDebouncer.flush();
+    _autoSaveDebouncer.dispose();
     setState(() {
       _editing = false;
+      _dirty = false;
       _editController?.dispose();
       _editController = null;
     });
+  }
+
+  void _onTextChanged(_) {
+    final controller = _editController;
+    if (controller == null) return;
+    final changed = controller.text != _lastSavedContent;
+    if (changed != _dirty) setState(() => _dirty = changed);
+    if (changed) _autoSaveDebouncer.run(_autosave);
+  }
+
+  Future<void> _autosave() async {
+    final client = ref.read(opencodeClientProvider);
+    final controller = _editController;
+    if (client == null || controller == null) return;
+    if (_saving) return;
+    final writer = PtyFileWriter(client: client);
+    _writer = writer;
+    try {
+      await writer.write(
+        path: widget.path,
+        directory: widget.directory,
+        content: controller.text,
+      );
+      if (!mounted) return;
+      _lastSavedContent = controller.text;
+      setState(() => _dirty = false);
+    } catch (_) {
+    } finally {
+      _writer = null;
+    }
   }
 
   Future<void> _save() async {
     final client = ref.read(opencodeClientProvider);
     final controller = _editController;
     if (client == null || controller == null) return;
+    if (_saving) return;
     setState(() => _saving = true);
     final writer = PtyFileWriter(client: client);
     _writer = writer;
@@ -749,12 +796,11 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
         content: controller.text,
       );
       if (!mounted) return;
+      _lastSavedContent = controller.text;
       showAppToast(context, title: 'File saved');
       setState(() {
-        _editing = false;
+        _dirty = false;
         _contentFuture = _fetch();
-        _editController?.dispose();
-        _editController = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -769,14 +815,13 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
       );
     } finally {
       _writer = null;
-      // Always clear the spinner here: any future that resolves — or throws —
-      // must leave the button usable again.
       if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   void dispose() {
+    _autoSaveDebouncer.dispose();
     _writer?.cancel();
     _editController?.dispose();
     super.dispose();
@@ -809,35 +854,53 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        widget.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ).h4,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ).h4,
+                          ),
+                          if (_dirty) ...[
+                            const Gap(8),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF59E0B),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     if (_editing) ...[
-                      OutlineButton(
-                        size: ButtonSize.small,
-                        density: ButtonDensity.compact,
-                        onPressed: _saving ? null : _cancelEdit,
-                        child: const Text('Cancel').small,
-                      ),
-                      const Gap(8),
-                      PrimaryButton(
-                        size: ButtonSize.small,
-                        density: ButtonDensity.compact,
-                        onPressed: _saving ? null : _save,
-                        leading: _saving
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(LucideIcons.check, size: 16),
-                        child: const Text('Save').small,
-                      ),
+                      if (_saving)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else ...[
+                        IconButton.ghost(
+                          icon: const Icon(LucideIcons.x, size: 16),
+                          size: ButtonSize.small,
+                          density: ButtonDensity.compact,
+                          onPressed: _cancelEdit,
+                        ),
+                        const Gap(4),
+                        if (_dirty)
+                          IconButton.ghost(
+                            icon: const Icon(LucideIcons.check, size: 16),
+                            size: ButtonSize.small,
+                            density: ButtonDensity.compact,
+                            onPressed: _save,
+                          ),
+                      ],
                     ] else ...[
                       if (canEdit)
                         IconButton.ghost(
@@ -846,6 +909,7 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                           density: ButtonDensity.compact,
                           onPressed: () => _startEdit(content),
                         ),
+                      const Gap(4),
                       IconButton.ghost(
                         icon: const Icon(LucideIcons.x, size: 16),
                         size: ButtonSize.small,
@@ -855,7 +919,10 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                     ],
                   ],
                 ),
-                const Gap(12),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(height: 1),
+                ),
                 Flexible(
                   child: !loaded
                       ? (snapshot.hasError
@@ -875,9 +942,10 @@ class _FileViewerState extends ConsumerState<_FileViewer> {
                           controller: _editController,
                           enabled: !_saving,
                           expandableHeight: true,
-                          initialHeight: 420,
+                          initialHeight: 320,
                           minHeight: 200,
-                          maxHeight: 520,
+                          maxHeight: 420,
+                          onChanged: _onTextChanged,
                           style: TextStyle(
                             fontFamily: CodeHighlightView.monoFamilies.first,
                             fontFamilyFallback: CodeHighlightView.monoFamilies

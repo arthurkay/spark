@@ -278,12 +278,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _restoringScroll = true;
     Timer(const Duration(seconds: 3), () {
       if (mounted && _restoringScroll && !_scrollPositionRestored) {
-        _pinToBottom(
-          finishRestore: true,
-          requireLoaded: true,
-          budget: 300,
-          stableNeeded: 5,
-        );
+        _scrollToBottomNoSave();
       }
     });
     SettingsStore().loadScrollPosition(scrollKey(widget.sessionId)).then((
@@ -304,12 +299,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   double _pinLastMax = -1;
 
   void _scrollToBottomNoSave() {
-    _pinToBottom(
-      finishRestore: true,
-      requireLoaded: true,
-      budget: 120,
-      stableNeeded: 5,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      if (max > 0) _scrollController.jumpTo(max);
+      _markRestored();
+      _pinToBottom(finishRestore: false, budget: 15, stableNeeded: 2);
+    });
   }
 
   /// Keeps jumping to the end of the list until the layout settles.
@@ -1475,6 +1471,53 @@ class _ComposerState extends ConsumerState<_Composer> {
                             ),
                         ],
                         const Spacer(),
+                        GestureDetector(
+                          onTap: () =>
+                              ref.read(rabbitHoleProvider.notifier).toggle(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: ref.watch(rabbitHoleProvider)
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withAlpha(30)
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.mutedForeground.withAlpha(20),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  LucideIcons.brain,
+                                  size: 14,
+                                  color: ref.watch(rabbitHoleProvider)
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.mutedForeground,
+                                ),
+                                if (ref.watch(rabbitHoleProvider)) ...[
+                                  const Gap(4),
+                                  Text(
+                                    'deep',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Gap(4),
                         GestureDetector(
                           onTap: () => openModelPicker(
                             context: context,

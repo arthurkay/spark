@@ -14,14 +14,50 @@ import '../../core/models/message.dart';
 import '../../core/models/provider.dart';
 import '../../core/storage/cache_service.dart';
 import '../../core/storage/message_queue.dart';
+import '../../core/storage/settings_store.dart';
+import '../../shared/chunked_async.dart';
 import 'tts_provider.dart';
 
-List<MessageWithParts> parseMessagesFromCache(Map<String, dynamic> cached) {
+const _rabbitHolePrompt = '''
+Before answering, think deeply and thoroughly about the problem. Do not assume \
+— validate your reasoning by using the available tools:
+
+- Run tests to confirm your changes work
+- Use debugging tools (adb, xcodebuild, etc.) to inspect runtime state
+- Check for edge cases and error paths
+- Verify assumptions against the actual codebase, not memory
+
+Write testable code with good coverage. Prefer correctness over speed.''';
+
+class RabbitHoleNotifier extends StateNotifier<bool> {
+  RabbitHoleNotifier() : super(false) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    state = await SettingsStore().loadRabbitHole();
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    await SettingsStore().saveRabbitHole(state);
+  }
+}
+
+final rabbitHoleProvider = StateNotifierProvider<RabbitHoleNotifier, bool>(
+  (ref) => RabbitHoleNotifier(),
+);
+
+Future<List<MessageWithParts>> parseMessagesFromCache(
+  Map<String, dynamic> cached, {
+  int limit = 50,
+}) async {
   final items = cached['items'] as List<dynamic>? ?? [];
-  return items
-      .whereType<Map<String, dynamic>>()
-      .map(MessageWithParts.fromJson)
-      .toList();
+  final maps = items.whereType<Map<String, dynamic>>().toList();
+  final trimmed = maps.length > limit
+      ? maps.sublist(maps.length - limit)
+      : maps;
+  return chunkedMap(trimmed, MessageWithParts.fromJson);
 }
 
 final sessionDirectoryProvider = FutureProvider.family<String?, String>((
@@ -255,6 +291,7 @@ class ChatController extends ChangeNotifier {
 
   static const int initialLimit = 40;
   static const int olderChunkSize = 40;
+  static const int _cacheLimit = 50;
   int _tailWindow = initialLimit;
   bool _loadingOlder = false;
 
@@ -293,12 +330,15 @@ class ChatController extends ChangeNotifier {
       maxAge: const Duration(days: 30),
     );
     if (cached == null || state.messages.isNotEmpty || !state.loading) return;
-    // Runs on this isolate: compute() cannot transfer custom objects back,
-    // so message construction stays here. The raw JSON decode already happens
-    // off-thread inside CacheService.read.
-    final messages = parseMessagesFromCache(cached);
+    final messages = await parseMessagesFromCache(cached);
     if (messages.isEmpty) return;
     state = state.copyWith(messages: messages, loading: false, working: false);
+    final items = cached['items'] as List<dynamic>? ?? [];
+    if (items.length > _cacheLimit) {
+      final trimmed = items.whereType<Map<String, dynamic>>().toList();
+      final tail = trimmed.sublist(trimmed.length - _cacheLimit);
+      CacheService.instance.write(_cacheKey, {'items': tail});
+    }
   }
 
   Future<void> _init() async {
@@ -306,9 +346,6 @@ class ChatController extends ChangeNotifier {
     ref.listen<bool>(appPausedProvider, (prev, next) {
       setPaused(next);
     });
-    // A corrupt cache must never prevent the network load below: if hydrate
-    // throws, loading would stick true and the chat would show a spinner
-    // forever.
     try {
       await _hydrateFromCache();
     } catch (_) {}
@@ -387,16 +424,12 @@ class ChatController extends ChangeNotifier {
     try {
       final window = _tailWindow;
       final fetched = await client.listMessages(sessionId, limit: window);
-      // A reload mid-abort would hand back the server's still-unfinished tail
-      // and restart the reveal on a turn the user has stopped.
       final merged = _aborting
           ? frozenTail(
               _mergeTail(fetched),
               DateTime.now().millisecondsSinceEpoch,
             )
           : _mergeTail(fetched);
-      // If the tail message shows the session is idle, any optimistic "busy"
-      // flag from send() is stale (no idle event arrived) — clear it.
       if (_optimisticBusy && !_deriveWorking(merged)) {
         _optimisticBusy = false;
       }
@@ -420,9 +453,11 @@ class ChatController extends ChangeNotifier {
           : '${merged.length}|${merged.last.info.id}';
       if (cacheKey != _lastCacheKey) {
         _lastCacheKey = cacheKey;
-        await CacheService.instance.write(_cacheKey, {
-          'items': merged.map((m) => m.toJson()).toList(),
-        });
+        final toCache = merged.length > _cacheLimit
+            ? merged.sublist(merged.length - _cacheLimit)
+            : merged;
+        final jsonItems = await chunkedMap(toCache, (m) => m.toJson());
+        await CacheService.instance.write(_cacheKey, {'items': jsonItems});
       }
     } on OpencodeApiException catch (e) {
       // Stale transcript already on screen (the cache hydrate ran before the
@@ -817,11 +852,13 @@ class ChatController extends ChangeNotifier {
       clearRetry: true,
     );
     try {
+      final rabbitHole = ref.read(rabbitHoleProvider);
       await client.sendPromptAsync(
         sessionId: sessionId,
         text: text.trim(),
         model: model,
         agent: agent,
+        system: rabbitHole ? _rabbitHolePrompt : null,
         attachments: attachments,
       );
       await load();

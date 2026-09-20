@@ -1,20 +1,45 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spark/features/chat/chat_provider.dart';
+import 'package:spark/shared/chunked_async.dart';
 
 void main() {
+  group('chunkedMap', () {
+    test('returns same result as synchronous map', () async {
+      final items = List.generate(100, (i) => i * 2);
+      final result = await chunkedMap(items, (n) => n + 1);
+      expect(result, items.map((n) => n + 1).toList());
+    });
+
+    test('handles empty list', () async {
+      final result = await chunkedMap<int, int>([], (n) => n);
+      expect(result, isEmpty);
+    });
+
+    test('handles list smaller than chunk size', () async {
+      final result = await chunkedMap([1, 2, 3], (n) => n * 10, chunkSize: 10);
+      expect(result, [10, 20, 30]);
+    });
+
+    test('preserves order with multiple chunks', () async {
+      final items = List.generate(50, (i) => i);
+      final result = await chunkedMap(items, (n) => n, chunkSize: 10);
+      expect(result, items);
+    });
+  });
+
   group('parseMessagesFromCache', () {
-    test('parses an empty items list', () {
-      final result = parseMessagesFromCache({'items': []});
+    test('parses an empty items list', () async {
+      final result = await parseMessagesFromCache({'items': []});
       expect(result, isEmpty);
     });
 
-    test('parses missing items key as empty', () {
-      final result = parseMessagesFromCache({});
+    test('parses missing items key as empty', () async {
+      final result = await parseMessagesFromCache({});
       expect(result, isEmpty);
     });
 
-    test('parses a single text message', () {
-      final result = parseMessagesFromCache({
+    test('parses a single text message', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {
@@ -35,8 +60,8 @@ void main() {
       expect(result.first.parts.first.text, 'Hello');
     });
 
-    test('parses messages with tool parts', () {
-      final result = parseMessagesFromCache({
+    test('parses messages with tool parts', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {
@@ -62,8 +87,8 @@ void main() {
       expect(result.first.info.timeCompleted, 300);
     });
 
-    test('parses multiple messages in order', () {
-      final result = parseMessagesFromCache({
+    test('parses multiple messages in order', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {'id': 'msg_a', 'role': 'user'},
@@ -85,8 +110,8 @@ void main() {
       expect(result[2].info.id, 'msg_c');
     });
 
-    test('skips non-map items in the list', () {
-      final result = parseMessagesFromCache({
+    test('skips non-map items in the list', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           'not a map',
           42,
@@ -101,8 +126,8 @@ void main() {
       expect(result.first.info.id, 'msg_valid');
     });
 
-    test('handles messages with no parts', () {
-      final result = parseMessagesFromCache({
+    test('handles messages with no parts', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {'id': 'msg_1', 'role': 'user'},
@@ -113,8 +138,8 @@ void main() {
       expect(result.first.parts, isEmpty);
     });
 
-    test('handles messages with error field', () {
-      final result = parseMessagesFromCache({
+    test('handles messages with error field', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {
@@ -134,8 +159,8 @@ void main() {
       expect(result.first.info.errorMessage, 'context too long');
     });
 
-    test('handles messages with model and provider info', () {
-      final result = parseMessagesFromCache({
+    test('handles messages with model and provider info', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {
@@ -156,8 +181,8 @@ void main() {
       expect(result.first.info.agent, 'build');
     });
 
-    test('handles items that lack the parts key', () {
-      final result = parseMessagesFromCache({
+    test('handles items that lack the parts key', () async {
+      final result = await parseMessagesFromCache({
         'items': [
           {
             'info': {'id': 'msg_no_parts', 'role': 'user'},
