@@ -146,7 +146,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 onPressed: () {
                   closeSheet(sheetContext);
                   context.push(
-                    '/workspace/${Uri.encodeComponent(project.worktree)}/files',
+                    '/workspace/${Uri.encodeComponent(project.worktree)}/browse',
                   );
                 },
                 child: const Text('Open files'),
@@ -370,216 +370,264 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           trailing: [],
         ),
       ],
-      child: RefreshTrigger(
-        onRefresh: () async {
-          ref.read(projectsRefreshProvider.notifier).state++;
-          ref.read(sessionsRefreshProvider.notifier).state++;
-        },
-        child: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    RepaintBoundary(
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: _titleProgress,
-                        builder: (context, progress, child) {
-                          return Opacity(opacity: 1.0 - progress, child: child);
-                        },
-                        child: Text('SparkCode', key: _titleKey).h1,
-                      ),
-                    ),
-                    const Gap(12),
-                    _ServerSwitcher(),
-                    const Gap(16),
-                    TextField(
-                      controller: _searchController,
-                      placeholder: const Text('Search projects and sessions'),
-                      border: Border.all(color: Colors.transparent),
-                      features: const [
-                        InputFeature.leading(
-                          Icon(LucideIcons.search, size: 16),
+      child: Stack(
+        children: [
+          RefreshTrigger(
+            onRefresh: () async {
+              ref.read(projectsRefreshProvider.notifier).state++;
+              ref.read(sessionsRefreshProvider.notifier).state++;
+            },
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        RepaintBoundary(
+                          child: ValueListenableBuilder<double>(
+                            valueListenable: _titleProgress,
+                            builder: (context, progress, child) {
+                              return Opacity(
+                                opacity: 1.0 - progress,
+                                child: child,
+                              );
+                            },
+                            child: Text('SparkCode', key: _titleKey).h1,
+                          ),
                         ),
-                      ],
-                      // Debounced: each keystroke re-filters every workspace
-                      // and session and rebuilds the whole list.
-                      onChanged: (value) => _searchDebouncer.run(() {
-                        if (!mounted) return;
-                        setState(() => _query = value.trim());
-                      }),
-                    ),
-                    const Gap(12),
-                    SizedBox(
-                      height: 34,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: 3,
-                        separatorBuilder: (_, __) => const Gap(8),
-                        itemBuilder: (context, index) {
-                          final options = [
-                            ('all', 'All'),
-                            ('active', 'Active'),
-                            ('idle', 'Idle'),
-                          ];
-                          final opt = options[index];
-                          return _FilterChip(
-                            label: opt.$2,
-                            selected: _filter == opt.$1,
-                            onTap: () => setState(() => _filter = opt.$1),
-                          );
-                        },
-                      ),
-                    ),
-                    const Gap(16),
-                  ],
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: const SliverToBoxAdapter(child: PermissionBanner()),
-            ),
-            const SliverToBoxAdapter(child: Gap(12)),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              sliver: SliverToBoxAdapter(child: const Text('Projects').h4),
-            ),
-            projectsAsync.when(
-              loading: () => SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverList.builder(
-                  itemCount: 3,
-                  itemBuilder: (context, index) {
-                    return ShimmerLoading(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
-                          children: [
-                            const SkeletonBox(width: 20, height: 20),
-                            const Gap(12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SkeletonBox(
-                                    width: 120 + (index * 40).toDouble(),
-                                    height: 14,
-                                  ),
-                                  const Gap(6),
-                                  SkeletonBox(
-                                    width: 80 + (index * 20).toDouble(),
-                                    height: 10,
-                                  ),
-                                ],
-                              ),
+                        const Gap(12),
+                        _ServerSwitcher(),
+                        const Gap(16),
+                        TextField(
+                          controller: _searchController,
+                          placeholder: const Text(
+                            'Search projects and sessions',
+                          ),
+                          border: Border.all(color: Colors.transparent),
+                          features: const [
+                            InputFeature.leading(
+                              Icon(LucideIcons.search, size: 16),
                             ),
                           ],
+                          // Debounced: each keystroke re-filters every workspace
+                          // and session and rebuilds the whole list.
+                          onChanged: (value) => _searchDebouncer.run(() {
+                            if (!mounted) return;
+                            setState(() => _query = value.trim());
+                          }),
                         ),
-                      ),
-                    );
-                  },
+                        const Gap(12),
+                        SizedBox(
+                          height: 34,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: 3,
+                            separatorBuilder: (_, __) => const Gap(8),
+                            itemBuilder: (context, index) {
+                              final options = [
+                                ('all', 'All'),
+                                ('active', 'Active'),
+                                ('idle', 'Idle'),
+                              ];
+                              final opt = options[index];
+                              return _FilterChip(
+                                label: opt.$2,
+                                selected: _filter == opt.$1,
+                                onTap: () => setState(() => _filter = opt.$1),
+                              );
+                            },
+                          ),
+                        ),
+                        const Gap(16),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              error: (e, _) => SliverToBoxAdapter(
-                child: _ErrorState(
-                  message: e is OpencodeApiException ? e.message : '$e',
-                  onRetry: () =>
-                      ref.read(sessionsRefreshProvider.notifier).state++,
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: const SliverToBoxAdapter(child: PermissionBanner()),
                 ),
-              ),
-              data: (projects) {
-                if (projects.isEmpty) {
-                  return const SliverToBoxAdapter(child: _EmptyState());
-                }
-                return sessionsAsync.when(
-                  loading: () => _buildProjectTiles(projects, ref),
-                  error: (_, __) => _buildProjectTiles(projects, ref),
-                  data: (sessions) {
-                    final filtered = _filterSessions(sessions, activeSessions);
-                    final workspaces = buildWorkspaceGroups(filtered, projects);
-                    final hasQuery =
-                        _query.trim().isNotEmpty || _filter != 'all';
-                    final anyMatch = workspaces.any(
-                      (w) =>
-                          _projectMatchesQuery(w.project) ||
-                          w.sessions.isNotEmpty,
-                    );
-                    return SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      sliver: SliverList.builder(
-                        itemCount:
-                            workspaces.length + (hasQuery && !anyMatch ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index < workspaces.length) {
-                            final group = workspaces[index];
-                            final visible =
-                                _projectMatchesQuery(group.project) ||
-                                group.sessions.isNotEmpty;
-                            if (!visible) {
-                              return const SizedBox.shrink();
-                            }
-                            final name = group.project.isGlobal
-                                ? 'Global'
-                                : (group.project.id == '__other__'
-                                      ? 'Other'
-                                      : group.project.worktree
-                                                .split('/')
-                                                .where((s) => s.isNotEmpty)
-                                                .lastOrNull ??
-                                            group.project.worktree);
-                            final displaySessions = group.sessions;
-                            return _WorkspaceTile(
-                              key: ValueKey(group.project.worktree),
-                              project: group.project,
-                              titleOverride: name,
-                              sessions: displaySessions,
-                              onCreateSession: (ctx) => _createSession(
-                                ctx,
-                                ref,
-                                directory: group.project.isGlobal
-                                    ? null
-                                    : group.project.worktree,
-                              ),
-                              onDeleteSession: (s) =>
-                                  _confirmDelete(context, ref, s),
-                              onShowProjectMenu: (ctx) =>
-                                  _showProjectMenu(ctx, ref, group.project),
-                            );
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 40),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    LucideIcons.search,
-                                    size: 40,
-                                  ).iconMutedForeground,
-                                  const Gap(12),
-                                  const Text('No matching results').h4,
-                                  const Gap(4),
-                                  const Text(
-                                    'Try a different search or filter.',
-                                  ).muted,
-                                ],
-                              ),
+                const SliverToBoxAdapter(child: Gap(12)),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  sliver: SliverToBoxAdapter(child: const Text('Projects').h4),
+                ),
+                projectsAsync.when(
+                  loading: () => SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList.builder(
+                      itemCount: 3,
+                      itemBuilder: (context, index) {
+                        return ShimmerLoading(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: [
+                                const SkeletonBox(width: 20, height: 20),
+                                const Gap(12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      SkeletonBox(
+                                        width: 120 + (index * 40).toDouble(),
+                                        height: 14,
+                                      ),
+                                      const Gap(6),
+                                      SkeletonBox(
+                                        width: 80 + (index * 20).toDouble(),
+                                        height: 10,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  error: (e, _) => SliverToBoxAdapter(
+                    child: _ErrorState(
+                      message: e is OpencodeApiException ? e.message : '$e',
+                      onRetry: () =>
+                          ref.read(sessionsRefreshProvider.notifier).state++,
+                    ),
+                  ),
+                  data: (projects) {
+                    if (projects.isEmpty) {
+                      return const SliverToBoxAdapter(child: _EmptyState());
+                    }
+                    return sessionsAsync.when(
+                      loading: () => _buildProjectTiles(projects, ref),
+                      error: (_, __) => _buildProjectTiles(projects, ref),
+                      data: (sessions) {
+                        final filtered = _filterSessions(
+                          sessions,
+                          activeSessions,
+                        );
+                        final workspaces = buildWorkspaceGroups(
+                          filtered,
+                          projects,
+                        );
+                        final hasQuery =
+                            _query.trim().isNotEmpty || _filter != 'all';
+                        final anyMatch = workspaces.any(
+                          (w) =>
+                              _projectMatchesQuery(w.project) ||
+                              w.sessions.isNotEmpty,
+                        );
+                        return SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          sliver: SliverList.builder(
+                            itemCount:
+                                workspaces.length +
+                                (hasQuery && !anyMatch ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index < workspaces.length) {
+                                final group = workspaces[index];
+                                final visible =
+                                    _projectMatchesQuery(group.project) ||
+                                    group.sessions.isNotEmpty;
+                                if (!visible) {
+                                  return const SizedBox.shrink();
+                                }
+                                final name = group.project.isGlobal
+                                    ? 'Global'
+                                    : (group.project.id == '__other__'
+                                          ? 'Other'
+                                          : group.project.worktree
+                                                    .split('/')
+                                                    .where((s) => s.isNotEmpty)
+                                                    .lastOrNull ??
+                                                group.project.worktree);
+                                final displaySessions = group.sessions;
+                                return _WorkspaceTile(
+                                  key: ValueKey(group.project.worktree),
+                                  project: group.project,
+                                  titleOverride: name,
+                                  sessions: displaySessions,
+                                  onCreateSession: (ctx) => _createSession(
+                                    ctx,
+                                    ref,
+                                    directory: group.project.isGlobal
+                                        ? null
+                                        : group.project.worktree,
+                                  ),
+                                  onDeleteSession: (s) =>
+                                      _confirmDelete(context, ref, s),
+                                  onShowProjectMenu: (ctx) =>
+                                      _showProjectMenu(ctx, ref, group.project),
+                                );
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 40,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        LucideIcons.search,
+                                        size: 40,
+                                      ).iconMutedForeground,
+                                      const Gap(12),
+                                      const Text('No matching results').h4,
+                                      const Gap(4),
+                                      const Text(
+                                        'Try a different search or filter.',
+                                      ).muted,
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
                     );
                   },
-                );
-              },
+                ),
+                const SliverToBoxAdapter(child: Gap(80)),
+              ],
             ),
-            const SliverToBoxAdapter(child: Gap(80)),
-          ],
-        ),
+          ),
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: GestureDetector(
+              onTap: () => context.push('/new-session'),
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withAlpha(40),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  LucideIcons.plus,
+                  size: 24,
+                  color: Theme.of(context).colorScheme.background,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -799,7 +847,7 @@ class _WorkspaceTileState extends ConsumerState<_WorkspaceTile> {
   void _openWorkspaceFiles() {
     final worktree = widget.project.worktree;
     if (worktree.isEmpty) return;
-    context.push('/workspace/${Uri.encodeComponent(worktree)}/files');
+    context.push('/workspace/${Uri.encodeComponent(worktree)}/browse');
   }
 
   @override

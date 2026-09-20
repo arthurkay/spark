@@ -11,6 +11,7 @@ import '../features/connection/settings_screen.dart';
 import '../features/connection/welcome_screen.dart';
 import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
+import '../features/sessions/directory_browser.dart';
 import '../features/sessions/sessions_screen.dart';
 import '../features/terminal/terminal_screen.dart';
 import 'motion.dart';
@@ -118,13 +119,18 @@ GoRouter createRouter(Ref ref) {
         ),
       ),
       GoRoute(
-        path: '/workspace/:worktree/files',
+        path: '/workspace/:worktree/browse',
         pageBuilder: (context, state) => _stackPage(
           state,
-          FilesScreen(
+          DirectoryBrowserScreen(
             directory: Uri.decodeComponent(state.pathParameters['worktree']!),
           ),
         ),
+      ),
+      GoRoute(
+        path: '/new-session',
+        pageBuilder: (context, state) =>
+            _stackPage(state, const DirectoryBrowserScreen()),
       ),
       GoRoute(
         path: '/session/:id/diff',
