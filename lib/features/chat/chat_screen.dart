@@ -571,6 +571,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Future<void> _send() async {
     final text = _composerController.text;
     if (text.trim().isEmpty && _attachments.isEmpty) return;
+    FocusScope.of(context).unfocus();
     final attachments = List<Attachment>.from(_attachments);
     setState(() => _attachments.clear());
     _composerController.clear();

@@ -19,9 +19,7 @@ import '../sessions/workspace_provider.dart';
 import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/code_highlight_view.dart';
 import '../../shared/widgets/markdown_view.dart';
-import '../../shared/widgets/shimmer_loading.dart';
 import '../../shared/widgets/sheet_keyboard_padding.dart';
-import '../../shared/widgets/streaming_text.dart';
 import 'tts_provider.dart';
 import 'tts_equalizer.dart';
 import 'pdf_service.dart';
@@ -463,14 +461,7 @@ class MessageBubble extends StatelessWidget {
                   ? MarkdownView(key: const ValueKey('md'), data: text)
                   : KeyedSubtree(
                       key: const ValueKey('plain'),
-                      // Word-by-word reveal while streaming: the server sends
-                      // the whole accumulated message per update, so a burst
-                      // from the model used to drop in as a block.
-                      child: StreamingText(
-                        text: text,
-                        streaming: streaming,
-                        builder: _text,
-                      ),
+                      child: _text(context, text),
                     ),
             ),
           ),
@@ -717,12 +708,9 @@ class _ReasoningBlockState extends State<_ReasoningBlock> {
                   const Icon(LucideIcons.brain, size: 14).iconMutedForeground,
                   const Gap(8),
                   Expanded(
-                    child: ShimmerLoading(
-                      isLoading: widget.streaming,
-                      child: Text(
-                        widget.streaming ? 'Thinking…' : 'Thought',
-                      ).muted.small.semiBold,
-                    ),
+                    child: Text(
+                      widget.streaming ? 'Thinking…' : 'Thought',
+                    ).muted.small.semiBold,
                   ),
                   const Gap(6),
                   // Rotates rather than swapping glyphs, so expanding reads as
@@ -838,6 +826,67 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     return null;
   }
 
+  String? get _chipLabel {
+    final name = widget.part.toolName ?? '';
+    final input = _input;
+    if (input == null) return null;
+    switch (name) {
+      case 'bash':
+        final command =
+            input['command'] as String? ?? input['cmd'] as String? ?? '';
+        if (command.isEmpty) return null;
+        final line = command.split('\n').first.trim();
+        final display = line.length > 50 ? '${line.substring(0, 50)}…' : line;
+        return '>_\u00a0\u00a0$display';
+      case 'edit':
+        final filePath =
+            input['filePath'] as String? ?? input['path'] as String? ?? '';
+        final basename = filePath.isNotEmpty ? filePath.split('/').last : '';
+        final stats = _editDiffStats;
+        if (basename.isEmpty) return stats != null ? 'edit $stats' : 'edit';
+        return stats != null ? '$basename\u00a0\u00a0$stats' : basename;
+      case 'read':
+        final filePath =
+            input['filePath'] as String? ?? input['path'] as String? ?? '';
+        return filePath.isNotEmpty ? filePath.split('/').last : null;
+      case 'write':
+        final filePath =
+            input['filePath'] as String? ?? input['path'] as String? ?? '';
+        return filePath.isNotEmpty ? filePath.split('/').last : null;
+      case 'glob':
+        return input['pattern'] as String?;
+      case 'grep':
+        return input['pattern'] as String?;
+      case 'webfetch':
+        return input['url'] as String?;
+      case 'websearch':
+        return input['query'] as String?;
+      case 'task':
+        return input['description'] as String? ?? input['prompt'] as String?;
+      default:
+        return _subjectLine;
+    }
+  }
+
+  String? get _editDiffStats {
+    final input = _input;
+    if (input == null) return null;
+    final oldString =
+        input['oldString'] as String? ?? input['old_string'] as String? ?? '';
+    final newString =
+        input['newString'] as String? ?? input['new_string'] as String? ?? '';
+    if (oldString.isEmpty && newString.isEmpty) return null;
+    final oldLines = oldString.isEmpty ? 0 : oldString.split('\n').length;
+    final newLines = newString.isEmpty ? 0 : newString.split('\n').length;
+    final added = newLines > oldLines ? newLines - oldLines : 0;
+    final removed = oldLines > newLines ? oldLines - newLines : 0;
+    final parts = <String>[];
+    if (added > 0) parts.add('+$added');
+    if (removed > 0) parts.add('-$removed');
+    if (parts.isEmpty) return null;
+    return '${parts.join('\u00a0')}\u00a0modified';
+  }
+
   @override
   void didUpdateWidget(_ToolChip old) {
     super.didUpdateWidget(old);
@@ -879,6 +928,7 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
   }
 
   Widget _buildContentPreview(BuildContext context) {
+    final theme = Theme.of(context);
     final input = _input;
     final output = _output;
     final name = widget.part.toolName ?? '';
@@ -960,14 +1010,49 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
             input?['new_string'] as String? ??
             '';
         final hasBoth = oldString.isNotEmpty && newString.isNotEmpty;
+        final oldLines = oldString.isEmpty ? 0 : oldString.split('\n').length;
+        final newLines = newString.isEmpty ? 0 : newString.split('\n').length;
+        final added = newLines > oldLines ? newLines - oldLines : 0;
+        final removed = oldLines > newLines ? oldLines - newLines : 0;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (filePath.isNotEmpty) ...[
-              _contentLabel('File'),
-              const Gap(4),
-              _codeBlock(context, filePath),
-            ],
+            if (filePath.isNotEmpty)
+              Row(
+                children: [
+                  _contentLabel(filePath.split('/').last),
+                  const Spacer(),
+                  if (added > 0)
+                    Text(
+                      '+$added',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green,
+                      ),
+                    ),
+                  if (added > 0 && removed > 0) const Gap(4),
+                  if (removed > 0)
+                    Text(
+                      '-$removed',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
+                      ),
+                    ),
+                  if (added > 0 || removed > 0) ...[
+                    const Gap(4),
+                    Text(
+                      'modified',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             if (hasBoth) ...[
               const Gap(8),
               _contentLabel('Diff'),
@@ -1281,12 +1366,13 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     final status = widget.part.state ?? '';
     final theme = Theme.of(context);
     final hasContent = _isExpandable && (_input != null || _output.isNotEmpty);
+    final label = _chipLabel;
 
     final chip = Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.muted,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: theme.colorScheme.border, width: 1),
       ),
       child: Column(
@@ -1302,44 +1388,18 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
                       : null),
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
-                  Icon(_toolIcon(name), size: 14),
+                  Icon(_toolIcon(name), size: 13),
                   const Gap(8),
-                  Expanded(
-                    child: Builder(
-                      builder: (context) {
-                        final isActive = status == 'running' || status.isEmpty;
-                        final textWidget = _subjectLine == null
-                            ? Text(name).small.semiBold
-                            : Row(
-                                children: [
-                                  Text(name).small.semiBold,
-                                  const Gap(6),
-                                  Flexible(
-                                    child: Text(
-                                      _subjectLine!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ).xSmall.muted,
-                                  ),
-                                ],
-                              );
-                        return isActive
-                            ? ShimmerLoading(child: textWidget)
-                            : textWidget;
-                      },
-                    ),
-                  ),
+                  Expanded(child: _chipLabelText(name, label)),
                   if (status.isNotEmpty) ...[
                     const Gap(6),
-                    _StatusBadge(status: status),
+                    _StatusIcon(status: status),
                   ],
                   if (hasContent || _isTappable) ...[
-                    const Gap(6),
-                    // Rotates between states instead of swapping glyphs, so
-                    // expanding reads as one continuous motion.
+                    const Gap(4),
                     AnimatedRotation(
                       turns: _expanded || !_isTappable ? 0.25 : 0,
                       duration: Motion.base,
@@ -1354,15 +1414,13 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
               ),
             ),
           ),
-          // Always present so the expand/collapse actually animates; guarding
-          // the AnimatedSize itself meant it was built at full size.
           AnimatedSize(
             duration: Motion.base,
             curve: Motion.inOut,
             alignment: Alignment.topCenter,
             child: _expanded && hasContent
                 ? Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
                     child: _buildContentPreview(context),
                   )
                 : const SizedBox(width: double.infinity),
@@ -1380,6 +1438,26 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
     }
 
     return chip;
+  }
+
+  Widget _chipLabelText(String name, String? label) {
+    if (label == null) return Text(name).small.semiBold;
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: name == 'bash' ? 'monospace' : null,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showQuestionSheet(BuildContext context) {
@@ -1540,36 +1618,37 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+class _StatusIcon extends StatelessWidget {
+  const _StatusIcon({required this.status});
 
   final String status;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final (label, color) = switch (status) {
-      'running' => ('running', theme.colorScheme.primary),
-      'completed' => ('done', Colors.green),
-      'error' => ('error', Colors.red),
-      'timeout' => ('timeout', Colors.orange),
-      _ => (status, theme.colorScheme.mutedForeground),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
+    switch (status) {
+      case 'running':
+        return SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: theme.colorScheme.primary,
+          ),
+        );
+      case 'completed':
+        return Icon(LucideIcons.circleCheck, size: 14, color: Colors.green);
+      case 'error':
+        return Icon(LucideIcons.circleX, size: 14, color: Colors.red);
+      case 'timeout':
+        return Icon(LucideIcons.circleAlert, size: 14, color: Colors.orange);
+      default:
+        return Icon(
+          LucideIcons.circle,
+          size: 14,
+          color: theme.colorScheme.mutedForeground,
+        );
+    }
   }
 }
 
