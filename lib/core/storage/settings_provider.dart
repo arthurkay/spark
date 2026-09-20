@@ -75,3 +75,33 @@ class CollapseToolWidgetsNotifier extends StateNotifier<bool> {
     await ref.read(settingsStoreProvider).saveCollapseToolWidgets(state);
   }
 }
+
+final autoApprovePermissionsProvider =
+    StateNotifierProvider<AutoApprovePermissionsNotifier, bool>((ref) {
+      return AutoApprovePermissionsNotifier(ref);
+    });
+
+class AutoApprovePermissionsNotifier extends StateNotifier<bool> {
+  AutoApprovePermissionsNotifier(this.ref) : super(false) {
+    _init();
+  }
+
+  final Ref ref;
+
+  Future<void> _init() async {
+    final stored = await ref
+        .read(settingsStoreProvider)
+        .loadAutoApprovePermissions();
+    if (mounted) state = stored;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    await ref.read(settingsStoreProvider).saveAutoApprovePermissions(state);
+  }
+
+  Future<void> setValue(bool value) async {
+    state = value;
+    await ref.read(settingsStoreProvider).saveAutoApprovePermissions(state);
+  }
+}

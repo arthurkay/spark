@@ -23,6 +23,7 @@ import '../../core/api/providers.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_store.dart';
+import '../../core/storage/settings_provider.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
@@ -676,8 +677,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               OutlineButton(
                 onPressed: () {
                   final current = ref.read(autoApprovePermissionsProvider);
-                  ref.read(autoApprovePermissionsProvider.notifier).state =
-                      !current;
+                  ref
+                      .read(autoApprovePermissionsProvider.notifier)
+                      .setValue(!current);
                   if (!current) {
                     ref.read(pendingPermissionsProvider.notifier).state =
                         const {};
