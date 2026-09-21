@@ -60,7 +60,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _composerController = TextEditingController();
   final _scrollController = ScrollController();
   final List<Attachment> _attachments = [];
@@ -76,6 +76,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     NotificationService.instance.requestPermission();
     _loadDraft();
@@ -83,6 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+    _workingAnimController.addListener(_onWorkingTick);
   }
 
   void _setupListenersIfNeeded() {
@@ -156,6 +158,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
     });
 
+    // Streaming: scroll when working state changes.
+    ref.listen(
+      chatControllerProvider(widget.sessionId).select(
+        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+      ),
+      (prev, next) {
+        if (!next.working) return;
+        if (_isNearBottom) {
+          _smoothScrollToBottom();
+        }
+      },
+    );
+
     // Message count changed: auto-scroll on new messages.
     ref.listen(visibleMessageIdsProvider(widget.sessionId), (prev, next) {
       final prevCount = prev?.length ?? 0;
@@ -175,36 +190,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         }
       }
     });
-
-    // Streaming: scroll while text is growing.
-    ref.listen(
-      chatControllerProvider(widget.sessionId).select(
-        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
-      ),
-      (prev, next) {
-        if (!next.working) {
-          _lastStreamContentLength = 0;
-          return;
-        }
-        final messages = ref
-            .read(chatControllerProvider(widget.sessionId))
-            .state
-            .messages;
-        if (messages.isEmpty) return;
-        final lastMsg = messages.last;
-        final tailTextLen = lastMsg.parts
-            .where((p) => p.type == 'text' && p.text != null)
-            .fold(0, (int sum, p) => sum + p.text!.length);
-        if (tailTextLen != _lastStreamContentLength && _isNearBottom) {
-          _lastStreamContentLength = tailTextLen;
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(
-              _scrollController.position.maxScrollExtent,
-            );
-          }
-        }
-      },
-    );
   }
 
   void _onScroll() {
@@ -216,23 +201,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       );
       controller.loadOlder();
     }
-    final nearBottom = position.maxScrollExtent - position.pixels < 120;
+    final nearBottom =
+        position.maxScrollExtent - position.pixels < _scrollNearBottomThreshold;
     _showScrollToBottom.value = !nearBottom;
+    if (!nearBottom) {
+      _followPaused = true;
+      if (_isAnimatingScroll && _scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.pixels);
+        _isAnimatingScroll = false;
+      }
+    }
     _scrollSaveTimer?.cancel();
     _scrollSaveTimer = Timer(const Duration(seconds: 1), _saveScrollPosition);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _saveDraft();
     _saveScrollPosition();
     _scrollSaveTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _composerController.dispose();
     _scrollController.dispose();
+    _workingAnimController.removeListener(_onWorkingTick);
     _workingAnimController.dispose();
     _showScrollToBottom.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _saveDraft();
+      _saveScrollPosition();
+    }
   }
 
   static String _draftKey(String sessionId) => 'draft_$sessionId';
@@ -452,29 +456,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   void _scrollToBottom({bool animate = true}) {
+    _followPaused = false;
     if (!animate) {
+      _isAnimatingScroll = false;
       _pinToBottom(finishRestore: false, budget: 45, stableNeeded: 4);
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final target = _scrollController.position.maxScrollExtent;
-      if (target <= 0) {
-        _pinToBottom(finishRestore: false, budget: 30, stableNeeded: 3);
-        return;
-      }
-      _scrollController.animateTo(
-        target,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-      Future.delayed(const Duration(milliseconds: 260), () {
-        if (!mounted || !_scrollController.hasClients) return;
-        final pos = _scrollController.position;
-        if (pos.pixels < pos.maxScrollExtent - 0.5) {
-          _pinToBottom(finishRestore: false, budget: 30, stableNeeded: 3);
-        }
-      });
+      _smoothScrollToBottom();
     });
   }
 
@@ -705,8 +694,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
+  bool _isAnimatingScroll = false;
+  bool _followPaused = false;
+
+  void _onWorkingTick() {
+    if (_isAnimatingScroll || _followPaused) return;
+    if (!mounted || !_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final gap = pos.maxScrollExtent - pos.pixels;
+    if (gap > 0.5 &&
+        gap < _scrollNearBottomThreshold &&
+        pos.maxScrollExtent > 0) {
+      _smoothScrollToBottom();
+    }
+  }
+
+  void _smoothScrollToBottom() {
+    if (_isAnimatingScroll) return;
+    if (!mounted || !_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final gap = pos.maxScrollExtent - pos.pixels;
+    if (gap <= 0.5 || pos.maxScrollExtent <= 0) return;
+    _isAnimatingScroll = true;
+    _scrollController
+        .animateTo(
+          pos.maxScrollExtent,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+        )
+        .whenComplete(() {
+          _isAnimatingScroll = false;
+          if (mounted && _scrollController.hasClients) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _onWorkingTick();
+            });
+          }
+        });
+  }
+
   bool _initialScrollDone = false;
-  int _lastStreamContentLength = 0;
 
   bool get _isNearBottom {
     if (!_scrollController.hasClients) return true;
