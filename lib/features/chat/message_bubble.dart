@@ -248,45 +248,29 @@ class MessageBubble extends StatelessWidget {
     }
     if (children.isEmpty) return const SizedBox.shrink();
 
-    final theme = Theme.of(context);
     final timestamp = message.info.timeCreated;
     final timeLabel = _formatTimestamp(timestamp);
+    final content = Column(
+      crossAxisAlignment: _isUser
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ...children,
+        if (timeLabel != null) ...[const Gap(4), Text(timeLabel).xSmall.muted],
+      ],
+    );
+
     return GestureDetector(
       onLongPress: () {
         Haptics.longPress();
         _showContextMenu(context);
       },
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            margin: const EdgeInsets.only(top: 2),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.muted,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              _isUser ? LucideIcons.user : LucideIcons.sparkles,
-              size: 15,
-              color: theme.colorScheme.foreground,
-            ),
-          ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ...children,
-                if (timeLabel != null) ...[
-                  const Gap(4),
-                  Text(timeLabel).xSmall.muted,
-                ],
-              ],
-            ),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: _isUser
+            ? Align(alignment: Alignment.centerRight, child: content)
+            : Align(alignment: Alignment.centerLeft, child: content),
       ),
     );
   }
@@ -551,6 +535,8 @@ const _expandableToolTypes = {
   'task',
   'websearch',
   'webfetch',
+  'skill',
+  'invalid',
 };
 
 class _TodoItem {
@@ -705,7 +691,7 @@ class _ReasoningBlock extends StatefulWidget {
 }
 
 class _ReasoningBlockState extends State<_ReasoningBlock> {
-  bool _expanded = false;
+  bool _expanded = true;
 
   @override
   Widget build(BuildContext context) {
@@ -1136,6 +1122,17 @@ class _ToolChipState extends ConsumerState<_ToolChip> {
               if (url.isNotEmpty || format.isNotEmpty) const Gap(4),
               _codeBlock(context, output, maxLines: 12),
             ],
+          ],
+        );
+      case 'skill':
+      case 'invalid':
+        if (output.isEmpty && (input == null || input.isEmpty)) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (output.isNotEmpty) _codeBlock(context, output, maxLines: 12),
           ],
         );
       default:

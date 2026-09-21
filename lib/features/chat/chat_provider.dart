@@ -431,7 +431,14 @@ class ChatController extends ChangeNotifier {
             )
           : _mergeTail(fetched);
       if (_optimisticBusy && !_deriveWorking(merged)) {
-        _optimisticBusy = false;
+        final lastActivity = _lastSseActivity;
+        final recentActivity =
+            lastActivity != null &&
+            DateTime.now().difference(lastActivity) <
+                const Duration(seconds: 5);
+        if (!recentActivity) {
+          _optimisticBusy = false;
+        }
       }
       final working = _computeWorking(merged);
       if (!working) _stuck = false;
@@ -508,7 +515,14 @@ class ChatController extends ChangeNotifier {
       _tailWindow += newOnes.length;
       final merged = [...newOnes, ...state.messages];
       if (_optimisticBusy && !_deriveWorking(merged)) {
-        _optimisticBusy = false;
+        final lastActivity = _lastSseActivity;
+        final recentActivity =
+            lastActivity != null &&
+            DateTime.now().difference(lastActivity) <
+                const Duration(seconds: 5);
+        if (!recentActivity) {
+          _optimisticBusy = false;
+        }
       }
       final working = _computeWorking(merged);
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
@@ -613,7 +627,12 @@ class ChatController extends ChangeNotifier {
       newMessages[index] = updatedMessage;
       _rebuildMessageIndex(newMessages);
       _lastContentChange = DateTime.now();
-      state = state.copyWith(messages: newMessages);
+      if (!state.working && _optimisticBusy) {
+        ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
+        state = state.copyWith(messages: newMessages, working: true);
+      } else {
+        state = state.copyWith(messages: newMessages);
+      }
     };
     if (immediate) {
       _pendingPartJson = partJson;
