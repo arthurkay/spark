@@ -1,4 +1,3 @@
-All liiks reat, I need you to commit these changes
 class FileNode {
   const FileNode({
     required this.name,
