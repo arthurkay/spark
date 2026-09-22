@@ -66,13 +66,15 @@ final agentsProvider = FutureProvider<List<Agent>>((ref) async {
   }
 });
 
-final _selectedModelOverride = StateProvider<ModelSelection?>((ref) => null);
+final _selectedModelOverride = StateProvider.family<ModelSelection?, String>(
+  (ref, _) => null,
+);
 
 final selectedModelProvider = Provider.family<ModelSelection?, String>((
   ref,
   sessionId,
 ) {
-  final override = ref.watch(_selectedModelOverride);
+  final override = ref.watch(_selectedModelOverride(sessionId));
   if (override != null) return override;
   final fromLastMessage = ref.watch(currentModelSelectionProvider(sessionId));
   if (fromLastMessage != null) return fromLastMessage;
@@ -90,8 +92,12 @@ final selectedModelProvider = Provider.family<ModelSelection?, String>((
   );
 });
 
-void setSelectedModel(WidgetRef ref, ModelSelection? selection) {
-  ref.read(_selectedModelOverride.notifier).state = selection;
+void setSelectedModel(
+  WidgetRef ref,
+  String? sessionId,
+  ModelSelection? selection,
+) {
+  ref.read(_selectedModelOverride(sessionId ?? '').notifier).state = selection;
 }
 
 final selectedAgentProvider = StateProvider<String?>((ref) => null);

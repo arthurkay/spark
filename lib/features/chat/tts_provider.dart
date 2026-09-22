@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -8,7 +9,9 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../../core/api/opencode_client.dart';
 import '../../core/api/providers.dart';
 import '../../core/models/message.dart';
+import '../../core/models/provider.dart';
 import '../../core/storage/settings_store.dart';
+import '../models/models_provider.dart';
 import 'tts_cache.dart';
 
 const _ttsSessionTitle = '[TTS Preprocessing]';
@@ -234,6 +237,7 @@ class TtsController {
     String text, {
     OpencodeClient? client,
     String? messageId,
+    ModelSelection? model,
   }) async {
     await init();
     final generation = ++_generation;
@@ -266,7 +270,7 @@ class TtsController {
           sourceText: text,
         ),
       );
-      final rewritten = await _llmRewrite(client, processed);
+      final rewritten = await _llmRewrite(client, processed, model);
       // The rewrite takes seconds, and the overlay invites the user to cancel
       // during it. Without this check the cancelled utterance would start
       // speaking the moment the request came back.
@@ -367,12 +371,22 @@ class TtsController {
   Future<void> stop() async {
     _generation++;
     _clearUtterance();
-    await _tts.stop();
+    try {
+      await _tts.stop();
+    } on MissingPluginException {
+      // Desktop platforms without a TTS engine (e.g. Linux) have no plugin.
+    } on Exception {
+      // Engine may be gone mid-dispose; still reset local state.
+    }
     _updateState(const TtsState(status: TtsStatus.idle));
   }
 
   void dispose() {
-    _tts.stop();
+    try {
+      _tts.stop();
+    } on Exception {
+      // Missing plugin or disposed engine — nothing to stop.
+    }
     progress.dispose();
   }
 
@@ -396,12 +410,17 @@ class TtsController {
     }
   }
 
-  Future<String?> _llmRewrite(OpencodeClient client, String text) async {
+  Future<String?> _llmRewrite(
+    OpencodeClient client,
+    String text,
+    ModelSelection? model,
+  ) async {
     final sessionId = await _getOrCreateSessionId(client);
     if (sessionId == null) return null;
     try {
       final response = await client.sendMessage(
         sessionId: sessionId,
+        model: model,
         text:
             'Rewrite the following text for natural text-to-speech narration. '
             'Your goal is to produce text that sounds like a warm, articulate '
@@ -491,6 +510,11 @@ class TtsStateNotifier extends Notifier<TtsState> {
     return const TtsState();
   }
 
+  ModelSelection? _modelForSession(String? sessionId) {
+    if (sessionId == null || sessionId.isEmpty) return null;
+    return ref.read(selectedModelProvider(sessionId));
+  }
+
   void toggle(MessageWithParts message) {
     final text = message.parts
         .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
@@ -503,7 +527,12 @@ class TtsStateNotifier extends Notifier<TtsState> {
     if (state.status != TtsStatus.idle && state.messageId == message.info.id) {
       tts.stop();
     } else {
-      tts.speak(text, client: client, messageId: message.info.id);
+      tts.speak(
+        text,
+        client: client,
+        messageId: message.info.id,
+        model: _modelForSession(message.info.sessionID),
+      );
     }
   }
 
@@ -521,7 +550,7 @@ class TtsStateNotifier extends Notifier<TtsState> {
 
   /// Narrates [message] unconditionally — voice mode's counterpart of
   /// [toggle], which flips between play and stop for the same message.
-  void narrate(MessageWithParts message) {
+  void narrate(MessageWithParts message, {ModelSelection? model}) {
     final text = message.parts
         .where((p) => p.type == 'text' && (p.text?.trim().isNotEmpty ?? false))
         .map((p) => p.text!)
@@ -533,6 +562,7 @@ class TtsStateNotifier extends Notifier<TtsState> {
           text,
           client: ref.read(opencodeClientProvider),
           messageId: message.info.id,
+          model: model ?? _modelForSession(message.info.sessionID),
         );
   }
 

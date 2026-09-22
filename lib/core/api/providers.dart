@@ -113,6 +113,41 @@ class ServerManagerController extends Notifier<ServerManagerState> {
     );
   }
 
+  /// Adds or updates [config] without the forced-activate that [connect]
+  /// applies. When [activate] is false the previous active server (if any) is
+  /// restored, so a background registration — e.g. the local server coming up
+  /// while the user is on a remote one — cannot hijack the connection.
+  Future<void> upsertServer(
+    ServerConfig config,
+    String? password, {
+    required bool activate,
+  }) async {
+    final configs = await _store.loadAll();
+    final exists = configs.any((c) => c.id == config.id);
+    final previousActive = await _store.loadActiveId();
+    if (exists) {
+      await _store.updateServer(config, password);
+    } else {
+      await _store.saveAll([...configs, config]);
+      await _store.savePassword(config.id, password);
+    }
+    if (activate) {
+      await _store.setActiveId(config.id);
+    } else if (previousActive != null) {
+      await _store.setActiveId(previousActive);
+    }
+    final activeId = await _store.loadActiveId();
+    String? passwordOut;
+    if (activeId != null) {
+      passwordOut = await _store.loadPassword(activeId);
+    }
+    state = ServerManagerState(
+      configs: await _store.loadAll(),
+      activeId: activeId,
+      password: passwordOut,
+    );
+  }
+
   Future<void> disconnect() async {
     if (state.activeId == null) return;
     await _store.removeServer(state.activeId!);

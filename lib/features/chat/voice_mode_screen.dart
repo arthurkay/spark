@@ -364,7 +364,12 @@ class _VoiceModeScreenState extends ConsumerState<VoiceModeScreen>
     setState(() => _phase = VoicePhase.speaking);
     // The same pipeline as Read Aloud: preprocess, LLM speech rewrite (cached
     // per message), chunked utterances, the selected voice.
-    ref.read(ttsStateProvider.notifier).narrate(message);
+    ref
+        .read(ttsStateProvider.notifier)
+        .narrate(
+          message,
+          model: ref.read(selectedModelProvider(widget.sessionId)),
+        );
   }
 
   /// Speaking finished → listen again. Tapping the mic while speaking

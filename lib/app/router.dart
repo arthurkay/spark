@@ -13,7 +13,10 @@ import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
 import '../features/sessions/directory_browser.dart';
 import '../features/sessions/sessions_screen.dart';
+import '../features/local_server/opencode_locator.dart';
 import '../features/terminal/terminal_screen.dart';
+import '../features/workspace/workspace_screen.dart';
+import 'desktop_shell.dart';
 import 'motion.dart';
 
 /// A page pushed onto the navigation stack.
@@ -76,74 +79,93 @@ GoRouter createRouter(Ref ref) {
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/',
-        pageBuilder: (context, state) => _rootPage(state, const _HomeRouter()),
-      ),
-      GoRoute(
-        path: '/settings',
-        pageBuilder: (context, state) =>
-            _stackPage(state, const SettingsScreen()),
-      ),
-      GoRoute(
-        path: '/servers/add',
-        pageBuilder: (context, state) =>
-            _stackPage(state, const ConnectionScreen()),
-      ),
-      GoRoute(
-        path: '/servers/:id/edit',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          ConnectionScreen(serverId: state.pathParameters['id']),
-        ),
-      ),
-      GoRoute(
-        path: '/session/:id',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          ChatScreen(sessionId: state.pathParameters['id']!),
-        ),
+      ShellRoute(
+        builder: (context, state, child) =>
+            DesktopShell(path: state.uri.path, child: child),
+        routes: [
+          GoRoute(
+            path: '/',
+            pageBuilder: (context, state) =>
+                _rootPage(state, const _HomeRouter()),
+          ),
+          GoRoute(
+            path: '/settings',
+            pageBuilder: (context, state) =>
+                _stackPage(state, const SettingsScreen()),
+          ),
+          GoRoute(
+            path: '/servers/add',
+            pageBuilder: (context, state) =>
+                _stackPage(state, const ConnectionScreen()),
+          ),
+          GoRoute(
+            path: '/servers/:id/edit',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              ConnectionScreen(serverId: state.pathParameters['id']),
+            ),
+          ),
+          GoRoute(
+            path: '/session/:id',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              ChatScreen(sessionId: state.pathParameters['id']!),
+            ),
+          ),
+          GoRoute(
+            path: '/session/:id/files',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              FilesScreen(sessionId: state.pathParameters['id']!),
+            ),
+          ),
+          GoRoute(
+            path: '/workspace/:worktree/browse',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              DirectoryBrowserScreen(
+                directory: Uri.decodeComponent(
+                  state.pathParameters['worktree']!,
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/new-session',
+            pageBuilder: (context, state) =>
+                _stackPage(state, const DirectoryBrowserScreen()),
+          ),
+          GoRoute(
+            path: '/session/:id/diff',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              DiffScreen(sessionId: state.pathParameters['id']!),
+            ),
+          ),
+          GoRoute(
+            path: '/session/:id/terminal',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              TerminalScreen(sessionId: state.pathParameters['id']!),
+            ),
+          ),
+          GoRoute(
+            path: '/session/:id/workspace',
+            redirect: (context, state) => isDesktopPlatform
+                ? null
+                : '/session/${state.pathParameters['id']}',
+            pageBuilder: (context, state) => _stackPage(
+              state,
+              WorkspaceScreen(sessionId: state.pathParameters['id']!),
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: '/session/:id/voice',
         pageBuilder: (context, state) => _stackPage(
           state,
           VoiceModeScreen(sessionId: state.pathParameters['id']!),
-        ),
-      ),
-      GoRoute(
-        path: '/session/:id/files',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          FilesScreen(sessionId: state.pathParameters['id']!),
-        ),
-      ),
-      GoRoute(
-        path: '/workspace/:worktree/browse',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          DirectoryBrowserScreen(
-            directory: Uri.decodeComponent(state.pathParameters['worktree']!),
-          ),
-        ),
-      ),
-      GoRoute(
-        path: '/new-session',
-        pageBuilder: (context, state) =>
-            _stackPage(state, const DirectoryBrowserScreen()),
-      ),
-      GoRoute(
-        path: '/session/:id/diff',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          DiffScreen(sessionId: state.pathParameters['id']!),
-        ),
-      ),
-      GoRoute(
-        path: '/session/:id/terminal',
-        pageBuilder: (context, state) => _stackPage(
-          state,
-          TerminalScreen(sessionId: state.pathParameters['id']!),
         ),
       ),
     ],

@@ -1,15 +1,18 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
-class WelcomeScreen extends StatefulWidget {
+import '../local_server/local_server_provider.dart';
+
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
 }
 
-class _WelcomeScreenState extends State<WelcomeScreen>
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(
     vsync: this,
@@ -100,6 +103,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                     child: const Text('Get started'),
                   ),
                 ),
+                if (isDesktopPlatform) ...[
+                  const Gap(12),
+                  FadeTransition(
+                    opacity: _buttonFade,
+                    child: const _LocalServerHint(),
+                  ),
+                ],
                 const Spacer(),
               ],
             ),
@@ -107,5 +117,59 @@ class _WelcomeScreenState extends State<WelcomeScreen>
         ),
       ),
     );
+  }
+}
+
+class _LocalServerHint extends ConsumerWidget {
+  const _LocalServerHint();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(localServerProvider);
+    final controller = ref.read(localServerProvider.notifier);
+    final theme = Theme.of(context);
+
+    return switch (state.status) {
+      LocalServerStatus.locating => Text(
+        'Looking for opencode…',
+        style: TextStyle(
+          fontSize: 13,
+          color: theme.colorScheme.mutedForeground,
+        ),
+      ),
+      LocalServerStatus.missing ||
+      LocalServerStatus.idle when state.binaryPath == null => PrimaryButton(
+        size: ButtonSize.small,
+        onPressed: () => controller.install(),
+        child: const Text('Install local server'),
+      ),
+      LocalServerStatus.installing => Text(
+        'Installing opencode…',
+        style: TextStyle(
+          fontSize: 13,
+          color: theme.colorScheme.mutedForeground,
+        ),
+      ),
+      LocalServerStatus.starting => Text(
+        'Starting local server…',
+        style: TextStyle(
+          fontSize: 13,
+          color: theme.colorScheme.mutedForeground,
+        ),
+      ),
+      LocalServerStatus.healthy => Text(
+        'Local server running on ${state.port ?? ''}',
+        style: TextStyle(
+          fontSize: 13,
+          color: theme.colorScheme.mutedForeground,
+        ),
+      ),
+      LocalServerStatus.failed => Text(
+        state.error ?? 'Local server failed to start',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13, color: theme.colorScheme.destructive),
+      ),
+      _ => const SizedBox.shrink(),
+    };
   }
 }
