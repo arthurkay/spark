@@ -2,6 +2,10 @@
 
 How to publish **Spark** to the Apple App Store and Google Play Store using Codemagic CI/CD.
 
+> The build workflows live in the **Codemagic UI**, not in this repo — there is
+> no `codemagic.yaml` here. Releases trigger off `v*` git tags (see
+> [Releases](#version-management)).
+
 ---
 
 ## Table of Contents
@@ -152,7 +156,7 @@ Go to **Teams → Variables and secrets** and add:
    - **Keystore password**: your keystore password
    - **Key alias**: `spark`
    - **Key password**: your key password
-4. Codemagic generates a reference name — note it for `codemagic.yaml`
+4. Reference the uploaded keystore from your Android workflow's signing section
 
 #### iOS
 
@@ -261,7 +265,7 @@ Codemagic uses the version from `pubspec.yaml` for both platforms.
 
 ### General
 
-- **Build timeout**: Increase `max_build_duration` in `codemagic.yaml`
+- **Build timeout**: Increase the max build duration in the Codemagic UI workflow settings
 - **Dependencies fail**: Check `flutter pub get` works locally
 - **Tests fail**: Fix tests locally before pushing
 
@@ -271,7 +275,7 @@ Codemagic uses the version from `pubspec.yaml` for both platforms.
 
 | File | Purpose |
 |------|---------|
-| `codemagic.yaml` | CI/CD workflow configuration |
+| Codemagic UI workflows | CI/CD build + publish configuration (not in repo) |
 | `android/app/build.gradle.kts` | Android build config with signing |
 | `pubspec.yaml` | Version number (source of truth) |
 | `ios/Runner.xcodeproj/project.pbxproj` | iOS project config |
