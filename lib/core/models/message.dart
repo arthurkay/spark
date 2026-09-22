@@ -54,6 +54,16 @@ class MessageInfo {
   /// `ContextOverflowError`, `MessageAbortedError`, `ProviderAuthError`.
   String? get errorName => error?['name']?.toString();
 
+  /// HTTP status the provider returned, when the server attached one
+  /// (typical for `APIError`).
+  int? get errorStatusCode {
+    final data = error?['data'];
+    if (data is Map<String, dynamic> && data['statusCode'] is int) {
+      return data['statusCode'] as int;
+    }
+    return null;
+  }
+
   /// An errored turn is over, whatever the reason.
   ///
   /// The server does not always stamp `time.completed` when a turn dies — a

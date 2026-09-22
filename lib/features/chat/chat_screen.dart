@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/model_selector.dart';
 import '../models/models_provider.dart';
+import '../../app/desktop_shell.dart';
 import '../../app/motion.dart';
 import '../permissions/permission_banner.dart';
 import '../permissions/permission_sheet.dart';
@@ -20,13 +23,16 @@ import '../sessions/workspace_provider.dart';
 import '../../core/api/connectivity_provider.dart';
 import '../../core/api/permission_provider.dart';
 import '../../core/api/providers.dart';
+import '../../core/api/session_error_provider.dart';
 import '../../core/models/attachment.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/settings_provider.dart';
+import '../local_server/opencode_locator.dart';
 import '../terminal/terminal_sheet.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
+import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/chat_loading_skeleton.dart';
 
 const _scrollNearBottomThreshold = 120.0;
@@ -51,9 +57,10 @@ ScrollRestoreDecision decideScrollRestore({
 }
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, required this.sessionId});
+  const ChatScreen({super.key, required this.sessionId, this.embedded = false});
 
   final String sessionId;
+  final bool embedded;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -79,12 +86,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     NotificationService.instance.requestPermission();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(activeChatSessionProvider.notifier).state = widget.sessionId;
+      _clearSessionErrorNotice();
+    });
     _loadDraft();
     _workingAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
     _workingAnimController.addListener(_onWorkingTick);
+  }
+
+  void _clearSessionErrorNotice() {
+    final errors = {...ref.read(sessionErrorsProvider)};
+    if (errors.remove(widget.sessionId) != null) {
+      ref.read(sessionErrorsProvider.notifier).state = errors;
+    }
+    NotificationService.instance.cancelSessionError();
   }
 
   void _setupListenersIfNeeded() {
@@ -192,9 +212,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
   }
 
+  double? _lastScrollPosition;
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
+    final scrolledUp =
+        _lastScrollPosition != null &&
+        position.pixels < _lastScrollPosition! - 2;
+    _lastScrollPosition = position.pixels;
+    if (scrolledUp && _isAnimatingScroll) {
+      _scrollController.jumpTo(position.pixels);
+      _isAnimatingScroll = false;
+      _followPaused = true;
+    }
     if (position.pixels < 200) {
       final controller = ref.read(
         chatControllerProvider(widget.sessionId).notifier,
@@ -206,10 +237,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _showScrollToBottom.value = !nearBottom;
     if (!nearBottom) {
       _followPaused = true;
-      if (_isAnimatingScroll && _scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.pixels);
-        _isAnimatingScroll = false;
-      }
     }
     _scrollSaveTimer?.cancel();
     _scrollSaveTimer = Timer(const Duration(seconds: 1), _saveScrollPosition);
@@ -218,6 +245,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    try {
+      if (ref.read(activeChatSessionProvider) == widget.sessionId) {
+        ref.read(activeChatSessionProvider.notifier).state = null;
+      }
+    } catch (_) {}
     _saveDraft();
     _saveScrollPosition();
     _scrollSaveTimer?.cancel();
@@ -608,6 +640,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   ],
                 ),
               ),
+              if (isDesktopPlatform) ...[
+                const Gap(8),
+                OutlineButton(
+                  onPressed: () {
+                    closeSheet(sheetContext);
+                    context.push('/session/${widget.sessionId}/workspace');
+                  },
+                  child: const Row(
+                    children: [
+                      Icon(LucideIcons.squareCode, size: 16),
+                      Gap(10),
+                      Text('Workspace'),
+                    ],
+                  ),
+                ),
+              ],
               const Gap(8),
               OutlineButton(
                 onPressed: () {
@@ -753,12 +801,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
 
     final currentModel = ref.watch(currentModelProvider(widget.sessionId));
+    final selectedModel = ref.watch(selectedModelProvider(widget.sessionId));
     final currentAgent = ref.watch(currentModeProvider(widget.sessionId));
     final globalBusy = ref
         .watch(sessionActivityProvider)
         .contains(widget.sessionId);
     final working = (chrome.working || globalBusy) && !controller.aborting;
 
+    final modelLabel = selectedModel?.modelID ?? currentModel;
     final agentLabel = currentAgent;
     final directoryAsync = ref.watch(
       sessionDirectoryProvider(widget.sessionId),
@@ -776,33 +826,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       if (agentLabel != null) agentLabel,
     ];
 
+    final wide = MediaQuery.sizeOf(context).width >= desktopBreakpoint;
+    final autoAllow = ref.watch(autoApprovePermissionsProvider);
+    final canPop = context.canPop();
+
     return Scaffold(
       headers: [
         AppBar(
-          leading: [
-            IconButton.ghost(
-              icon: const Icon(LucideIcons.arrowLeft),
-              onPressed: () => context.pop(),
-            ),
-          ],
-          title: Builder(
-            builder: (context) {
-              final workspaceAsync = ref.watch(
-                sessionDirectoryProvider(widget.sessionId),
-              );
-              final workspaceName = workspaceAsync.maybeWhen(
-                data: (v) => v,
-                orElse: () => null,
-              );
-              return workspaceName != null && workspaceName.isNotEmpty
-                  ? Text(
-                      workspaceName.split('/').last,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : const SizedBox.shrink();
-            },
-          ),
+          leading: widget.embedded
+              ? const <Widget>[]
+              : [
+                  if (!wide || canPop)
+                    IconButton.ghost(
+                      icon: const Icon(LucideIcons.arrowLeft),
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/');
+                        }
+                      },
+                    ),
+                ],
+          title: widget.embedded
+              ? null
+              : Builder(
+                  builder: (context) {
+                    final workspaceAsync = ref.watch(
+                      sessionDirectoryProvider(widget.sessionId),
+                    );
+                    final workspaceName = workspaceAsync.maybeWhen(
+                      data: (v) => v,
+                      orElse: () => null,
+                    );
+                    return workspaceName != null && workspaceName.isNotEmpty
+                        ? Text(
+                            workspaceName.split('/').last,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        : const SizedBox.shrink();
+                  },
+                ),
           subtitle: subtitleParts.isNotEmpty
               ? DefaultTextStyle(
                   style: TextStyle(
@@ -823,6 +888,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 )
               : null,
           trailing: [
+            if (wide) ...[
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => const Text('Files'),
+                  child: const Icon(LucideIcons.folderOpen),
+                ),
+                onPressed: () =>
+                    context.push('/session/${widget.sessionId}/files'),
+              ),
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => const Text('Workspace'),
+                  child: const Icon(LucideIcons.squareCode),
+                ),
+                onPressed: () =>
+                    context.push('/session/${widget.sessionId}/workspace'),
+              ),
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => const Text('Terminal'),
+                  child: const Icon(LucideIcons.terminal),
+                ),
+                onPressed: () =>
+                    openTerminalSheet(context, sessionId: widget.sessionId),
+              ),
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => Text(
+                    modelLabel != null ? 'Model: $modelLabel' : 'Models',
+                  ),
+                  child: const Icon(LucideIcons.cpu),
+                ),
+                onPressed: () => openModelPicker(
+                  context: context,
+                  ref: ref,
+                  sessionId: widget.sessionId,
+                ),
+              ),
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => Text(
+                    agentLabel != null ? 'Agent: $agentLabel' : 'Agents',
+                  ),
+                  child: const Icon(LucideIcons.bot),
+                ),
+                onPressed: () => openAgentPicker(context: context, ref: ref),
+              ),
+              IconButton.ghost(
+                icon: Tooltip(
+                  tooltip: (_) => const Text('Auto-allow permissions'),
+                  child: Icon(
+                    LucideIcons.zap,
+                    color: autoAllow
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+                onPressed: () {
+                  ref
+                      .read(autoApprovePermissionsProvider.notifier)
+                      .setValue(!autoAllow);
+                  if (!autoAllow) {
+                    ref.read(pendingPermissionsProvider.notifier).state =
+                        const {};
+                    NotificationService.instance.cancelPermission();
+                  }
+                },
+              ),
+              const Gap(4),
+            ],
             IconButton.ghost(
               icon: const Icon(LucideIcons.ellipsisVertical),
               onPressed: () => _showChatMenu(context, ref),
@@ -877,6 +1012,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   working: working,
                   aborting: controller.aborting,
                   error: chrome.error,
+                  errorType: chrome.errorType,
+                  statusCode: chrome.statusCode,
                   retryMessage: chrome.retryMessage,
                   retryAction: chrome.retryAction,
                   retryNext: chrome.retryNext,
@@ -891,6 +1028,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAwaitingReplyDivider() {
+    final border = Theme.of(context).colorScheme.border;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Container(height: 1, color: border)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: const Text('Sent — awaiting reply').xSmall.muted,
+          ),
+          Expanded(child: Container(height: 1, color: border)),
         ],
       ),
     );
@@ -1038,7 +1192,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
     final hasHeader =
         chrome.loadingOlder || (chrome.hasMoreOlder && visible.isNotEmpty);
-    final itemCount = visible.length + (hasHeader ? 1 : 0) + (working ? 1 : 0);
+    final showAwaitingReply =
+        chrome.awaitingReply && visible.isNotEmpty && !working;
+    final itemCount =
+        visible.length +
+        (hasHeader ? 1 : 0) +
+        (working ? 1 : 0) +
+        (showAwaitingReply ? 1 : 0);
     Widget? header;
     if (chrome.loadingOlder) {
       header = const Padding(
@@ -1072,7 +1232,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             curve: Motion.standard,
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
+                constraints: BoxConstraints(
+                  maxWidth:
+                      MediaQuery.sizeOf(context).width >= desktopBreakpoint
+                      ? 960
+                      : 760,
+                ),
                 child: ListView.separated(
                   controller: _scrollController,
                   padding: const EdgeInsets.only(
@@ -1088,6 +1253,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     final messageIndex = hasHeader ? index - 1 : index;
                     if (working && index == itemCount - 1) {
                       return _buildWorkingIndicator();
+                    }
+                    final awaitingIndex = itemCount - (working ? 2 : 1);
+                    if (showAwaitingReply && index == awaitingIndex) {
+                      return _buildAwaitingReplyDivider();
                     }
                     final msgId = visible[messageIndex];
                     final msg = messages.firstWhere(
@@ -1160,6 +1329,8 @@ class _Composer extends ConsumerStatefulWidget {
     required this.working,
     required this.aborting,
     required this.error,
+    required this.errorType,
+    required this.statusCode,
     required this.retryMessage,
     required this.retryAction,
     required this.retryNext,
@@ -1178,6 +1349,8 @@ class _Composer extends ConsumerStatefulWidget {
   final bool working;
   final bool aborting;
   final String? error;
+  final String? errorType;
+  final int? statusCode;
   final String? retryMessage;
   final RetryAction? retryAction;
   final int? retryNext;
@@ -1200,20 +1373,40 @@ class _ComposerState extends ConsumerState<_Composer> {
   bool _toolsExpanded = false;
   String _textBeforeListening = '';
   bool _hasText = false;
+  late final FocusNode _composerFocus;
+
+  static bool get _desktopEnterToSend =>
+      defaultTargetPlatform != TargetPlatform.android &&
+      defaultTargetPlatform != TargetPlatform.iOS;
 
   @override
   void initState() {
     super.initState();
     _hasText = widget.controller.text.trim().isNotEmpty;
     widget.controller.addListener(_onTextChanged);
+    _composerFocus = FocusNode(onKeyEvent: _handleComposerKey);
     _initSpeech();
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onTextChanged);
+    _composerFocus.dispose();
     _speech.cancel();
     super.dispose();
+  }
+
+  KeyEventResult _handleComposerKey(FocusNode node, KeyEvent event) {
+    if (!_desktopEnterToSend) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    if (HardwareKeyboard.instance.isShiftPressed) {
+      return KeyEventResult.ignored;
+    }
+    widget.onSend();
+    return KeyEventResult.handled;
   }
 
   void _onTextChanged() {
@@ -1224,10 +1417,21 @@ class _ComposerState extends ConsumerState<_Composer> {
   }
 
   Future<void> _initSpeech() async {
-    _speechAvailable = await _speech.initialize(
-      onStatus: _onSpeechStatus,
-      onError: (_) => _stopListening(),
-    );
+    // speech_to_text has no desktop implementation; skip the probe so the mic
+    // never appears enabled on Windows/macOS/Linux.
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
+      _speechAvailable = false;
+      return;
+    }
+    try {
+      _speechAvailable = await _speech.initialize(
+        onStatus: _onSpeechStatus,
+        onError: (_) => _stopListening(),
+      );
+    } catch (_) {
+      _speechAvailable = false;
+    }
   }
 
   void _onSpeechStatus(String status) {
@@ -1278,366 +1482,439 @@ class _ComposerState extends ConsumerState<_Composer> {
     final selectedAgent = ref.watch(selectedAgentProvider);
     final defaultAgent = ref.watch(defaultAgentProvider);
     final agentLabel = selectedAgent ?? defaultAgent;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (!ref.watch(connectivityProvider)) ...[
-                const Gap(4),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true):
+            widget.onSend,
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+            widget.onSend,
+      },
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width >= desktopBreakpoint
+                  ? 960
+                  : 760,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!ref.watch(connectivityProvider)) ...[
+                  const Gap(4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withAlpha(15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.wifiOff,
+                          size: 12,
+                          color: Colors.orange,
+                        ),
+                        const Gap(4),
+                        Text('Offline — messages will be queued').xSmall,
+                      ],
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withAlpha(15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.wifiOff,
-                        size: 12,
-                        color: Colors.orange,
-                      ),
-                      const Gap(4),
-                      Text('Offline — messages will be queued').xSmall,
-                    ],
-                  ),
-                ),
-              ],
-              if (widget.retryMessage != null) ...[
-                const Gap(8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withAlpha(15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            LucideIcons.rotateCcw,
-                            size: 14,
-                            color: Colors.orange,
-                          ),
-                          const Gap(6),
-                          Expanded(child: Text(widget.retryMessage!).xSmall),
-                        ],
-                      ),
-                      if (widget.retryAction != null) ...[
-                        const Gap(6),
+                ],
+                if (widget.retryMessage != null) ...[
+                  const Gap(8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withAlpha(15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         Row(
                           children: [
-                            Expanded(
-                              child: Text(
-                                widget.retryAction!.message,
-                                style: const TextStyle(fontSize: 11),
-                              ).muted,
+                            const Icon(
+                              LucideIcons.rotateCcw,
+                              size: 14,
+                              color: Colors.orange,
                             ),
-                            if (widget.retryAction!.link != null)
-                              TextButton(
-                                onPressed: () {
-                                  final url = widget.retryAction!.link;
-                                  if (url != null) {
-                                    launchUrl(Uri.parse(url));
-                                  }
-                                },
-                                child: Text(widget.retryAction!.label).xSmall,
-                              ),
+                            const Gap(6),
+                            Expanded(child: Text(widget.retryMessage!).xSmall),
                           ],
                         ),
+                        if (widget.retryAction != null) ...[
+                          const Gap(6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.retryAction!.message,
+                                  style: const TextStyle(fontSize: 11),
+                                ).muted,
+                              ),
+                              if (widget.retryAction!.link != null)
+                                TextButton(
+                                  onPressed: () {
+                                    final url = widget.retryAction!.link;
+                                    if (url != null) {
+                                      launchUrl(Uri.parse(url));
+                                    }
+                                  },
+                                  child: Text(widget.retryAction!.label).xSmall,
+                                ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
-              if (widget.error != null) ...[
-                const Gap(8),
+                ],
+                if (widget.error != null) ...[
+                  const Gap(8),
+                  ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  LucideIcons.triangleAlert,
+                                  size: 14,
+                                  color: Colors.red,
+                                ),
+                                const Gap(6),
+                                Expanded(child: Text(widget.error!).xSmall),
+                              ],
+                            ),
+                            if (widget.errorType != null ||
+                                widget.statusCode != null) ...[
+                              const Gap(6),
+                              Row(
+                                children: [
+                                  if (widget.errorType != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withAlpha(25),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(widget.errorType!).xSmall,
+                                    ),
+                                  if (widget.errorType != null &&
+                                      widget.statusCode != null)
+                                    const Gap(6),
+                                  if (widget.statusCode != null)
+                                    Text(
+                                      'HTTP ${widget.statusCode}',
+                                    ).xSmall.muted,
+                                ],
+                              ),
+                            ],
+                            const Gap(6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                TextButton(
+                                  onPressed: widget.onDismiss,
+                                  child: const Text('Dismiss').xSmall,
+                                ),
+                                TextButton(
+                                  onPressed: widget.onAbort,
+                                  child: const Text('Abort session').xSmall,
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    final parts = [
+                                      if (widget.errorType != null)
+                                        widget.errorType!,
+                                      if (widget.statusCode != null)
+                                        'HTTP ${widget.statusCode}',
+                                      widget.error!,
+                                    ];
+                                    Clipboard.setData(
+                                      ClipboardData(text: parts.join(' — ')),
+                                    );
+                                    showAppToast(
+                                      context,
+                                      title: 'Error copied',
+                                    );
+                                  },
+                                  child: const Text('Copy').xSmall,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                const Gap(10),
+                if (widget.attachments.isNotEmpty) ...[
+                  SizedBox(
+                    height: 48,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: widget.attachments.length,
+                      separatorBuilder: (_, __) => const Gap(6),
+                      itemBuilder: (context, index) {
+                        final a = widget.attachments[index];
+                        return _AttachmentChip(
+                          attachment: a,
+                          onRemove: () => widget.onRemoveAttachment(index),
+                        );
+                      },
+                    ),
+                  ),
+                  const Gap(8),
+                ],
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
                   decoration: BoxDecoration(
-                    color: Colors.red.withAlpha(15),
-                    borderRadius: BorderRadius.circular(8),
+                    color: theme.colorScheme.muted,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            LucideIcons.triangleAlert,
-                            size: 14,
-                            color: Colors.red,
-                          ),
-                          const Gap(6),
-                          Expanded(child: Text(widget.error!).xSmall),
-                        ],
+                      TextField(
+                        controller: widget.controller,
+                        focusNode: _composerFocus,
+                        placeholder: Text(
+                          widget.working
+                              ? 'Queue a message...'
+                              : 'Message SparkCode...',
+                        ),
+                        border: Border.all(color: Colors.transparent),
+                        borderRadius: BorderRadius.zero,
+                        maxLines: 5,
+                        minLines: 2,
+                        onSubmitted: (_) => widget.onSend(),
                       ),
-                      const Gap(6),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          TextButton(
-                            onPressed: widget.onDismiss,
-                            child: const Text('Dismiss').xSmall,
+                          if (_toolsExpanded)
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.x, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () =>
+                                  setState(() => _toolsExpanded = false),
+                            )
+                          else
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.plus, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () =>
+                                  setState(() => _toolsExpanded = true),
+                            ),
+                          if (_toolsExpanded) ...[
+                            IconButton.ghost(
+                              icon: const Icon(LucideIcons.paperclip, size: 18),
+                              size: ButtonSize.small,
+                              onPressed: () {
+                                setState(() => _toolsExpanded = false);
+                                widget.onPickFiles();
+                              },
+                            ),
+                            // The camera is a phone feature; on desktop, images
+                            // arrive through the file picker instead.
+                            if (defaultTargetPlatform ==
+                                    TargetPlatform.android ||
+                                defaultTargetPlatform == TargetPlatform.iOS)
+                              IconButton.ghost(
+                                icon: const Icon(LucideIcons.camera, size: 18),
+                                size: ButtonSize.small,
+                                onPressed: () {
+                                  setState(() => _toolsExpanded = false);
+                                  widget.onTakePicture();
+                                },
+                              ),
+                            if (_speechAvailable)
+                              IconButton.ghost(
+                                icon: _isListening
+                                    ? const Icon(
+                                        LucideIcons.circleDot,
+                                        size: 18,
+                                        color: Colors.red,
+                                      )
+                                    : const Icon(LucideIcons.mic, size: 18),
+                                size: ButtonSize.small,
+                                onPressed: () {
+                                  if (!_isListening) {
+                                    setState(() => _toolsExpanded = false);
+                                  }
+                                  _toggleListening();
+                                },
+                              ),
+                          ],
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () =>
+                                ref.read(rabbitHoleProvider.notifier).toggle(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: ref.watch(rabbitHoleProvider)
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.primary.withAlpha(30)
+                                    : Theme.of(context)
+                                          .colorScheme
+                                          .mutedForeground
+                                          .withAlpha(20),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    LucideIcons.brain,
+                                    size: 14,
+                                    color: ref.watch(rabbitHoleProvider)
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.mutedForeground,
+                                  ),
+                                  if (ref.watch(rabbitHoleProvider)) ...[
+                                    const Gap(4),
+                                    Text(
+                                      'deep',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
-                          TextButton(
-                            onPressed: widget.onAbort,
-                            child: const Text('Abort session').xSmall,
+                          const Gap(4),
+                          GestureDetector(
+                            onTap: () => openModelPicker(
+                              context: context,
+                              ref: ref,
+                              sessionId: widget.sessionId,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.mutedForeground
+                                    .withAlpha(20),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                modelLabel ?? 'model',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.mutedForeground,
+                                ),
+                              ),
+                            ),
                           ),
+                          const Gap(4),
+                          GestureDetector(
+                            onTap: () =>
+                                openAgentPicker(context: context, ref: ref),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.mutedForeground
+                                    .withAlpha(20),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                agentLabel ?? 'agent',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.mutedForeground,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Gap(4),
+                          if (_hasText || !widget.working)
+                            IconButton.primary(
+                              icon: widget.sending
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(LucideIcons.send),
+                              size: ButtonSize.xSmall,
+                              shape: ButtonShape.circle,
+                              onPressed: widget.sending ? null : widget.onSend,
+                            )
+                          else
+                            IconButton.primary(
+                              icon: const Icon(LucideIcons.square),
+                              size: ButtonSize.xSmall,
+                              shape: ButtonShape.circle,
+                              onPressed: widget.onAbort,
+                            ),
                         ],
                       ),
                     ],
                   ),
                 ),
-              ],
-              const Gap(10),
-              if (widget.attachments.isNotEmpty) ...[
-                SizedBox(
-                  height: 48,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: widget.attachments.length,
-                    separatorBuilder: (_, __) => const Gap(6),
-                    itemBuilder: (context, index) {
-                      final a = widget.attachments[index];
-                      return _AttachmentChip(
-                        attachment: a,
-                        onRemove: () => widget.onRemoveAttachment(index),
-                      );
-                    },
-                  ),
-                ),
-                const Gap(8),
-              ],
-              Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.muted,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: widget.controller,
-                      placeholder: Text(
-                        widget.working
-                            ? 'Queue a message...'
-                            : 'Message SparkCode...',
+                if (_isListening) ...[
+                  const Gap(6),
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.circleDot,
+                        size: 12,
+                        color: Colors.red,
                       ),
-                      border: Border.all(color: Colors.transparent),
-                      borderRadius: BorderRadius.zero,
-                      maxLines: 5,
-                      minLines: 2,
-                      onSubmitted: (_) => widget.onSend(),
-                    ),
-                    Row(
-                      children: [
-                        if (_toolsExpanded)
-                          IconButton.ghost(
-                            icon: const Icon(LucideIcons.x, size: 18),
-                            size: ButtonSize.small,
-                            onPressed: () =>
-                                setState(() => _toolsExpanded = false),
-                          )
-                        else
-                          IconButton.ghost(
-                            icon: const Icon(LucideIcons.plus, size: 18),
-                            size: ButtonSize.small,
-                            onPressed: () =>
-                                setState(() => _toolsExpanded = true),
-                          ),
-                        if (_toolsExpanded) ...[
-                          IconButton.ghost(
-                            icon: const Icon(LucideIcons.paperclip, size: 18),
-                            size: ButtonSize.small,
-                            onPressed: () {
-                              setState(() => _toolsExpanded = false);
-                              widget.onPickFiles();
-                            },
-                          ),
-                          IconButton.ghost(
-                            icon: const Icon(LucideIcons.camera, size: 18),
-                            size: ButtonSize.small,
-                            onPressed: () {
-                              setState(() => _toolsExpanded = false);
-                              widget.onTakePicture();
-                            },
-                          ),
-                          if (_speechAvailable)
-                            IconButton.ghost(
-                              icon: _isListening
-                                  ? const Icon(
-                                      LucideIcons.circleDot,
-                                      size: 18,
-                                      color: Colors.red,
-                                    )
-                                  : const Icon(LucideIcons.mic, size: 18),
-                              size: ButtonSize.small,
-                              onPressed: () {
-                                if (!_isListening) {
-                                  setState(() => _toolsExpanded = false);
-                                }
-                                _toggleListening();
-                              },
-                            ),
-                        ],
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: () =>
-                              ref.read(rabbitHoleProvider.notifier).toggle(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: ref.watch(rabbitHoleProvider)
-                                  ? Theme.of(
-                                      context,
-                                    ).colorScheme.primary.withAlpha(30)
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.mutedForeground.withAlpha(20),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  LucideIcons.brain,
-                                  size: 14,
-                                  color: ref.watch(rabbitHoleProvider)
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.mutedForeground,
-                                ),
-                                if (ref.watch(rabbitHoleProvider)) ...[
-                                  const Gap(4),
-                                  Text(
-                                    'deep',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                        const Gap(4),
-                        GestureDetector(
-                          onTap: () => openModelPicker(
-                            context: context,
-                            ref: ref,
-                            sessionId: widget.sessionId,
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.mutedForeground
-                                  .withAlpha(20),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              modelLabel ?? 'model',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.mutedForeground,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const Gap(4),
-                        GestureDetector(
-                          onTap: () =>
-                              openAgentPicker(context: context, ref: ref),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.mutedForeground
-                                  .withAlpha(20),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              agentLabel ?? 'agent',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.mutedForeground,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const Gap(4),
-                        if (_hasText || !widget.working)
-                          IconButton.primary(
-                            icon: widget.sending
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(LucideIcons.send),
-                            size: ButtonSize.xSmall,
-                            shape: ButtonShape.circle,
-                            onPressed: widget.sending ? null : widget.onSend,
-                          )
-                        else
-                          IconButton.primary(
-                            icon: const Icon(LucideIcons.square),
-                            size: ButtonSize.xSmall,
-                            shape: ButtonShape.circle,
-                            onPressed: widget.onAbort,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (_isListening) ...[
-                const Gap(6),
-                Row(
-                  children: [
-                    const Icon(
-                      LucideIcons.circleDot,
-                      size: 12,
-                      color: Colors.red,
-                    ),
-                    const Gap(6),
-                    Text('Listening...').xSmall.muted,
-                  ],
-                ),
+                      const Gap(6),
+                      Text('Listening...').xSmall.muted,
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

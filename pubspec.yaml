@@ -57,6 +57,8 @@ dependencies:
   printing: ^5.14.3
   intl: ^0.20.2
   wakelock_plus: ^1.5.2
+  re_editor: ^0.10.0
+  window_manager: ^0.5.2
 
 
 dev_dependencies:

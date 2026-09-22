@@ -246,9 +246,15 @@ class MessageBubble extends StatelessWidget {
       final widget = _buildPart(context, part);
       if (widget != null) children.add(widget);
     }
-    if (children.isEmpty) return const SizedBox.shrink();
+    final info = message.info;
+    final errorCard = !_isUser && info.hasError && !info.wasAborted
+        ? _buildErrorCard(context)
+        : null;
+    if (children.isEmpty && errorCard == null) {
+      return const SizedBox.shrink();
+    }
 
-    final timestamp = message.info.timeCreated;
+    final timestamp = info.timeCreated;
     final timeLabel = _formatTimestamp(timestamp);
     final content = Column(
       crossAxisAlignment: _isUser
@@ -257,6 +263,7 @@ class MessageBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ...children,
+        if (errorCard != null) ...[const Gap(6), errorCard],
         if (timeLabel != null) ...[const Gap(4), Text(timeLabel).xSmall.muted],
       ],
     );
@@ -271,6 +278,54 @@ class MessageBubble extends StatelessWidget {
         child: _isUser
             ? Align(alignment: Alignment.centerRight, child: content)
             : Align(alignment: Alignment.centerLeft, child: content),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard(BuildContext context) {
+    final info = message.info;
+    final name = info.errorName;
+    final text = info.errorMessage ?? 'The turn failed.';
+    final status = info.errorStatusCode;
+    final showNameBadge = name != null && name.isNotEmpty && name != text;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 480),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.red.withAlpha(15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                LucideIcons.triangleAlert,
+                size: 14,
+                color: Colors.red,
+              ),
+              const Gap(6),
+              if (showNameBadge)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withAlpha(25),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(name).xSmall,
+                ),
+              if (showNameBadge && status != null) const Gap(6),
+              if (status != null) Text('HTTP $status').xSmall.muted,
+            ],
+          ),
+          const Gap(4),
+          Text(text).xSmall,
+        ],
       ),
     );
   }

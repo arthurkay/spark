@@ -13,6 +13,8 @@ import '../../shared/widgets/app_toast.dart';
 import '../../core/storage/settings_store.dart';
 import '../chat/tts_cache.dart';
 import '../chat/tts_provider.dart';
+import '../local_server/local_server_provider.dart';
+import '../local_server/local_server_settings_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -153,6 +155,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onEdit: () => _editServer(config),
                 onDelete: () => _confirmDelete(config),
               ),
+          if (isDesktopPlatform) ...[
+            const Gap(28),
+            const LocalServerSettingsSection(),
+          ],
           const Gap(28),
           Text('Appearance').small.semiBold.muted,
           const Gap(10),
@@ -265,6 +271,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: ref.watch(collapseToolWidgetsProvider),
                   onChanged: (_) {
                     ref.read(collapseToolWidgetsProvider.notifier).toggle();
+                  },
+                ),
+              ],
+            ),
+          ),
+          const Gap(28),
+          Text('Workspace').small.semiBold.muted,
+          const Gap(10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.muted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.save, size: 18),
+                const Gap(10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Auto-save files'),
+                      Text(
+                        'Save edited files automatically after a pause',
+                      ).xSmall.muted,
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                Switch(
+                  value: ref.watch(autoSaveFilesProvider),
+                  onChanged: (value) {
+                    ref.read(autoSaveFilesProvider.notifier).setValue(value);
                   },
                 ),
               ],

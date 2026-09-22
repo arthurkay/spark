@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +14,7 @@ class SettingsStore {
   static const _ttsVoiceLocaleKey = 'opencode_tts_voice_locale';
   static const _rabbitHoleKey = 'opencode_rabbit_hole';
   static const _autoApprovePermissionsKey = 'opencode_auto_approve_permissions';
+  static const _autoSaveFilesKey = 'opencode_auto_save_files';
 
   Future<String> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,6 +105,39 @@ class SettingsStore {
   Future<void> saveAutoApprovePermissions(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoApprovePermissionsKey, value);
+  }
+
+  Future<bool> loadAutoSaveFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoSaveFilesKey) ?? true;
+  }
+
+  Future<void> saveAutoSaveFiles(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoSaveFilesKey, value);
+  }
+}
+
+extension WindowBoundsStore on SettingsStore {
+  static const _windowBoundsKey = 'opencode_window_bounds';
+
+  Future<Rect?> loadWindowBounds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final parts = prefs.getStringList(_windowBoundsKey);
+    if (parts == null || parts.length != 4) return null;
+    final values = parts.map(double.tryParse).toList();
+    if (values.any((v) => v == null)) return null;
+    return Rect.fromLTWH(values[0]!, values[1]!, values[2]!, values[3]!);
+  }
+
+  Future<void> saveWindowBounds(Rect bounds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_windowBoundsKey, [
+      bounds.left.toString(),
+      bounds.top.toString(),
+      bounds.width.toString(),
+      bounds.height.toString(),
+    ]);
   }
 }
 

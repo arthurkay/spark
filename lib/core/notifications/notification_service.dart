@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../core/models/permission.dart';
@@ -13,6 +14,7 @@ const String _sessionChannelName = 'Session updates';
 const int _permissionNotificationId = 1;
 const int _questionNotificationId = 2;
 const int _sessionNotificationId = 3;
+const int _sessionErrorNotificationId = 4;
 
 class NotificationService {
   NotificationService._();
@@ -30,17 +32,24 @@ class NotificationService {
   }) async {
     _onTap = onTap;
     _onRouteTap = onRouteTap;
+    // flutter_local_notifications has no Windows/Linux implementation.
+    if (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux) {
+      _available = false;
+      return;
+    }
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_notification',
     );
-    const iosSettings = DarwinInitializationSettings(
+    const darwinSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestSoundPermission: true,
       requestBadgePermission: true,
     );
     const settings = InitializationSettings(
       android: androidSettings,
-      iOS: iosSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
     );
     try {
       await _plugin.initialize(
@@ -213,5 +222,45 @@ class NotificationService {
   Future<void> cancelSession() async {
     if (!_available) return;
     await _plugin.cancel(_sessionNotificationId);
+  }
+
+  Future<void> showSessionError(
+    String sessionId,
+    String title,
+    String body,
+  ) async {
+    if (!_available) return;
+    final androidDetails = AndroidNotificationDetails(
+      _sessionChannelId,
+      _sessionChannelName,
+      channelDescription: 'Session activity updates',
+      importance: Importance.high,
+      priority: Priority.high,
+      ticker: title,
+      icon: '@mipmap/ic_notification',
+    );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    );
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+    await _plugin.show(
+      _sessionErrorNotificationId,
+      title,
+      body,
+      details,
+      payload: jsonEncode({
+        'route': '/session/$sessionId',
+        'sessionID': sessionId,
+      }),
+    );
+  }
+
+  Future<void> cancelSessionError() async {
+    if (!_available) return;
+    await _plugin.cancel(_sessionErrorNotificationId);
   }
 }

@@ -47,7 +47,7 @@ void openModelPicker({
                           providers: providers,
                           selectedModel: effectiveSelected,
                           onSelect: (selection) {
-                            setSelectedModel(ref, selection);
+                            setSelectedModel(ref, sessionId, selection);
                             closeSheet(context);
                           },
                         ),
@@ -199,9 +199,10 @@ class _ModelPickerListState extends State<_ModelPickerList> {
   @override
   void didUpdateWidget(covariant _ModelPickerList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedModel != null &&
-        widget.selectedModel!.providerID != _expandedProviderId) {
-      _expandedProviderId = widget.selectedModel!.providerID;
+    final oldProviderId = oldWidget.selectedModel?.providerID;
+    final newProviderId = widget.selectedModel?.providerID;
+    if (newProviderId != null && newProviderId != oldProviderId) {
+      _expandedProviderId = newProviderId;
     }
   }
 

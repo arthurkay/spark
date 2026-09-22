@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Project
 
-**Spark** — a Flutter mobile app (Android/iOS) that acts as a remote client for a
+**Spark** — a Flutter app (Android/iOS/Linuc/MacOS/Windows) that acts as a remote client for a
 running `opencode serve` HTTP server. The app's UI branding refers to the backend
 as **SparkCode** (e.g. placeholders, headers, notifications). Under the hood it is
 still the opencode server API. Spark lets users browse sessions, chat with the AI
@@ -292,8 +292,15 @@ not hand-roll `Navigator.push(MaterialPageRoute(...))`, it won't match.
 ## Releases
 
 Releases are triggered by git tags. The CI/CD pipeline (Codemagic) picks up
-tags matching `v*` and builds + publishes the release automatically. The
-workflow is:
+tags matching `v*` and builds + publishes the release automatically.
+
+**Important:** the Codemagic workflow is defined in the **Codemagic UI**, not
+in this repository — there is no `codemagic.yaml` file here. Do not create or
+expect a pipeline config file in the repo; build, signing, and store
+submission settings live in the Codemagic project dashboard. The repo only
+provides the git tags that trigger it.
+
+The workflow is:
 
 1. Bump `version:` in `pubspec.yaml` (format: `X.Y.Z+N`).
 2. Commit the version bump along with all other changes.

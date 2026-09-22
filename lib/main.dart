@@ -7,13 +7,16 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import 'app/router.dart';
 import 'app/theme.dart';
+import 'app/window_bounds.dart';
 import 'core/api/permission_provider.dart';
 import 'core/api/question_provider.dart';
 import 'core/api/providers.dart';
+import 'core/api/session_error_provider.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/message_queue.dart';
 import 'core/storage/settings_provider.dart';
 import 'core/storage/settings_store.dart';
+import 'features/local_server/local_server_provider.dart';
 import 'features/sessions/sessions_provider.dart';
 import 'features/chat/tts_overlay.dart';
 import 'shared/widgets/offline_banner.dart';
@@ -46,6 +49,11 @@ Future<void> main() async {
   container.read(permissionListenerProvider);
   container.read(questionListenerProvider);
   container.read(sessionLifecycleProvider);
+  container.read(sessionErrorReporterProvider);
+  if (isDesktopPlatform) {
+    await restoreWindowBounds();
+    container.read(localServerProvider);
+  }
 
   runApp(
     UncontrolledProviderScope(
@@ -106,6 +114,9 @@ class _OpencodeCompanionAppState extends ConsumerState<OpencodeCompanionApp>
         ref.read(appPausedProvider.notifier).state = true;
         ref.read(ttsStateProvider.notifier).stop();
       case AppLifecycleState.detached:
+        if (isDesktopPlatform) {
+          unawaited(ref.read(localServerProvider.notifier).shutdown());
+        }
       case AppLifecycleState.hidden:
         break;
     }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,13 @@ import '../../core/storage/message_queue.dart';
 import '../../core/storage/settings_store.dart';
 import '../../shared/chunked_async.dart';
 import 'tts_provider.dart';
+
+/// The chat screen currently on screen, if any.
+///
+/// Lets the global session-error reporter avoid double-reporting an error the
+/// open chat is already showing in its banner (it notifies instead when the
+/// failing session is *not* the one being viewed).
+final activeChatSessionProvider = StateProvider<String?>((ref) => null);
 
 const _rabbitHolePrompt = '''
 Before answering, think deeply and thoroughly about the problem. Do not assume \
@@ -113,6 +121,7 @@ class ChatState {
     this.retryMessage,
     this.retryAction,
     this.retryNext,
+    this.awaitingReply = false,
   });
 
   final List<MessageWithParts> messages;
@@ -121,6 +130,7 @@ class ChatState {
   final bool hasMoreOlder;
   final bool sending;
   final bool working;
+  final bool awaitingReply;
   final String? error;
   final String? errorType;
   final int? statusCode;
@@ -143,6 +153,7 @@ class ChatState {
     bool clearRetry = false,
     RetryAction? retryAction,
     int? retryNext,
+    bool? awaitingReply,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -151,6 +162,7 @@ class ChatState {
       hasMoreOlder: hasMoreOlder ?? this.hasMoreOlder,
       sending: sending ?? this.sending,
       working: working ?? this.working,
+      awaitingReply: awaitingReply ?? this.awaitingReply,
       error: clearError ? null : (error ?? this.error),
       errorType: clearError ? null : (errorType ?? this.errorType),
       statusCode: clearError ? null : (statusCode ?? this.statusCode),
@@ -213,6 +225,67 @@ bool computeWorkingState({
   if (aborting) return false;
   if (optimisticBusy) return true;
   return isTailGenerating(messages);
+}
+
+/// Whether the transcript ends in a turn that *succeeded* — the positive
+/// evidence that clears a sticky banner left by an earlier failure.
+@visibleForTesting
+bool tailSucceeded(List<MessageWithParts> messages) {
+  if (messages.isEmpty) return false;
+  final info = messages.last.info;
+  return info.role == 'assistant' &&
+      !info.hasError &&
+      info.timeCompleted != null;
+}
+
+/// How a fresh [ChatController.load] should leave the error banner.
+///
+/// Priority: a structured error on the tail message beats everything (it is
+/// durable server state); a successful tail clears. Otherwise a *sticky*
+/// error — set by a live `session.error` event or a failed send — must
+/// survive the load, even when the tail carries nothing: a model-rejected
+/// prompt can fail before any assistant message exists, and clearing on that
+/// load is exactly how these errors used to vanish. With neither, the banner
+/// clears.
+@visibleForTesting
+({String? error, String? errorType, int? statusCode, bool clear})
+resolveBannerOnLoad({
+  required List<MessageWithParts> messages,
+  required bool sticky,
+  required String? currentError,
+  required String? currentErrorType,
+  required int? currentStatusCode,
+}) {
+  MessageInfo? tail;
+  if (messages.isNotEmpty) {
+    final info = messages.last.info;
+    if (info.role == 'assistant' && info.hasError && !info.wasAborted) {
+      tail = info;
+    }
+  }
+  if (tail != null) {
+    return (
+      error: tail.errorMessage,
+      errorType: tail.errorName,
+      statusCode: tail.errorStatusCode,
+      clear: false,
+    );
+  }
+  if (tailSucceeded(messages)) {
+    return (error: null, errorType: null, statusCode: null, clear: true);
+  }
+  if (currentErrorType == 'NoReplyStarted') {
+    return (error: null, errorType: null, statusCode: null, clear: true);
+  }
+  if (sticky && currentError != null) {
+    return (
+      error: currentError,
+      errorType: currentErrorType,
+      statusCode: currentStatusCode,
+      clear: false,
+    );
+  }
+  return (error: null, errorType: null, statusCode: null, clear: true);
 }
 
 /// [messages] with its streaming tail marked finished as of [completedAt].
@@ -278,6 +351,8 @@ class ChatController extends ChangeNotifier {
   bool _aborting = false;
   bool _optimisticBusy = false;
   bool _stuck = false;
+  bool _stickyError = false;
+  DateTime? _awaitingReplyAt;
 
   bool get aborting => _aborting;
   DateTime? _lastSseActivity;
@@ -288,6 +363,7 @@ class ChatController extends ChangeNotifier {
   static const Duration _stuckThreshold = Duration(seconds: 60);
   static const Duration _contentIdleThreshold = Duration(minutes: 5);
   static const Duration _stuckCheckInterval = Duration(seconds: 10);
+  static const Duration _replyStartThreshold = Duration(seconds: 20);
 
   static const int initialLimit = 40;
   static const int olderChunkSize = 40;
@@ -377,7 +453,19 @@ class ChatController extends ChangeNotifier {
   }
 
   void _checkStuck() {
-    if (_stuck || !state.working || _aborting) return;
+    if (_stuck || _aborting) return;
+    final awaiting = _awaitingReplyAt;
+    if (awaiting != null &&
+        !state.working &&
+        state.error == null &&
+        !state.awaitingReply &&
+        DateTime.now().difference(awaiting) >= _replyStartThreshold) {
+      _optimisticBusy = false;
+      _awaitingReplyAt = null;
+      state = state.copyWith(working: false, awaitingReply: true);
+      return;
+    }
+    if (!state.working) return;
     final last = _lastSseActivity;
     final since = last == null
         ? const Duration(days: 365)
@@ -408,10 +496,17 @@ class ChatController extends ChangeNotifier {
   }
 
   void dismissStuck() {
-    if (!_stuck && state.error == null) return;
+    if (!_stuck && state.error == null && !state.awaitingReply) return;
     _stuck = false;
+    _stickyError = false;
+    _awaitingReplyAt = null;
     _lastSseActivity = DateTime.now();
-    state = state.copyWith(working: false, clearError: true, clearRetry: true);
+    state = state.copyWith(
+      working: false,
+      clearError: true,
+      clearRetry: true,
+      awaitingReply: false,
+    );
   }
 
   Future<void> load() async {
@@ -446,14 +541,36 @@ class ChatController extends ChangeNotifier {
         _lastContentChange = DateTime.now();
       }
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
-      final tailError = _tailErrorInfo(merged);
+      final banner = resolveBannerOnLoad(
+        messages: merged,
+        sticky: _stickyError,
+        currentError: state.error,
+        currentErrorType: state.errorType,
+        currentStatusCode: state.statusCode,
+      );
+      if (_tailErrorInfo(merged) != null) {
+        _stickyError = true;
+        _awaitingReplyAt = null;
+      } else if (tailSucceeded(merged)) {
+        _stickyError = false;
+        _awaitingReplyAt = null;
+      } else if (merged.isNotEmpty && merged.last.info.role == 'assistant') {
+        _awaitingReplyAt = null;
+      } else if (banner.clear) {
+        _stickyError = false;
+      }
+      final clearAwaitingReply =
+          working ||
+          (merged.isNotEmpty && merged.last.info.role == 'assistant');
       state = state.copyWith(
         messages: merged,
         loading: false,
-        clearError: tailError == null,
-        error: tailError?.errorMessage,
-        errorType: tailError?.errorName,
+        clearError: banner.clear,
+        error: banner.error,
+        errorType: banner.errorType,
+        statusCode: banner.statusCode,
         working: working,
+        awaitingReply: clearAwaitingReply ? false : state.awaitingReply,
       );
       final cacheKey = merged.isEmpty
           ? ''
@@ -709,6 +826,7 @@ class ChatController extends ChangeNotifier {
           } else if (isBusy) {
             if (!_aborting) {
               _optimisticBusy = true;
+              _awaitingReplyAt = null;
               state = state.copyWith(working: true, clearRetry: true);
             }
           }
@@ -726,7 +844,10 @@ class ChatController extends ChangeNotifier {
       case 'step-start':
       case 'busy':
         if (forThisSession || sid == null) {
-          if (!_aborting) state = state.copyWith(working: true);
+          if (!_aborting) {
+            _awaitingReplyAt = null;
+            state = state.copyWith(working: true);
+          }
         }
         break;
       case 'step-finish':
@@ -744,6 +865,7 @@ class ChatController extends ChangeNotifier {
         if (forThisSession || sid == null) {
           _clearAbort();
           _optimisticBusy = false;
+          _awaitingReplyAt = null;
           final errorObj = props['error'];
           String? errorMessage;
           String? errorType;
@@ -757,9 +879,15 @@ class ChatController extends ChangeNotifier {
             }
             errorMessage ??= errorObj['name']?.toString();
           }
+          developer.log(
+            'session.error for $sid: $props',
+            name: 'ChatController',
+          );
+          _stickyError = true;
           state = state.copyWith(
             working: false,
             clearRetry: true,
+            awaitingReply: false,
             error: errorMessage,
             errorType: errorType,
             statusCode: statusCode,
@@ -863,12 +991,15 @@ class ChatController extends ChangeNotifier {
     }
     _aborting = false;
     _optimisticBusy = true;
+    _stickyError = false;
+    _awaitingReplyAt = DateTime.now();
     ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
     state = state.copyWith(
       sending: true,
       working: true,
       clearError: true,
       clearRetry: true,
+      awaitingReply: false,
     );
     try {
       final rabbitHole = ref.read(rabbitHoleProvider);
@@ -885,6 +1016,8 @@ class ChatController extends ChangeNotifier {
     } catch (e) {
       final message = e is OpencodeApiException ? e.message : e.toString();
       _optimisticBusy = false;
+      _awaitingReplyAt = null;
+      _stickyError = true;
       state = state.copyWith(error: message, working: false);
     } finally {
       state = state.copyWith(sending: false);
@@ -999,8 +1132,12 @@ final chatControllerProvider = ChangeNotifierProvider.family
     });
 
 /// Whether a message renders anything at all. Messages with no visible parts
-/// are hidden from the transcript.
+/// are hidden from the transcript — unless they are a failed assistant turn,
+/// which still has the inline error card to show.
 bool messageHasVisibleContent(MessageWithParts m) {
+  if (m.info.role == 'assistant' && m.info.hasError && !m.info.wasAborted) {
+    return true;
+  }
   return m.parts.any(
     (p) =>
         (p.type == 'text' && (p.text?.trim().isNotEmpty ?? false)) ||
@@ -1092,6 +1229,7 @@ typedef ChatChrome = ({
   bool working,
   bool hasMessages,
   bool initialLoadDone,
+  bool awaitingReply,
   String? error,
   String? errorType,
   int? statusCode,
@@ -1108,6 +1246,7 @@ ChatChrome chatChromeOf(ChatState s, {required bool initialLoadDone}) => (
   working: s.working,
   hasMessages: s.messages.isNotEmpty,
   initialLoadDone: initialLoadDone,
+  awaitingReply: s.awaitingReply,
   error: s.error,
   errorType: s.errorType,
   statusCode: s.statusCode,

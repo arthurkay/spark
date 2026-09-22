@@ -105,3 +105,31 @@ class AutoApprovePermissionsNotifier extends StateNotifier<bool> {
     await ref.read(settingsStoreProvider).saveAutoApprovePermissions(state);
   }
 }
+
+final autoSaveFilesProvider =
+    StateNotifierProvider<AutoSaveFilesNotifier, bool>((ref) {
+      return AutoSaveFilesNotifier(ref);
+    });
+
+class AutoSaveFilesNotifier extends StateNotifier<bool> {
+  AutoSaveFilesNotifier(this.ref) : super(true) {
+    _init();
+  }
+
+  final Ref ref;
+
+  Future<void> _init() async {
+    final stored = await ref.read(settingsStoreProvider).loadAutoSaveFiles();
+    if (mounted) state = stored;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    await ref.read(settingsStoreProvider).saveAutoSaveFiles(state);
+  }
+
+  Future<void> setValue(bool value) async {
+    state = value;
+    await ref.read(settingsStoreProvider).saveAutoSaveFiles(state);
+  }
+}
