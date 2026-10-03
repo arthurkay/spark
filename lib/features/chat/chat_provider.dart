@@ -525,16 +525,6 @@ class ChatController extends ChangeNotifier {
               DateTime.now().millisecondsSinceEpoch,
             )
           : _mergeTail(fetched);
-      if (_optimisticBusy && !_deriveWorking(merged)) {
-        final lastActivity = _lastSseActivity;
-        final recentActivity =
-            lastActivity != null &&
-            DateTime.now().difference(lastActivity) <
-                const Duration(seconds: 5);
-        if (!recentActivity) {
-          _optimisticBusy = false;
-        }
-      }
       final working = _computeWorking(merged);
       if (!working) _stuck = false;
       if (merged.isNotEmpty && merged != state.messages) {
@@ -631,17 +621,11 @@ class ChatController extends ChangeNotifier {
       }
       _tailWindow += newOnes.length;
       final merged = [...newOnes, ...state.messages];
-      if (_optimisticBusy && !_deriveWorking(merged)) {
-        final lastActivity = _lastSseActivity;
-        final recentActivity =
-            lastActivity != null &&
-            DateTime.now().difference(lastActivity) <
-                const Duration(seconds: 5);
-        if (!recentActivity) {
-          _optimisticBusy = false;
-        }
-      }
       final working = _computeWorking(merged);
+      debugPrint(
+        'PROV load $sessionId working=$working optimistic=$_optimisticBusy '
+        'tail=${merged.isEmpty ? 'empty' : '${merged.last.info.role}:${merged.last.info.timeCompleted != null}'}',
+      );
       ref.read(sessionActivityProvider.notifier).setBusy(sessionId, working);
       state = state.copyWith(
         messages: merged,
@@ -744,7 +728,8 @@ class ChatController extends ChangeNotifier {
       newMessages[index] = updatedMessage;
       _rebuildMessageIndex(newMessages);
       _lastContentChange = DateTime.now();
-      if (!state.working && _optimisticBusy) {
+      if (!state.working && _deriveWorking(newMessages)) {
+        debugPrint('PROV part asserts working $sessionId');
         ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
         state = state.copyWith(messages: newMessages, working: true);
       } else {
@@ -774,6 +759,9 @@ class ChatController extends ChangeNotifier {
     final props = event.properties;
     final sid = _sessionIdFromProps(props);
     final forThisSession = sid == sessionId;
+    if (forThisSession && event.type != 'message.part.delta') {
+      debugPrint('PROV event ${event.type} sid=$sid');
+    }
     if (forThisSession || sid == null) {
       _lastSseActivity = DateTime.now();
     }
@@ -992,6 +980,7 @@ class ChatController extends ChangeNotifier {
     _aborting = false;
     _optimisticBusy = true;
     _stickyError = false;
+    debugPrint('PROV send start $sessionId ctrl=$hashCode');
     _awaitingReplyAt = DateTime.now();
     ref.read(sessionActivityProvider.notifier).setBusy(sessionId, true);
     state = state.copyWith(

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/scheduler.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -36,11 +38,28 @@ import '../../shared/widgets/app_toast.dart';
 import '../../shared/widgets/chat_loading_skeleton.dart';
 
 const _scrollNearBottomThreshold = 120.0;
+const _scrollPauseSlop = 8.0;
 
 String scrollKey(String sessionId) => 'chat_$sessionId';
 
 bool isNearBottom(double pixels, double maxScrollExtent) {
   return maxScrollExtent - pixels < _scrollNearBottomThreshold;
+}
+
+bool shouldPauseFollow({
+  required bool nearBottom,
+  required bool isAnimatingScroll,
+}) {
+  if (nearBottom) return false;
+  return !isAnimatingScroll;
+}
+
+bool shouldFollowTick({required double gap, required bool followPaused}) {
+  return !followPaused && gap > 0.5;
+}
+
+bool shouldResumeFollow({required double gap}) {
+  return gap <= 0.5;
 }
 
 enum ScrollRestoreDecision { jumpToPosition, scrollToBottom, waitForLayout }
@@ -67,12 +86,17 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _composerController = TextEditingController();
+  final _composerKey = GlobalKey();
+  double _composerHeight = 110;
   final _scrollController = ScrollController();
   final List<Attachment> _attachments = [];
   final _showScrollToBottom = ValueNotifier<bool>(false);
+  int _followTickCount = 0;
+  bool _followLatchLogged = false;
   late final AnimationController _workingAnimController;
+  late final Ticker _followTicker;
   Timer? _scrollSaveTimer;
   bool _scrollPositionRestored = false;
   bool _restoringScroll = false;
@@ -96,7 +120,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _workingAnimController.addListener(_onWorkingTick);
+    _followTicker = createTicker(_onFollowTick);
+  }
+
+  void _syncFollowTicker(bool working) {
+    if (working && !_followTicker.isActive) {
+      debugPrint('FOLLOW ticker start');
+      _followTicker.start();
+    } else if (!working && _followTicker.isActive) {
+      debugPrint('FOLLOW ticker stop');
+      _followTicker.stop();
+    }
   }
 
   void _clearSessionErrorNotice() {
@@ -108,8 +142,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   void _setupListenersIfNeeded() {
+    debugPrint(
+      'FOLLOW setup called initialized=$_listenersInitialized '
+      'session=${widget.sessionId}',
+    );
     if (_listenersInitialized) return;
     _listenersInitialized = true;
+    debugPrint(
+      'FOLLOW listen-setup session=${widget.sessionId} '
+      'ctrl=${ref.read(chatControllerProvider(widget.sessionId).notifier).hashCode}',
+    );
     _setupListeners();
     if (!_initialScrollDone && !_scrollPositionRestored) {
       final visibleIds = ref.read(visibleMessageIdsProvider(widget.sessionId));
@@ -135,6 +177,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (working && !_workingAnimController.isAnimating) {
       _workingAnimController.repeat();
     }
+    _syncFollowTicker(working);
   }
 
   void _setupListeners() {
@@ -144,6 +187,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
       ),
       (prev, next) {
+        debugPrint(
+          'FOLLOW chrome fired prev=${prev?.working} next=${next.working}',
+        );
         final globalBusy = ref
             .read(sessionActivityProvider)
             .contains(widget.sessionId);
@@ -153,10 +199,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 .read(chatControllerProvider(widget.sessionId).notifier)
                 .aborting;
         if (working && !_workingAnimController.isAnimating) {
+          debugPrint('FOLLOW anim repeat');
           _workingAnimController.repeat();
         } else if (!working && _workingAnimController.isAnimating) {
+          debugPrint('FOLLOW anim stop');
           _workingAnimController.stop();
         }
+        _syncFollowTicker(working);
       },
     );
 
@@ -176,6 +225,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       } else if (!working && _workingAnimController.isAnimating) {
         _workingAnimController.stop();
       }
+      _syncFollowTicker(working);
     });
 
     // Streaming: scroll when working state changes.
@@ -221,10 +271,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         _lastScrollPosition != null &&
         position.pixels < _lastScrollPosition! - 2;
     _lastScrollPosition = position.pixels;
-    if (scrolledUp && _isAnimatingScroll) {
-      _scrollController.jumpTo(position.pixels);
-      _isAnimatingScroll = false;
-      _followPaused = true;
+    if (scrolledUp) {
+      if (_isAnimatingScroll) {
+        _scrollController.jumpTo(position.pixels);
+        _isAnimatingScroll = false;
+      }
+      if (position.maxScrollExtent - position.pixels > _scrollPauseSlop) {
+        _followPaused = true;
+      }
+    }
+    if (shouldResumeFollow(gap: position.maxScrollExtent - position.pixels)) {
+      _followPaused = false;
     }
     if (position.pixels < 200) {
       final controller = ref.read(
@@ -235,7 +292,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final nearBottom =
         position.maxScrollExtent - position.pixels < _scrollNearBottomThreshold;
     _showScrollToBottom.value = !nearBottom;
-    if (!nearBottom) {
+    if (shouldPauseFollow(
+      nearBottom: nearBottom,
+      isAnimatingScroll: _isAnimatingScroll,
+    )) {
+      if (!_followPaused && !_followLatchLogged) {
+        _followLatchLogged = true;
+        debugPrint(
+          'FOLLOW latch=true pixels=${position.pixels.toStringAsFixed(1)} '
+          'max=${position.maxScrollExtent.toStringAsFixed(1)} '
+          'animating=$_isAnimatingScroll',
+        );
+      }
       _followPaused = true;
     }
     _scrollSaveTimer?.cancel();
@@ -256,7 +324,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _scrollController.removeListener(_onScroll);
     _composerController.dispose();
     _scrollController.dispose();
-    _workingAnimController.removeListener(_onWorkingTick);
+    _followTicker.dispose();
     _workingAnimController.dispose();
     _showScrollToBottom.dispose();
     super.dispose();
@@ -378,6 +446,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (_scrollPositionRestored && !_restoringScroll) return;
     _restoringScroll = false;
     _scrollPositionRestored = true;
+    if (_isNearBottom) _followPaused = false;
     if (mounted) setState(() {});
   }
 
@@ -482,13 +551,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _markRestored();
     if (decision == ScrollRestoreDecision.jumpToPosition) {
       _scrollController.jumpTo(saved.clamp(0.0, max));
+      _followPaused = true;
     } else {
       _scrollToBottom(animate: false);
     }
   }
 
   void _scrollToBottom({bool animate = true}) {
+    if (_followPaused) debugPrint('FOLLOW latch=false via scrollToBottom');
     _followPaused = false;
+    _followLatchLogged = false;
     if (!animate) {
       _isAnimatingScroll = false;
       _pinToBottom(finishRestore: false, budget: 45, stableNeeded: 4);
@@ -601,6 +673,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final model = ref.read(selectedModelProvider(widget.sessionId));
     final userAgent = ref.read(selectedAgentProvider);
     final agent = userAgent ?? ref.read(defaultAgentProvider) ?? 'build';
+    _scrollToBottom(animate: false);
     await ref
         .read(chatControllerProvider(widget.sessionId).notifier)
         .send(text, model: model, agent: agent, attachments: attachments);
@@ -745,15 +818,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   bool _isAnimatingScroll = false;
   bool _followPaused = false;
 
-  void _onWorkingTick() {
+  void _onFollowTick(Duration _) {
+    _followTickCount++;
+    if (_followTickCount % 120 == 1) {
+      debugPrint(
+        'FOLLOW tick animating=$_isAnimatingScroll paused=$_followPaused '
+        'clients=${_scrollController.hasClients} '
+        'workingAnim=${_workingAnimController.isAnimating}',
+      );
+    }
     if (_isAnimatingScroll || _followPaused) return;
     if (!mounted || !_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final gap = pos.maxScrollExtent - pos.pixels;
-    if (gap > 0.5 &&
-        gap < _scrollNearBottomThreshold &&
-        pos.maxScrollExtent > 0) {
-      _smoothScrollToBottom();
+    if (shouldFollowTick(gap: gap, followPaused: _followPaused)) {
+      debugPrint('FOLLOW jump gap=${gap.toStringAsFixed(1)}');
+      _scrollController.jumpTo(pos.maxScrollExtent);
     }
   }
 
@@ -772,11 +852,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         )
         .whenComplete(() {
           _isAnimatingScroll = false;
-          if (mounted && _scrollController.hasClients) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _onWorkingTick();
-            });
-          }
         });
   }
 
@@ -1001,31 +1076,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             left: 0,
             right: 0,
             bottom: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const PermissionBanner(),
-                _Composer(
-                  sessionId: widget.sessionId,
-                  controller: _composerController,
-                  sending: chrome.sending,
-                  working: working,
-                  aborting: controller.aborting,
-                  error: chrome.error,
-                  errorType: chrome.errorType,
-                  statusCode: chrome.statusCode,
-                  retryMessage: chrome.retryMessage,
-                  retryAction: chrome.retryAction,
-                  retryNext: chrome.retryNext,
-                  attachments: _attachments,
-                  onPickFiles: _pickFiles,
-                  onTakePicture: _takePicture,
-                  onRemoveAttachment: _removeAttachment,
-                  onSend: _send,
-                  onAbort: controller.abort,
-                  onDismiss: controller.dismissStuck,
+            child: NotificationListener<SizeChangedLayoutNotification>(
+              onNotification: (_) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  final height = _composerKey.currentContext?.size?.height;
+                  if (height != null && height != _composerHeight) {
+                    setState(() => _composerHeight = height);
+                  }
+                });
+                return true;
+              },
+              child: SizeChangedLayoutNotifier(
+                child: Column(
+                  key: _composerKey,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const PermissionBanner(),
+                    _Composer(
+                      sessionId: widget.sessionId,
+                      controller: _composerController,
+                      sending: chrome.sending,
+                      working: working,
+                      aborting: controller.aborting,
+                      error: chrome.error,
+                      errorType: chrome.errorType,
+                      statusCode: chrome.statusCode,
+                      retryMessage: chrome.retryMessage,
+                      retryAction: chrome.retryAction,
+                      retryNext: chrome.retryNext,
+                      attachments: _attachments,
+                      onPickFiles: _pickFiles,
+                      onTakePicture: _takePicture,
+                      onRemoveAttachment: _removeAttachment,
+                      onSend: _send,
+                      onAbort: controller.abort,
+                      onDismiss: controller.dismissStuck,
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -1296,7 +1386,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             if (!show) return const SizedBox.shrink();
             return Positioned(
               right: 16,
-              bottom: 110,
+              bottom: _composerHeight + 12,
               child: GestureDetector(
                 onTap: () => _scrollToBottom(),
                 child: Container(

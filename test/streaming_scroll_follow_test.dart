@@ -404,6 +404,69 @@ void main() {
     });
   });
 
+  group('shouldPauseFollow — follow-latch decision', () {
+    test('at bottom never pauses, even mid-animation', () {
+      expect(
+        shouldPauseFollow(nearBottom: true, isAnimatingScroll: true),
+        isFalse,
+      );
+      expect(
+        shouldPauseFollow(nearBottom: true, isAnimatingScroll: false),
+        isFalse,
+      );
+    });
+
+    test('programmatic scroll frames do not pause follow', () {
+      expect(
+        shouldPauseFollow(nearBottom: false, isAnimatingScroll: true),
+        isFalse,
+        reason: 'smooth-scroll/pin frames must not latch the follow off',
+      );
+    });
+
+    test('user scroll away from bottom pauses follow', () {
+      expect(
+        shouldPauseFollow(nearBottom: false, isAnimatingScroll: false),
+        isTrue,
+      );
+    });
+  });
+
+  group('shouldFollowTick — streaming follow gate', () {
+    test('no gap means nothing to follow', () {
+      expect(shouldFollowTick(gap: 0, followPaused: false), isFalse);
+      expect(shouldFollowTick(gap: 0.5, followPaused: false), isFalse);
+    });
+
+    test('any positive gap follows when not paused', () {
+      expect(shouldFollowTick(gap: 0.6, followPaused: false), isTrue);
+    });
+
+    test('large gaps still follow — fast streams must not stall', () {
+      expect(shouldFollowTick(gap: 500, followPaused: false), isTrue);
+    });
+
+    test('paused never follows regardless of gap', () {
+      expect(shouldFollowTick(gap: 0.6, followPaused: true), isFalse);
+      expect(shouldFollowTick(gap: 500, followPaused: true), isFalse);
+    });
+  });
+
+  group('shouldResumeFollow — manual return to bottom', () {
+    test('exactly at bottom resumes', () {
+      expect(shouldResumeFollow(gap: 0), isTrue);
+    });
+
+    test('overscrolled past bottom resumes', () {
+      expect(shouldResumeFollow(gap: -20), isTrue);
+    });
+
+    test('hovering just above bottom does not resume', () {
+      expect(shouldResumeFollow(gap: 2), isFalse);
+      expect(shouldResumeFollow(gap: 500), isFalse);
+    });
+  });
+
   group('ChatState.copyWith — working field preservation', () {
     test('copyWith messages preserves working', () {
       const s = ChatState(working: true);
