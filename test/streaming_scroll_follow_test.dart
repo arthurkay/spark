@@ -452,6 +452,26 @@ void main() {
     });
   });
 
+  group('shouldSyncWorkingVisuals — build-time reconciliation', () {
+    test('first build always syncs', () {
+      expect(shouldSyncWorkingVisuals(previous: null, current: false), isTrue);
+      expect(shouldSyncWorkingVisuals(previous: null, current: true), isTrue);
+    });
+
+    test('working transition syncs', () {
+      expect(shouldSyncWorkingVisuals(previous: false, current: true), isTrue);
+      expect(shouldSyncWorkingVisuals(previous: true, current: false), isTrue);
+    });
+
+    test('unchanged working does not resync', () {
+      expect(shouldSyncWorkingVisuals(previous: true, current: true), isFalse);
+      expect(
+        shouldSyncWorkingVisuals(previous: false, current: false),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldResumeFollow — manual return to bottom', () {
     test('exactly at bottom resumes', () {
       expect(shouldResumeFollow(gap: 0), isTrue);

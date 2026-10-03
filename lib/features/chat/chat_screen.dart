@@ -62,6 +62,13 @@ bool shouldResumeFollow({required double gap}) {
   return gap <= 0.5;
 }
 
+bool shouldSyncWorkingVisuals({
+  required bool? previous,
+  required bool current,
+}) {
+  return previous != current;
+}
+
 enum ScrollRestoreDecision { jumpToPosition, scrollToBottom, waitForLayout }
 
 ScrollRestoreDecision decideScrollRestore({
@@ -93,8 +100,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final _scrollController = ScrollController();
   final List<Attachment> _attachments = [];
   final _showScrollToBottom = ValueNotifier<bool>(false);
-  int _followTickCount = 0;
-  bool _followLatchLogged = false;
   late final AnimationController _workingAnimController;
   late final Ticker _followTicker;
   Timer? _scrollSaveTimer;
@@ -103,6 +108,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   double? _pendingScrollPosition;
 
   bool _listenersInitialized = false;
+  final _listenerSubs = <ProviderSubscription>[];
 
   @override
   void initState() {
@@ -121,14 +127,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       duration: const Duration(milliseconds: 1200),
     );
     _followTicker = createTicker(_onFollowTick);
+    _setupListenersIfNeeded();
   }
 
   void _syncFollowTicker(bool working) {
     if (working && !_followTicker.isActive) {
-      debugPrint('FOLLOW ticker start');
       _followTicker.start();
     } else if (!working && _followTicker.isActive) {
-      debugPrint('FOLLOW ticker stop');
       _followTicker.stop();
     }
   }
@@ -141,17 +146,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     NotificationService.instance.cancelSessionError();
   }
 
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionId != widget.sessionId) {
+      for (final sub in _listenerSubs) {
+        sub.close();
+      }
+      _listenerSubs.clear();
+      _listenersInitialized = false;
+      _lastBuiltWorking = null;
+      _followPaused = false;
+      _setupListenersIfNeeded();
+    }
+  }
+
   void _setupListenersIfNeeded() {
-    debugPrint(
-      'FOLLOW setup called initialized=$_listenersInitialized '
-      'session=${widget.sessionId}',
-    );
     if (_listenersInitialized) return;
     _listenersInitialized = true;
-    debugPrint(
-      'FOLLOW listen-setup session=${widget.sessionId} '
-      'ctrl=${ref.read(chatControllerProvider(widget.sessionId).notifier).hashCode}',
-    );
     _setupListeners();
     if (!_initialScrollDone && !_scrollPositionRestored) {
       final visibleIds = ref.read(visibleMessageIdsProvider(widget.sessionId));
@@ -182,84 +194,92 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   void _setupListeners() {
     // Working animation: only reacts to working/aborting changes.
-    ref.listen(
-      chatControllerProvider(widget.sessionId).select(
-        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+    _listenerSubs.add(
+      ref.listenManual(
+        chatControllerProvider(widget.sessionId).select(
+          (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+        ),
+        (prev, next) {
+          final globalBusy = ref
+              .read(sessionActivityProvider)
+              .contains(widget.sessionId);
+          final working =
+              (next.working || globalBusy) &&
+              !ref
+                  .read(chatControllerProvider(widget.sessionId).notifier)
+                  .aborting;
+          if (working && !_workingAnimController.isAnimating) {
+            _workingAnimController.repeat();
+          } else if (!working && _workingAnimController.isAnimating) {
+            _workingAnimController.stop();
+          }
+          _syncFollowTicker(working);
+        },
       ),
-      (prev, next) {
-        debugPrint(
-          'FOLLOW chrome fired prev=${prev?.working} next=${next.working}',
+    );
+
+    // Session activity: also drive working animation.
+    _listenerSubs.add(
+      ref.listenManual(sessionActivityProvider, (prev, next) {
+        final chrome = ref.read(
+          chatControllerProvider(widget.sessionId).select(
+            (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+          ),
         );
-        final globalBusy = ref
-            .read(sessionActivityProvider)
-            .contains(widget.sessionId);
+        final globalBusy = next.contains(widget.sessionId);
         final working =
-            (next.working || globalBusy) &&
+            (chrome.working || globalBusy) &&
             !ref
                 .read(chatControllerProvider(widget.sessionId).notifier)
                 .aborting;
         if (working && !_workingAnimController.isAnimating) {
-          debugPrint('FOLLOW anim repeat');
           _workingAnimController.repeat();
         } else if (!working && _workingAnimController.isAnimating) {
-          debugPrint('FOLLOW anim stop');
           _workingAnimController.stop();
         }
         _syncFollowTicker(working);
-      },
+      }),
     );
 
-    // Session activity: also drive working animation.
-    ref.listen(sessionActivityProvider, (prev, next) {
-      final chrome = ref.read(
+    // Streaming: scroll when working state changes.
+    _listenerSubs.add(
+      ref.listenManual(
         chatControllerProvider(widget.sessionId).select(
           (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
         ),
-      );
-      final globalBusy = next.contains(widget.sessionId);
-      final working =
-          (chrome.working || globalBusy) &&
-          !ref.read(chatControllerProvider(widget.sessionId).notifier).aborting;
-      if (working && !_workingAnimController.isAnimating) {
-        _workingAnimController.repeat();
-      } else if (!working && _workingAnimController.isAnimating) {
-        _workingAnimController.stop();
-      }
-      _syncFollowTicker(working);
-    });
-
-    // Streaming: scroll when working state changes.
-    ref.listen(
-      chatControllerProvider(widget.sessionId).select(
-        (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
+        (prev, next) {
+          if (!next.working) return;
+          if (_isNearBottom) {
+            _smoothScrollToBottom();
+          }
+        },
       ),
-      (prev, next) {
-        if (!next.working) return;
-        if (_isNearBottom) {
-          _smoothScrollToBottom();
-        }
-      },
     );
 
     // Message count changed: auto-scroll on new messages.
-    ref.listen(visibleMessageIdsProvider(widget.sessionId), (prev, next) {
-      final prevCount = prev?.length ?? 0;
-      final nextCount = next.length;
-      if (nextCount != prevCount) {
-        if (!_initialScrollDone && nextCount > 0) {
-          _initialScrollDone = true;
-          _startScrollRestore();
-        } else if (_restoringScroll) {
-          if (_pendingScrollPosition == null) {
-            _scrollToBottomNoSave();
-          } else {
-            _attemptScrollRestore();
+    _listenerSubs.add(
+      ref.listenManual(visibleMessageIdsProvider(widget.sessionId), (
+        prev,
+        next,
+      ) {
+        final prevCount = prev?.length ?? 0;
+        final nextCount = next.length;
+        if (nextCount != prevCount) {
+          if (!_initialScrollDone && nextCount > 0) {
+            _initialScrollDone = true;
+            _startScrollRestore();
+          } else if (_restoringScroll) {
+            if (_pendingScrollPosition == null) {
+              _scrollToBottomNoSave();
+            } else {
+              _attemptScrollRestore();
+            }
+          } else if (_initialScrollDone && !_restoringScroll && _isNearBottom) {
+            _scrollToBottom();
           }
-        } else if (_initialScrollDone && !_restoringScroll && _isNearBottom) {
-          _scrollToBottom();
         }
-      }
-    });
+      }),
+    );
   }
 
   double? _lastScrollPosition;
@@ -296,14 +316,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       nearBottom: nearBottom,
       isAnimatingScroll: _isAnimatingScroll,
     )) {
-      if (!_followPaused && !_followLatchLogged) {
-        _followLatchLogged = true;
-        debugPrint(
-          'FOLLOW latch=true pixels=${position.pixels.toStringAsFixed(1)} '
-          'max=${position.maxScrollExtent.toStringAsFixed(1)} '
-          'animating=$_isAnimatingScroll',
-        );
-      }
       _followPaused = true;
     }
     _scrollSaveTimer?.cancel();
@@ -558,9 +570,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   void _scrollToBottom({bool animate = true}) {
-    if (_followPaused) debugPrint('FOLLOW latch=false via scrollToBottom');
     _followPaused = false;
-    _followLatchLogged = false;
     if (!animate) {
       _isAnimatingScroll = false;
       _pinToBottom(finishRestore: false, budget: 45, stableNeeded: 4);
@@ -819,20 +829,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   bool _followPaused = false;
 
   void _onFollowTick(Duration _) {
-    _followTickCount++;
-    if (_followTickCount % 120 == 1) {
-      debugPrint(
-        'FOLLOW tick animating=$_isAnimatingScroll paused=$_followPaused '
-        'clients=${_scrollController.hasClients} '
-        'workingAnim=${_workingAnimController.isAnimating}',
-      );
-    }
     if (_isAnimatingScroll || _followPaused) return;
     if (!mounted || !_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final gap = pos.maxScrollExtent - pos.pixels;
     if (shouldFollowTick(gap: gap, followPaused: _followPaused)) {
-      debugPrint('FOLLOW jump gap=${gap.toStringAsFixed(1)}');
       _scrollController.jumpTo(pos.maxScrollExtent);
     }
   }
@@ -863,9 +864,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return isNearBottom(position.pixels, position.maxScrollExtent);
   }
 
+  bool? _lastBuiltWorking;
+
   @override
   Widget build(BuildContext context) {
-    _setupListenersIfNeeded();
     final chrome = ref.watch(
       chatControllerProvider(widget.sessionId).select(
         (c) => chatChromeOf(c.state, initialLoadDone: c.initialLoadDone),
@@ -882,6 +884,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         .watch(sessionActivityProvider)
         .contains(widget.sessionId);
     final working = (chrome.working || globalBusy) && !controller.aborting;
+    if (shouldSyncWorkingVisuals(
+      previous: _lastBuiltWorking,
+      current: working,
+    )) {
+      _lastBuiltWorking = working;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (working && !_workingAnimController.isAnimating) {
+          _workingAnimController.repeat();
+        } else if (!working && _workingAnimController.isAnimating) {
+          _workingAnimController.stop();
+        }
+        _syncFollowTicker(working);
+      });
+    }
 
     final modelLabel = selectedModel?.modelID ?? currentModel;
     final agentLabel = currentAgent;
