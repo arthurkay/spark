@@ -1,6 +1,6 @@
 # Deployment Guide — Spark App
 
-How to publish **Spark** to the Apple App Store and Google Play Store using Codemagic CI/CD.
+How to publish **Spark** to the Apple App Store and Google Play Store using Codemagic CI/CD, plus desktop binaries via GitHub Actions.
 
 > The build workflows live in the **Codemagic UI**, not in this repo — there is
 > no `codemagic.yaml` here. Releases trigger off `v*` git tags (see
@@ -270,6 +270,20 @@ Codemagic uses the version from `pubspec.yaml` for both platforms.
 - **Tests fail**: Fix tests locally before pushing
 
 ---
+
+## Desktop binaries (GitHub Actions)
+
+`.github/workflows/desktop-build.yml` builds Linux (x64 tarball), Windows (x64
+zip), and macOS (arm64 zip) on every `v*` tag or manual dispatch, then attaches
+all three to the GitHub release. Each job runs analyze + tests before building.
+
+Notes:
+
+- Binaries are **unsigned**: Windows SmartScreen will warn, and macOS Gatekeeper
+  will quarantine the app on first launch (right-click → Open, or
+  `xattr -d com.apple.quarantine spark.app`).
+- The Release sandbox profile includes the outgoing-network entitlement the app
+  needs to reach opencode servers.
 
 ## Files Reference
 

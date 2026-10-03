@@ -1,0 +1,75 @@
+name: desktop-build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build linux --release
+      - run: tar -czf spark-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spark-linux-x64
+          path: spark-linux-x64.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build windows --release
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath spark-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spark-windows-x64
+          path: spark-windows-x64.zip
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build macos --release
+      - run: mv build/macos/Build/Products/Release/Runner.app build/macos/Build/Products/Release/spark.app
+      - run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/spark.app spark-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spark-macos-arm64
+          path: spark-macos-arm64.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - run: gh release create "${{ github.ref_name }}" spark-linux-x64.tar.gz spark-windows-x64.zip spark-macos-arm64.zip --title "${{ github.ref_name }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
