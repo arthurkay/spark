@@ -285,6 +285,19 @@ Notes:
 - The Release sandbox profile includes the outgoing-network entitlement the app
   needs to reach opencode servers.
 
+## Installing the desktop builds
+
+Each release asset ships its installer alongside the app:
+
+| OS | Asset contents | Install |
+|----|----------------|---------|
+| Linux | `install.sh` + `spark/` bundle + icon | `./install.sh` (defaults to `~/.local`; `--prefix DIR` to change, `--uninstall` to remove) |
+| macOS | `install.sh` + `spark.app` | `./install.sh` (copies to `/Applications`, clears quarantine; `--dir DIR` to change) |
+| Windows | `spark-windows-x64-setup.exe` | Run it — Start Menu + optional desktop shortcut, clean uninstall via Apps |
+
+The Windows installer is built with Inno Setup from `windows/installer.iss`
+(app icon, per-user install, no admin required).
+
 ## Files Reference
 
 | File | Purpose |

@@ -21,7 +21,13 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build linux --release
-      - run: tar -czf spark-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      - run: |
+          mkdir -p dist/spark-linux
+          cp -r build/linux/x64/release/bundle dist/spark-linux/spark
+          cp tools/install-linux.sh dist/spark-linux/install.sh
+          cp assets/logo/icon.png dist/spark-linux/spark.png
+          chmod +x dist/spark-linux/install.sh
+          tar -czf spark-linux-x64.tar.gz -C dist/spark-linux install.sh spark.png spark
       - uses: actions/upload-artifact@v4
         with:
           name: spark-linux-x64
@@ -38,11 +44,14 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build windows --release
-      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath spark-windows-x64.zip
+      - run: choco install innosetup --no-progress -y
+      - run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)').Matches.Groups[1].Value
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer.iss /DMyAppVersion=$version "/DSourceDir=${{ github.workspace }}\build\windows\x64\runner\Release"
       - uses: actions/upload-artifact@v4
         with:
-          name: spark-windows-x64
-          path: spark-windows-x64.zip
+          name: spark-windows-x64-setup
+          path: windows/Output/spark-windows-x64-setup.exe
 
   build-macos:
     runs-on: macos-latest
@@ -55,8 +64,12 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build macos --release
-      - run: mv build/macos/Build/Products/Release/Runner.app build/macos/Build/Products/Release/spark.app
-      - run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/spark.app spark-macos-arm64.zip
+      - run: |
+          mkdir -p dist/spark-macos
+          mv build/macos/Build/Products/Release/Runner.app dist/spark-macos/spark.app
+          cp tools/install-mac.sh dist/spark-macos/install.sh
+          chmod +x dist/spark-macos/install.sh
+          ditto -c -k --sequesterRsrc --keepParent dist/spark-macos/spark.app dist/spark-macos/install.sh spark-macos-arm64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: spark-macos-arm64
@@ -70,6 +83,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - run: gh release create "${{ github.ref_name }}" spark-linux-x64.tar.gz spark-windows-x64.zip spark-macos-arm64.zip --title "${{ github.ref_name }}" --generate-notes
+      - run: gh release create "${{ github.ref_name }}" spark-linux-x64.tar.gz spark-windows-x64-setup.exe spark-macos-arm64.zip --title "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
