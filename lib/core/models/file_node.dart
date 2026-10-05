@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 class FileNode {
   const FileNode({
     required this.name,
@@ -36,6 +39,15 @@ class FileContent {
   final String? mimeType;
 
   bool get isBase64Encoded => encoding == 'base64';
+
+  Uint8List? get decodedBytes {
+    try {
+      if (isBase64Encoded) return base64Decode(content);
+      return Uint8List.fromList(utf8.encode(content));
+    } catch (_) {
+      return null;
+    }
+  }
 
   factory FileContent.fromJson(Map<String, dynamic> json) {
     final type = json['type'] as String?;

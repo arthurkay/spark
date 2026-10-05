@@ -11,6 +11,7 @@ import '../features/connection/settings_screen.dart';
 import '../features/connection/welcome_screen.dart';
 import '../features/files/diff_screen.dart';
 import '../features/files/files_screen.dart';
+import '../features/files/pdf_reader_screen.dart';
 import '../features/sessions/directory_browser.dart';
 import '../features/sessions/sessions_screen.dart';
 import '../features/local_server/opencode_locator.dart';
@@ -118,6 +119,20 @@ GoRouter createRouter(Ref ref) {
               state,
               FilesScreen(sessionId: state.pathParameters['id']!),
             ),
+          ),
+          GoRoute(
+            path: '/session/:id/pdf',
+            pageBuilder: (context, state) {
+              final query = state.uri.queryParameters;
+              return _stackPage(
+                state,
+                PdfReaderScreen(
+                  sessionId: state.pathParameters['id']!,
+                  path: query['path'] ?? '',
+                  directory: query['directory'],
+                ),
+              );
+            },
           ),
           GoRoute(
             path: '/workspace/:worktree/browse',

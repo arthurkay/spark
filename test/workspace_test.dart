@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spark/core/models/file_node.dart';
@@ -142,6 +144,21 @@ void main() {
       expect(controller.state.expandedDirs, contains('lib'));
       controller.toggleDir('lib');
       expect(controller.state.expandedDirs, isNot(contains('lib')));
+    });
+
+    test('pdf tabs never report dirty and keep their bytes', () {
+      controller.openTab(
+        path: 'doc/report.pdf',
+        name: 'report.pdf',
+        isPdf: true,
+        pdfData: Uint8List.fromList([37, 80, 68, 70]),
+      );
+      final tab = controller.state.activeTab;
+      expect(tab?.isPdf, isTrue);
+      expect(tab?.pdfData, isNotNull);
+      expect(tab?.dirty, isFalse);
+      controller.updateBuffer('doc/report.pdf', '%PDF changed');
+      expect(controller.state.activeTab?.dirty, isFalse);
     });
 
     test(

@@ -15,6 +15,8 @@ class WorkspaceTab {
     required this.buffer,
     required this.saved,
     this.isBinary = false,
+    this.isPdf = false,
+    this.pdfData,
     this.loading = false,
     this.error,
   });
@@ -24,16 +26,22 @@ class WorkspaceTab {
   final String buffer;
   final String saved;
   final bool isBinary;
+  final bool isPdf;
+  final Uint8List? pdfData;
   final bool loading;
   final String? error;
 
   bool get dirty =>
-      !isBinary && normalizeLineEndings(buffer) != normalizeLineEndings(saved);
+      !isBinary &&
+      !isPdf &&
+      normalizeLineEndings(buffer) != normalizeLineEndings(saved);
 
   WorkspaceTab copyWith({
     String? buffer,
     String? saved,
     bool? isBinary,
+    bool? isPdf,
+    Uint8List? pdfData,
     bool? loading,
     String? error,
     bool clearError = false,
@@ -44,6 +52,8 @@ class WorkspaceTab {
       buffer: buffer ?? this.buffer,
       saved: saved ?? this.saved,
       isBinary: isBinary ?? this.isBinary,
+      isPdf: isPdf ?? this.isPdf,
+      pdfData: pdfData ?? this.pdfData,
       loading: loading ?? this.loading,
       error: clearError ? null : (error ?? this.error),
     );
@@ -106,6 +116,8 @@ class WorkspaceController extends Notifier<WorkspaceState> {
     String buffer = '',
     String? saved,
     bool isBinary = false,
+    bool isPdf = false,
+    Uint8List? pdfData,
     bool loading = false,
     String? error,
   }) {
@@ -117,6 +129,8 @@ class WorkspaceController extends Notifier<WorkspaceState> {
           buffer: buffer.isEmpty ? existing.buffer : buffer,
           saved: saved ?? existing.saved,
           isBinary: isBinary,
+          isPdf: isPdf ? true : existing.isPdf,
+          pdfData: pdfData,
           loading: loading,
           error: error,
           clearError: error == null,
@@ -131,6 +145,8 @@ class WorkspaceController extends Notifier<WorkspaceState> {
       buffer: buffer,
       saved: saved ?? buffer,
       isBinary: isBinary,
+      isPdf: isPdf,
+      pdfData: pdfData,
       loading: loading,
       error: error,
     );

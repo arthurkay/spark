@@ -680,6 +680,14 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   }
 
   void _openFile(BuildContext context, FileNode node, String? directory) {
+    if (node.path.toLowerCase().endsWith('.pdf') && widget.sessionId != null) {
+      context.push(
+        '/session/${widget.sessionId}/pdf'
+        '?path=${Uri.encodeQueryComponent(node.path)}'
+        '${directory != null ? '&directory=${Uri.encodeQueryComponent(directory)}' : ''}',
+      );
+      return;
+    }
     openSheetOverlay(
       context: context,
       position: OverlayPosition.bottom,

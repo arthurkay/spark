@@ -353,6 +353,7 @@ class _FileRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final ext = extensionFromPath(node.path);
     final icon = switch (ext) {
+      'pdf' => LucideIcons.fileText,
       'dart' || 'json' => LucideIcons.braces,
       'md' || 'markdown' => LucideIcons.text,
       'png' || 'jpg' || 'jpeg' || 'gif' || 'webp' || 'svg' => LucideIcons.image,

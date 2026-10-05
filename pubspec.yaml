@@ -59,6 +59,7 @@ dependencies:
   wakelock_plus: ^1.5.2
   re_editor: ^0.10.0
   window_manager: ^0.5.2
+  pdfrx: ^2.4.7
 
 
 dev_dependencies:

@@ -6,6 +6,7 @@ import 'package:re_highlight/styles/atom-one-light.dart' as light;
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../../shared/widgets/code_highlight_view.dart';
+import '../../shared/widgets/themed_pdf_view.dart';
 
 class EditorPane extends StatefulWidget {
   const EditorPane({
@@ -15,6 +16,8 @@ class EditorPane extends StatefulWidget {
     required this.onChanged,
     required this.onSave,
     this.isBinary = false,
+    this.isPdf = false,
+    this.pdfData,
     this.loading = false,
     this.error,
   });
@@ -24,6 +27,8 @@ class EditorPane extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onSave;
   final bool isBinary;
+  final bool isPdf;
+  final Uint8List? pdfData;
   final bool loading;
   final String? error;
 
@@ -181,6 +186,23 @@ class _EditorPaneState extends State<EditorPane> {
     }
 
     final scheme = Theme.of(context).colorScheme;
+
+    if (widget.isPdf) {
+      final data = widget.pdfData;
+      if (data == null || data.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.fileWarning, size: 36).iconMutedForeground,
+              const Gap(12),
+              const Text('Could not load PDF').muted,
+            ],
+          ),
+        );
+      }
+      return ThemedPdfView(data: data, sourceName: widget.path);
+    }
     final mono = CodeHighlightView.monoFamilies;
 
     return CallbackShortcuts(

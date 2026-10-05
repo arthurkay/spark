@@ -93,6 +93,22 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
     try {
       final content = await client.readFile(path, directory: directory);
       if (!mounted) return;
+      if (path.toLowerCase().endsWith('.pdf')) {
+        final bytes = content.decodedBytes;
+        if (!mounted) return;
+        if (bytes == null || bytes.isEmpty) {
+          notifier.setError(path, 'Could not decode PDF');
+        } else {
+          notifier.openTab(
+            path: path,
+            name: name,
+            isPdf: true,
+            pdfData: bytes,
+            loading: false,
+          );
+        }
+        return;
+      }
       if (content.isBinary) {
         notifier.openTab(
           path: path,
@@ -437,6 +453,8 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
       path: active.path,
       initialContent: active.buffer,
       isBinary: active.isBinary,
+      isPdf: active.isPdf,
+      pdfData: active.pdfData,
       loading: active.loading,
       error: active.error,
       onChanged: (content) => _onContentChanged(active.path, content),
