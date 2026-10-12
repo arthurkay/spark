@@ -7,11 +7,11 @@ MessagePart _text(String id, String content) =>
     MessagePart.fromJson({'id': id, 'type': 'text', 'text': content});
 
 MessagePart _tool(String id, String status) => MessagePart.fromJson({
-  'id': id,
-  'type': 'tool',
-  'tool': 'bash',
-  'state': {'status': status, 'output': ''},
-});
+      'id': id,
+      'type': 'tool',
+      'tool': 'bash',
+      'state': {'status': status, 'output': ''},
+    });
 
 MessageWithParts _msg({
   required String role,
@@ -578,6 +578,33 @@ void main() {
           ),
         ]),
         isFalse,
+      );
+    });
+  });
+
+  group('followUiState — follow pill visibility', () {
+    test('idle hides the pill regardless of pause flag', () {
+      expect(
+        followUiState(working: false, followPaused: false),
+        FollowUiState.hidden,
+      );
+      expect(
+        followUiState(working: false, followPaused: true),
+        FollowUiState.hidden,
+      );
+    });
+
+    test('streaming unpaused shows the following pill', () {
+      expect(
+        followUiState(working: true, followPaused: false),
+        FollowUiState.following,
+      );
+    });
+
+    test('streaming paused shows the resume pill', () {
+      expect(
+        followUiState(working: true, followPaused: true),
+        FollowUiState.resume,
       );
     });
   });
