@@ -255,7 +255,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
         (prev, next) {
           if (!next.working) return;
-          if (_isNearBottom) {
+          if (!_followPaused && _isNearBottom) {
             _smoothScrollToBottom();
           }
         },
@@ -280,7 +280,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             } else {
               _attemptScrollRestore();
             }
-          } else if (_initialScrollDone && !_restoringScroll && _isNearBottom) {
+          } else if (_initialScrollDone &&
+              !_restoringScroll &&
+              !_followPaused &&
+              _isNearBottom) {
             _scrollToBottom();
           }
         }
@@ -846,8 +849,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (_isAnimatingScroll || _followPaused) return;
     if (!mounted || !_scrollController.hasClients) return;
     final pos = _scrollController.position;
-    if (pos.isScrollingNotifier.value) return;
     final gap = pos.maxScrollExtent - pos.pixels;
+    if (pos.isScrollingNotifier.value) return;
     if (shouldFollowTick(gap: gap, followPaused: _followPaused)) {
       _scrollController.jumpTo(pos.maxScrollExtent);
     }
